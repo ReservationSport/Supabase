@@ -4337,11 +4337,11 @@ async function handleLogin() {
     if (errorDiv) errorDiv.innerText = "";
 
     try {
-        // --- PRÜFEN, OB ES DAS KÜRZEL IN DER LEHRER-TABELLE GIBT ---
+        // --- PRÜFEN, OB ES DAS KÜRZEL IN DER MASTER_DB GIBT ---
         const { data: userRows, error: userError } = await supabaseClient
-            .from('lehrer')
+            .from('master_db')
             .select('*')
-            .eq('kuerzel', kuerzelVal)
+            .eq('lehrer', kuerzelVal)
             .single();
 
         if (userError || !userRows) {
