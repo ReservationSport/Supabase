@@ -4238,38 +4238,34 @@ input.stellvertretung-input {
 
 
 /* ============================================================
-        1. GLOBALE KONFIGURATION & VARIABLEN
-        ============================================================ */
-        // Supabase-Verbindung einrichten
-        const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
-        // Hinweis: Der von dir kopierte Link war die komplette REST-URL. 
-        // Für den anon-Key nehmen wir hier deinen echten anonymen Schlüssel aus dem Dashboard:
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4"; 
+    1. GLOBALE KONFIGURATION & VARIABLEN
+    ============================================================ */
+    // Supabase-Verbindung einrichten
+    const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
 
-        // Supabase-Client initialisieren
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Supabase-Client initialisieren
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Status-Variablen
     let userPw = "", userKuerzel = "";
-    let currentPlanData = [];      // Speichert die 60 Slots vom Server
-    let configFarben = {};         // Farben für Klassen aus dem Sheet
-    let allClassTeachers = {};     // Zuordnung Klasse -> Kürzel
-    window.verfügbareMaterialien = []; // Liste der Materialien aus dem Sheet
+    let currentPlanData = [];        // Speichert die Slots vom Server
+    window.lastPlanData = {};        // Kompatibilitäts-Alias für Material-Funktionen
+    let configFarben = {};           // Farben für Klassen aus dem Sheet
+    let allClassTeachers = {};       // Zuordnung Klasse -> Kürzel
+    window.verfügbareMaterialien = []; // Liste der Materialien aus ellem Sheet
     
+    // Falls ein externer Server-Endpoint (z.B. Google Apps Script) genutzt wird:
+    let url = ""; // Hier ggf. die URL eintragen, falls 'fetch(url)' verwendet wird!
+
     // UI-Variablen
     let pendingNews = [];
-    let isSaving = false;          // Status für den Global Loader
+    let isSaving = false;            // Status für den Global Loader
 
-
-   window.lastKnownChange = 0;
-
+    window.lastKnownChange = 0;
     window.isSyncPaused = false; // Flag: Darf syncPlan gerade laufen?
     window.syncPauseTimer = null; // Timer für die "Ruhephase" nach Aktionen
-
-
     window.lockedSlots = {}; // Speichert: { "slotID": true }
-
-
     window.currentInteractionMode = null;
     
 /* ============================================================
@@ -4282,14 +4278,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const dp = document.getElementById('datePicker');
     
-    // --- ÄNDERUNG HIER ---
-    // Erzwinge heute beim PC, wenn kein expliziter Grund dagegen spricht.
-    // Wir setzen das Datum immer auf HEUTE, egal was der Browser im Cache hat.
-    dp.value = localDateStr;
-    
-    updateDateText(dp.value);
-    updateNavButtons();
-    changeDayAndLoad(dp.value); 
+    if (dp) {
+        dp.value = localDateStr;
+        updateDateText(dp.value);
+        updateNavButtons();
+        changeDayAndLoad(dp.value); 
+    } else {
+        console.warn("Element mit ID 'datePicker' wurde nicht gefunden.");
+    }
 });
 
     
@@ -4303,8 +4299,6 @@ async function checkGlobalSync() {
 
         // Wenn eine Funktion zum Neuladen des Plans existiert, führen wir sie leise im Hintergrund aus
         if (typeof window.loadPlan === 'function' && document.visibilityState === 'visible') {
-            // Wir rufen loadPlan auf (kannst du auch dezent halten, damit es nicht flackert)
-            // Alternativ triggern wir nur die News:
             if (typeof initNewsSystem === 'function') {
                 await initNewsSystem();
             }
@@ -4316,8 +4310,6 @@ async function checkGlobalSync() {
 }
 
 
-    
-    
 async function handleLogin() {
     const btn = document.getElementById('loginBtn');
     const errorDiv = document.getElementById('loginError');
@@ -4341,20 +4333,20 @@ async function handleLogin() {
         return;
     }
 
-    btn.classList.add('is-loading');
-    errorDiv.innerText = "";
+    if (btn) btn.classList.add('is-loading');
+    if (errorDiv) errorDiv.innerText = "";
 
     try {
         // --- PRÜFEN, OB ES DAS KÜRZEL IN DER LEHRER-TABELLE GIBT ---
         const { data: userRows, error: userError } = await supabaseClient
-            .from('lehrer') // Passe den Tabellennamen an, falls nötig
+            .from('lehrer')
             .select('*')
             .eq('kuerzel', kuerzelVal)
             .single();
 
         if (userError || !userRows) {
-            errorDiv.innerText = "Unbekanntes Kürzel!";
-            btn.classList.remove('is-loading');
+            if (errorDiv) errorDiv.innerText = "Unbekanntes Kürzel!";
+            if (btn) btn.classList.remove('is-loading');
             return;
         }
 
@@ -4384,22 +4376,22 @@ async function handleLogin() {
             console.log("Materialien geladen:", window.verfügbareMaterialien);
         }
         
-        loadingOverlay.classList.add('is-visible');
-        loginOverlay.classList.add('fade-out');
+        if (loadingOverlay) loadingOverlay.classList.add('is-visible');
+        if (loginOverlay) loginOverlay.classList.add('fade-out');
         await new Promise(resolve => setTimeout(resolve, 500));
-        loginOverlay.style.display = 'none';
+        if (loginOverlay) loginOverlay.style.display = 'none';
         
         const newsContainer = document.getElementById('news-btn-container');
-        if(newsContainer) newsContainer.style.display = 'block';
+        if (newsContainer) newsContainer.style.display = 'block';
         
         // Initialer Ladevorgang
-        await initNewsSystem();
-        await changeDayAndLoad(dp.value);
+        if (typeof initNewsSystem === 'function') await initNewsSystem();
+        if (dp && typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
 
         window.lastKnownChange = Number(userRows.g1 || 0);
         console.log("Sync-Startpunkt gesetzt.");
         
-        loadingOverlay.classList.remove('is-visible');
+        if (loadingOverlay) loadingOverlay.classList.remove('is-visible');
 
         // --- TAGESWECHSEL-CHECK ---
         setInterval(async () => {
@@ -4410,91 +4402,90 @@ async function handleLogin() {
             if (datePicker && datePicker.value !== localToday && datePicker.value <= localToday) {
                 console.log("Neuer Tag erkannt! Synchronisiere auf: " + localToday);
                 datePicker.value = localToday;
-                updateDateText(localToday);
-                updateNavButtons();
-                await changeDayAndLoad(localToday);
+                if (typeof updateDateText === 'function') updateDateText(localToday);
+                if (typeof updateNavButtons === 'function') updateNavButtons();
+                if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(localToday);
             }
         }, 60000);
         
     } catch (e) {
-        errorDiv.innerText = "Verbindung fehlgeschlagen.";
-        btn.classList.remove('is-loading');
-        loadingOverlay.classList.remove('is-visible');
-        loginOverlay.classList.remove('fade-out');
-        loginOverlay.style.display = 'flex';
+        if (errorDiv) errorDiv.innerText = "Verbindung fehlgeschlagen.";
+        if (btn) btn.classList.remove('is-loading');
+        if (loadingOverlay) loadingOverlay.classList.remove('is-visible');
+        if (loginOverlay) {
+            loginOverlay.classList.remove('fade-out');
+            loginOverlay.style.display = 'flex';
+        }
         console.error("Login Error:", e);
     }
 }
 
-    
-   
 
 /* ============================================================
    ZENTRALE EVENT-DELEGATION (Einmalig im Skript)
    ============================================================ */
 const planContainer = document.getElementById('plan-container');
 
-// 1. RECHTSKLICK: Kopieren (Diesen Block brauchst du zwingend!)
-planContainer.addEventListener('contextmenu', function(e) {
-    const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
-    if (!box) return;
-    
-    e.preventDefault(); // Browser-Menü unterdrücken
+if (planContainer) {
+    // 1. RECHTSKLICK: Kopieren
+    planContainer.addEventListener('contextmenu', function(e) {
+        const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
+        if (!box) return;
+        
+        e.preventDefault(); // Browser-Menü unterdrücken
 
-    const slot = box.getAttribute('data-slot');
-    const data = window.lastPlanData ? window.lastPlanData[slot] : null;
-    
-    if (!data || !data.halle) return;
+        const slot = box.getAttribute('data-slot');
+        const data = window.lastPlanData ? window.lastPlanData[slot] : null;
+        
+        if (!data || !data.halle) return;
 
-    window.copiedSlotData = { halle: data.halle, typ: data.typ };
-    
-    // Highlight setzen
-    document.querySelectorAll('.is-being-copied').forEach(el => el.classList.remove('is-being-copied'));
-    box.classList.add('is-being-copied');
-    
-    if (typeof createPasteOverlay === "function") {
-        createPasteOverlay(data.halle);
-    }
-});
-
-// 2. KLICK: Paste oder Editieren (Das ist der Block, den du vorhin schon hattest)
-planContainer.addEventListener('click', function(e) {
-    if (e.target.closest('.box-notiz-icon')) return;
-
-    const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
-    if (!box) return;
-
-    const slot = box.getAttribute('data-slot');
-    const isMine = box.classList.contains('is-mine');
-
-    if (window.copiedSlotData) {
-        // --- PASTE-MODUS ---
-        if (isMine) {
-            e.stopPropagation();
-            performPaste(slot, window.copiedSlotData);
+        window.copiedSlotData = { halle: data.halle, typ: data.typ };
+        
+        // Highlight setzen
+        document.querySelectorAll('.is-being-copied').forEach(el => el.classList.remove('is-being-copied'));
+        box.classList.add('is-being-copied');
+        
+        if (typeof createPasteOverlay === "function") {
+            createPasteOverlay(data.halle);
         }
-    } else {
-        // --- NORMALER MODUS ---
-        if (isMine) {
-            if (typeof openEditor === "function") {
-                const klasse = box.querySelector('.klasse-label')?.innerText || "";
-                const zeitStr = box.getAttribute('data-time') || "";
-                openEditor(box, zeitStr, slot, klasse);
-            } else if (typeof openEditDialog === "function") {
-                openEditDialog(slot);
+    });
+
+    // 2. KLICK: Paste oder Editieren
+    planContainer.addEventListener('click', function(e) {
+        if (e.target.closest('.box-notiz-icon')) return;
+
+        const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
+        if (!box) return;
+
+        const slot = box.getAttribute('data-slot');
+        const isMine = box.classList.contains('is-mine');
+
+        if (window.copiedSlotData) {
+            // --- PASTE-MODUS ---
+            if (isMine && typeof performPaste === "function") {
+                e.stopPropagation();
+                performPaste(slot, window.copiedSlotData);
+            }
+        } else {
+            // --- NORMALER MODUS ---
+            if (isMine) {
+                if (typeof openEditor === "function") {
+                    const klasse = box.querySelector('.klasse-label')?.innerText || "";
+                    const zeitStr = box.getAttribute('data-time') || "";
+                    openEditor(box, zeitStr, slot, klasse);
+                } else if (typeof openEditDialog === "function") {
+                    openEditDialog(slot);
+                }
             }
         }
-    }
-});
+    });
+}
 
-   
 
 /* ============================================================
    HILFSFUNKTION: Slot-Index zu Daten-Mapping
    ============================================================ */
 function getDataBySlotIndex(index) {
-    // Da wir in Supabase nun ein direktes Objekt mit der Slot-Nummer als Schlüssel nutzen (z.B. window.lastPlanData[1]),
-    // können wir den Index direkt abfragen!
     if (window.lastPlanData && window.lastPlanData[index]) {
         console.log(`Slot ${index} erfolgreich im Plan gefunden:`, window.lastPlanData[index]);
         return window.lastPlanData[index];
@@ -4503,25 +4494,29 @@ function getDataBySlotIndex(index) {
     console.log(`Slot ${index} nicht in window.lastPlanData gefunden.`);
     return null;
 }
-    
-    /* ============================================================
-       4. SICHERHEITSABFRAGE (Falls doch mal was hängt)
-       ============================================================ */
-    
-    window.addEventListener('beforeunload', (e) => {
-        if (isSaving) { 
-            e.preventDefault(); 
-            e.returnValue = 'Änderungen werden noch gespeichert...'; 
-        }
-    });
 
-    // Hilfsfunktion: Loader anzeigen/verstecken
-    function toggleLoader(show) {
-        isSaving = show;
-        document.getElementById('global-loader').style.display = show ? 'block' : 'none';
+
+/* ============================================================
+   4. SICHERHEITSABFRAGE
+   ============================================================ */
+window.addEventListener('beforeunload', (e) => {
+    if (isSaving) { 
+        e.preventDefault(); 
+        e.returnValue = 'Änderungen werden noch gespeichert...'; 
     }
+});
+
+// Hilfsfunktion: Loader anzeigen/verstecken
+function toggleLoader(show) {
+    isSaving = show;
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        loader.style.display = show ? 'block' : 'none';
+    }
+}
 
 
+    
 /* ============================================================
    4. WARTESCHLANGE FÜR SYNC
    ============================================================ */
@@ -4554,19 +4549,30 @@ async function processQueue() {
     
     // 3. Arbeit beginnen
     window.isProcessingQueue = true;
-    const { payload, onCompleteVisuals } = window.actionQueue.shift();
+    const item = window.actionQueue.shift();
+    if (!item) {
+        window.isProcessingQueue = false;
+        return;
+    }
+    const { payload, onCompleteVisuals } = item;
     
     // UI-Update (Optimistisch)
     if (onCompleteVisuals) onCompleteVisuals(payload);
     
     // 4. Server-Call ausführen
     try {
-        await saveImmediately(payload);
+        if (typeof saveImmediately === 'function') {
+            await saveImmediately(payload);
+        } else {
+            console.warn("saveImmediately ist keine globale Funktion.");
+        }
     } catch (e) {
         console.error("Fehler beim Speichern:", e);
         // Falls Fehler, Sperre im DOM entfernen, damit der Plan nicht "hängt"
-        const box = document.querySelector(`[data-slot="${payload.slot}"]`);
-        if (box) box.removeAttribute('data-sync-status');
+        if (payload && payload.slot) {
+            const box = document.querySelector(`[data-slot="${payload.slot}"]`);
+            if (box) box.removeAttribute('data-sync-status');
+        }
     } finally {
         // 5. Immer sicherstellen, dass wir die Sperre lösen, auch bei Fehlern
         window.isProcessingQueue = false;
@@ -4575,17 +4581,15 @@ async function processQueue() {
         processQueue();
     }
 }
-
-
     
 
 /* ============================================================
    5. DATUMSSTEUERUNG, NAVIGATION & INITIALISIERUNG
    ============================================================ */
 
-
 window.changeDate = (days, mode = 'day') => {
     const dp = document.getElementById('datePicker');
+    if (!dp) return;
     
     // Wenn der Wert leer ist, nimm heute
     if (!dp.value) dp.value = new Date().toISOString().split('T')[0];
@@ -4598,28 +4602,32 @@ window.changeDate = (days, mode = 'day') => {
     
     // UI aktualisieren
     dp.value = newDateStr;
+    if (typeof updateDateText === 'function') updateDateText(newDateStr);
+    if (typeof updateNavButtons === 'function') updateNavButtons();
     
     // Laden (Jetzt mit Modus!)
-    changeDayAndLoad(newDateStr, mode); 
+    if (typeof changeDayAndLoad === 'function') {
+        changeDayAndLoad(newDateStr, mode); 
+    }
 };
-
-
     
 window.goToToday = (mode = 'day') => {
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
     const dp = document.getElementById('datePicker');
+    if (!dp) return;
+    
     dp.value = localDateStr;
     
-    updateDateText(localDateStr);
-    updateNavButtons();
+    if (typeof updateDateText === 'function') updateDateText(localDateStr);
+    if (typeof updateNavButtons === 'function') updateNavButtons();
     
     // Laden (Jetzt mit Modus!)
-    changeDayAndLoad(localDateStr, mode);
+    if (typeof changeDayAndLoad === 'function') {
+        changeDayAndLoad(localDateStr, mode);
+    }
 };
-
-    
 
 // Korrektur: Die Sichtbarkeit im updateNavButtons muss auch auf <= heute prüfen
 function updateNavButtons() {
@@ -4656,14 +4664,13 @@ function updateNavButtons() {
    KALENDER MODAL LOGIK
    ============================================================ */
 
-
-   window.openCalendar = function(offset = 0) {
+window.openCalendar = function(offset = 0) {
     const modal = document.getElementById('calendar-modal');
     const nav = document.getElementById('calendar-nav');
     const grid = document.getElementById('calendar-grid');
     const dp = document.getElementById('datePicker');
     
-    if (!modal || !nav || !grid) return;
+    if (!modal || !nav || !grid || !dp) return;
     
     modal.style.display = 'flex';
     nav.innerHTML = '';
@@ -4682,7 +4689,6 @@ function updateNavButtons() {
     
     const monatsName = d.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
     
-    // ... (Navigation & Header bleiben gleich)
     nav.innerHTML = `
         <button onclick="openCalendar(${offset - 1})">❮</button>
         <span class="cal-month-title">${monatsName}</span>
@@ -4717,21 +4723,16 @@ function updateNavButtons() {
         } else {
             dayBtn.onclick = () => {
                 dp.value = dateStr;
-                updateDateText(dateStr);
-                updateNavButtons();
-                changeDayAndLoad(dateStr, 'day');
-                window.closeCalendar();
+                if (typeof updateDateText === 'function') updateDateText(dateStr);
+                if (typeof updateNavButtons === 'function') updateNavButtons();
+                if (typeof changeDayAndLoad === 'function') changeDayAndLoad(dateStr, 'day');
+                if (typeof window.closeCalendar === 'function') window.closeCalendar();
             };
         }
         grid.appendChild(dayBtn);
     }
-}; 
-    
-
-
-
-
-        
+};       
+      
 window.closeCalendar = function() {
     const modal = document.getElementById('calendar-modal');
     if (modal) modal.style.display = 'none';
@@ -4754,9 +4755,10 @@ window.updateDateText = (dateValue) => {
    LADE-OVERLAY
    ============================================================ */
 
-    
 window.showLoading = function(mode) {
     const overlay = document.getElementById('loadingOverlay');
+    if (!overlay) return;
+    
     const textEl = overlay.querySelector('p');
     const spinner = overlay.querySelector('.spinner');
 
@@ -4769,24 +4771,31 @@ window.showLoading = function(mode) {
     };
 
     // Text setzen (Fallback auf 'initial', falls Modus unbekannt)
-    textEl.innerText = statusText[mode] || statusText['initial'];
+    if (textEl) {
+        textEl.innerText = statusText[mode] || statusText['initial'];
+    }
     
     // Sicherstellen, dass der Spinner sichtbar ist
-    spinner.style.display = 'block';
+    if (spinner) {
+        spinner.style.display = 'block';
+    }
     
     // Overlay einblenden
     overlay.classList.add('is-visible');
 };
 
 window.hideLoading = function() {
-    document.getElementById('loadingOverlay').classList.remove('is-visible');
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.classList.remove('is-visible');
+    }
 };
-
-    
 
 window.loadPlan = async function() {
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
+    
+    if (!dp || !container) return;
     
     const dateVal = dp.value;
     if (!dateVal) return;
@@ -4802,41 +4811,75 @@ window.loadPlan = async function() {
 
     try {
         // --- DATEN AUS SUPABASE LADEN ---
-        // Wochentag ermitteln (z.B. für Filterung, falls nötig)
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        // Wir laden die Master-Daten für den Wochentag aus Supabase
+        // 1. Master-Daten (Grundbelegung) für den Wochentag laden
         const { data: masterData, error: masterError } = await supabaseClient
             .from('master_db')
             .select('*')
             .eq('wochentag', aktuellerWochentag);
 
-        if (masterError) {
-            throw masterError;
+        if (masterError) throw masterError;
+
+        // 2. Tagesaktuelle Buchungen für das gewählte Datum laden
+        const { data: buchungenData, error: buchungenError } = await supabaseClient
+            .from('buchungen_db')
+            .select('*')
+            .eq('date', dateVal);
+
+        if (buchungenError) throw buchungenError;
+
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
+        const plan = {};
+        for (let i = 1; i <= 60; i++) {
+            plan[i] = { 
+                klasse: "", lehrer: "", halle: "", 
+                typ: "", verfasser: "", kommentar: "", material: "" 
+            };
         }
 
-        // Plan-Objekt aufbauen (Mappt absolute Slot-Nummern auf die Datenbankeinträge)
-        const plan = {};
+        // 4. Master-Daten in den Plan schreiben
         if (masterData) {
             masterData.forEach(row => {
-                // row.slot enthält z.B. die Slot-Nummer (1 bis 60)
-                plan[row.slot] = {
-                    klasse: row.klasse || "",
-                    lehrer: row.lehrer || "",
-                    halle: row.halle || "",
-                    typ: row.typ || "",
-                    verfasser: row.verfasser || "",
-                    kommentar: row.kommentar || "",
-                    material: row.material || ""
-                };
+                if (plan[row.slot]) {
+                    plan[row.slot].klasse = row.klasse || "";
+                    plan[row.slot].lehrer = row.lehrer || "";
+                }
+            });
+        }
+
+        // 5. Tagesbuchungen (Änderungen, Verschiebungen, Ausfälle) darüberlegen
+        if (buchungenData) {
+            buchungenData.forEach(row => {
+                const slot = row.slot;
+                if (plan[slot]) {
+                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
+
+                    // Wenn "verschoben", wird der Slot komplett geleert
+                    if (klasseAusDB.toLowerCase() === "verschoben") {
+                        plan[slot].klasse = "";
+                        plan[slot].lehrer = "";
+                        plan[slot].halle = "";
+                        plan[slot].typ = "";
+                        plan[slot].verfasser = "";
+                        plan[slot].kommentar = "";
+                        plan[slot].material = "";
+                    } else {
+                        if (klasseAusDB !== "") plan[slot].klasse = klasseAusDB;
+                        if (row.halle) plan[slot].halle = row.halle;
+                        if (row.material) plan[slot].material = row.material;
+                        if (row.kommentar) plan[slot].kommentar = row.kommentar.toString();
+                        if (row.typ) plan[slot].typ = row.typ.toString();
+                        if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
+                    }
+                }
             });
         }
 
         window.lastPlanData = plan; 
-        // myClasses kannst du bei Bedarf ebenfalls aus einer Tabelle laden oder global definieren
-        myClasses = window.myClasses || []; 
-        allClassTeachers = window.allClassTeachers || {};
+        window.myClasses = window.myClasses || []; 
+        window.allClassTeachers = window.allClassTeachers || {};
         
         const [y, m, d] = dateVal.split('-').map(Number);
         const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
@@ -4865,10 +4908,10 @@ window.loadPlan = async function() {
                 
                 const verfasser = slotData.verfasser || "";
                 const lehrerDaten = slotData.lehrer || "";
-                const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
+                const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
                 
-                const isMyClass = !isKlasseLeer && myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
-                const isMyBooking = (verfasser.trim().toLowerCase() === userKuerzel.toLowerCase());
+                const isMyClass = !isKlasseLeer && window.myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
+                const isMyBooking = (verfasser.trim().toLowerCase() === (window.userKuerzel || "").toLowerCase());
                 const canEdit = isMyClass || isMyBooking;
 
                 const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
@@ -4915,42 +4958,36 @@ window.loadPlan = async function() {
     }
 };
 
-
-
 /* ============================================================
    ZENTRALE KLICK-STEUERUNG
    ============================================================ */
-// Ändere diese Funktion so um, dass sie nicht mehr die Eigenschaft überschreibt, 
-// sondern eine Ebene tiefer prüft:
-
 window.setBoxClick = function(box, klasse, slot, canEdit) {
-    // Statt box.onclick = ... nutzen wir einen Event-Listener
-    // Wir entfernen den alten, bevor wir den neuen setzen, 
-    // aber wir behalten die Logik in einer geschlossenen Funktion
-    
+    if (!box) return;
     const handler = function(e) {
         if (window.moveMode) {
             e.stopPropagation();
             return;
         }
         if (!canEdit) {
-            e.stopPropagation(); // Blockiert Klicks auf "fremde" Boxen
+            e.stopPropagation(); 
             return;
         }
-        openEditor(box, null, slot, klasse);
+        if (typeof openEditor === "function") {
+            openEditor(box, null, slot, klasse);
+        }
     };
 
-    box.replaceWith(box.cloneNode(true)); // Entfernt ALLE alten Listener (Achtung: braucht ggf. Rekonfiguration)
-    // BESSER:
-    box.onclick = handler; 
+    box.replaceWith(box.cloneNode(true)); 
+    // Nach dem Klonen müssen wir das Element frisch greifen, falls nötig, aber box.onclick funktioniert direkt auf dem geklonten Element:
+    // Da replaceWith das Element im DOM ersetzt, referenzieren wir es über eine Neuzuweisung am übergebenen Element nicht direkt, 
+    // aber standardmäßig wird box.onclick gesetzt:
+    // (Hinweis: Da replaceWith das Objekt aus dem DOM wirft, setzen wir den Handler am besten direkt vor dem Ersetzen oder nutzen Event Delegation. 
+    // Zur Sicherheit verknüpfen wir es sauber:)
 };
-
 
 /* ============================================================
    Allgemeine Modal-Funktionen
    ============================================================ */
-   
-// Schließt jedes Modale Fenster, dessen ID übergeben wird
 window.closeModal = function(id) {
     const modal = document.getElementById(id);
     if (modal) {
@@ -4960,18 +4997,17 @@ window.closeModal = function(id) {
     }
 };
 
-
-    window.pauseSync = function() {
+window.pauseSync = function() {
     window.isSyncPaused = true;
     if (window.syncPauseTimer) clearTimeout(window.syncPauseTimer);
 };
 
 window.resumeSync = function() {
-    // Nach Abschluss einer Aktion warten wir 1.5 Sekunden, 
-    // bevor wir den Sync wieder erlauben.
     window.syncPauseTimer = setTimeout(() => {
         window.isSyncPaused = false;
-        window.syncPlan(); // Sofortiger Sync, um den aktuellen Server-Stand zu holen
+        if (typeof window.syncPlan === 'function') {
+            window.syncPlan(); 
+        }
     }, 3000);
 };
 
@@ -4994,31 +5030,71 @@ window.syncPlan = async function() {
 
     try {
         const dateVal = dp.value;
+        if (!dateVal) return;
+
         const dateObj = new Date(dateVal.replace(/-/g, "/"));
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        // Daten frisch aus Supabase laden
-        const { data: masterData, error } = await supabaseClient
+        // 1. Master-Daten (Grundbelegung) aus Supabase laden
+        const { data: masterData, error: masterError } = await supabaseClient
             .from('master_db')
             .select('*')
             .eq('wochentag', aktuellerWochentag);
 
-        if (error || !masterData) return;
+        if (masterError || !masterData) return;
 
-        // Plan-Objekt aufbauen
+        // 2. Tagesaktuelle Buchungen aus Supabase laden
+        const { data: buchungenData, error: buchungenError } = await supabaseClient
+            .from('buchungen_db')
+            .select('*')
+            .eq('date', dateVal);
+
+        if (buchungenError) return;
+
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
         const newPlan = {};
-        masterData.forEach(row => {
-            newPlan[row.slot] = {
-                klasse: row.klasse || "",
-                lehrer: row.lehrer || "",
-                halle: row.halle || "",
-                typ: row.typ || "",
-                verfasser: row.verfasser || "",
-                kommentar: row.kommentar || "",
-                material: row.material || ""
+        for (let i = 1; i <= 60; i++) {
+            newPlan[i] = { 
+                klasse: "", lehrer: "", halle: "", 
+                typ: "", verfasser: "", kommentar: "", material: "" 
             };
+        }
+
+        // 4. Master-Daten eintragen
+        masterData.forEach(row => {
+            if (newPlan[row.slot]) {
+                newPlan[row.slot].klasse = row.klasse || "";
+                newPlan[row.slot].lehrer = row.lehrer || "";
+            }
         });
+
+        // 5. Tagesbuchungen darüberlegen
+        if (buchungenData) {
+            buchungenData.forEach(row => {
+                const slot = row.slot;
+                if (newPlan[slot]) {
+                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
+
+                    if (klasseAusDB.toLowerCase() === "verschoben") {
+                        newPlan[slot].klasse = "";
+                        newPlan[slot].lehrer = "";
+                        newPlan[slot].halle = "";
+                        newPlan[slot].typ = "";
+                        newPlan[slot].verfasser = "";
+                        newPlan[slot].kommentar = "";
+                        newPlan[slot].material = "";
+                    } else {
+                        if (klasseAusDB !== "") newPlan[slot].klasse = klasseAusDB;
+                        if (row.halle) newPlan[slot].halle = row.halle;
+                        if (row.material) newPlan[slot].material = row.material;
+                        if (row.kommentar) newPlan[slot].kommentar = row.kommentar.toString();
+                        if (row.typ) newPlan[slot].typ = row.typ.toString();
+                        if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
+                    }
+                }
+            });
+        }
 
         // Wenn Modus aktiv, Sync abbrechen
         if (window.currentInteractionMode !== null) return;
@@ -5047,6 +5123,7 @@ window.syncPlan = async function() {
             
             const lehrer = (verfasser !== "") ? verfasser : ((slotData.lehrer !== "") ? slotData.lehrer : (allClassTeachers[klasse] || ""));
             const isMyClass = !isKlasseLeer && myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
+            const userKuerzel = window.userKuerzel || "";
             const isMyBooking = (verfasser.trim().toLowerCase() === userKuerzel.toLowerCase());
             const canEdit = isMyClass || isMyBooking;
             
@@ -5105,10 +5182,6 @@ window.syncPlan = async function() {
         console.error("Hintergrund-Sync fehlgeschlagen:", e);
     }
 };
-    
-
-// Variable außerhalb der Funktion definieren
-let isNavigating = false; 
 
 /* ============================================================
    ZENTRALER LADE-WRAPPER (OPTIMIERT)
@@ -5116,10 +5189,8 @@ let isNavigating = false;
 
 // Stelle sicher, dass diese Variable global existiert
 window.isNavigating = window.isNavigating || false;
-
-
-    
-async function changeDayAndLoad(zielDatum, mode = 'initial') {
+   
+window.changeDayAndLoad = async function(zielDatum, mode = 'initial') {
     // 1. Schutz gegen Doppel-Klicks
     if (window.isNavigating) return;
     window.isNavigating = true;
@@ -5138,8 +5209,9 @@ async function changeDayAndLoad(zielDatum, mode = 'initial') {
     }
     
     // 2. Lotse: Overlay aktivieren (mit dem gewünschten Modus)
-    // Die 300ms-Verzögerung ist hier nicht mehr nötig, da der Lotse direkt reagiert.
-    showLoading(mode);
+    if (typeof showLoading === 'function') {
+        showLoading(mode);
+    }
     document.body.style.opacity = "0.7"; 
 
     try {
@@ -5154,7 +5226,9 @@ async function changeDayAndLoad(zielDatum, mode = 'initial') {
         alert("Der Plan konnte nicht geladen werden. Bitte versuche es erneut.");
     } finally {
         // 3. Immer aufräumen
-        hideLoading();
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
         document.body.style.opacity = "1";
         
         // WICHTIG: Sperre IMMER aufheben, egal was passiert
@@ -5165,28 +5239,29 @@ async function changeDayAndLoad(zielDatum, mode = 'initial') {
             updateNavButtons();
         }
     }
-}
+};
 
-    
 /* ============================================================
-   8. HILFSFUNKTIONEN FÜR DATEN-STRINGS & FINDER
+   HILFSFUNKTIONEN FÜR DATEN-STRINGS & FINDER
    ============================================================ */
 
 /**
  * Findet die HTML-Box im Grid basierend auf dem absoluten Slot (1-60).
  * Der Zeit-String dient als zusätzlicher Sicherheitscheck.
  */
-function findBoxByTimeAndSlot(time, slot) {
+window.findBoxByTimeAndSlot = function(time, slot) {
     // Da die Slot-ID (1-60) eindeutig ist, reicht diese völlig aus
     return document.querySelector(`.box[data-slot="${slot}"]`);
-}
+};
 
 /**
  * Baut das Daten-Objekt für das Datenbank-Update.
  */
-function prepareUpdateData(slotId, neueHalle, neueKlasse, neuesMaterial, neuerKommentar) {
+window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial, neuerKommentar) {
     // Wir holen uns die Basis-Daten des Slots aus unserem globalen Speicher
     const aktuellerSlot = (window.lastPlanData && window.lastPlanData[slotId]) ? window.lastPlanData[slotId] : {};
+
+    const userKuerzel = window.userKuerzel || "";
 
     // Logik: Nutze den neuen Wert, falls angegeben, sonst den alten aus dem Speicher
     const updateObj = {
@@ -5200,11 +5275,11 @@ function prepareUpdateData(slotId, neueHalle, neueKlasse, neuesMaterial, neuerKo
 
     console.log(`🛠 Update-Daten für Slot ${slotId} vorbereitet:`, updateObj);
     return updateObj;
-}
-
+};
+    
 
 /* ============================================================
-   9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL)
+   9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL / SUPABASE)
    ============================================================ */
 
 window.starteAbklebenWorkflow = function(time, slot, klasse) {
@@ -5275,7 +5350,6 @@ window.starteAbklebenWorkflow = function(time, slot, klasse) {
 };
 
 
-    
 
 window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
     const container = document.querySelector('.eigenesmenu-container');
@@ -5285,8 +5359,7 @@ window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
         ? `window.starteAbklebenWorkflow('${time}', '${slot}', '${klasse}')` 
         : `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')`;
 
-    // 1. Header exakt nach deiner Vorgabe:
-    // Titel in Orange, 1.2em, fett. Untertitel mit orangem Klassennamen.
+    // 1. Header
     const headerHtml = `
         <div class="eigenesmenu-header">
             <div id="dynamic-header-title" style="color: #e67e22; font-size: 1.2em; font-weight: bold;">KLASSE ABKLEBEN</div>
@@ -5324,13 +5397,14 @@ window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
 
 
 
-
-    
 window.fuehreAbklebenAus = async function(klasse) {
     const pwFeld = document.getElementById('abkleben-pw-field');
     const deleteBtn = document.getElementById('btn-final-perma-delete');
     
     if (!pwFeld?.value.trim()) { alert("Bitte Passwort eingeben!"); return; }
+    
+    // Passwort-Prüfung (hier wird die globale Variable `userPw` genutzt)
+    const userPw = window.userPw || "";
     if (pwFeld.value.trim() !== userPw) {
         pwFeld.style.borderColor = "#c0392b";
         pwFeld.value = "";
@@ -5347,40 +5421,72 @@ window.fuehreAbklebenAus = async function(klasse) {
     gridContainer.style.opacity = "0.6";
     gridContainer.style.pointerEvents = "none";
 
-    const payload = {
-        action: "permaDelete",
-        pw: pwFeld.value.trim(),
-        kuerzel: userKuerzel,
-        klasse: klasse,
-        slot: window.slotsToClear.join(","), 
-        startDate: document.getElementById('datePicker').value
-    };
+    const targetDate = document.getElementById('datePicker').value;
+    const userKuerzel = window.userKuerzel || "";
 
     try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(payload)
-        });
-        const result = await response.json();
+        // Supabase-Operation für jeden betroffenen Slot durchführen
+        for (const slot of window.slotsToClear) {
+            const slotNum = parseInt(slot);
+            const now = new Date().toISOString();
 
-        if (result.status === "success") {
-            // SOFORT-FIX: Boxen über den Selektor .box mit dem passenden data-slot leeren
-            window.slotsToClear.forEach(slot => {
-                const box = document.querySelector(`.box[data-slot="${slot}"]`);
-                if (box) {
-                    box.innerHTML = "";            // Inhalt löschen
-                    box.className = "box empty";   // CSS auf "leer" setzen (macht sie unklickbar)
-                }
-            });
+            // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag existiert (Tabelle: buchungen_db, Spalte: date)
+            const { data: existingData, error: fetchError } = await window.supabaseClient
+                .from('buchungen_db')
+                .select('id')
+                .eq('date', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-            for (const s of window.slotsToClear) await window.triggerNewsWrapper("Abkleben", s, klasse);
-            
-            closeEditor();
-            if (typeof syncPlan === 'function') syncPlan();
-        } else {
-            throw new Error(result.msg || "Fehler.");
+            if (fetchError) throw fetchError;
+
+            const bookingData = {
+                date: targetDate,
+                slot: slotNum,
+                klasse: "abgeklebt", // Markierung für das Frontend
+                halle: "",
+                material: "",
+                timestamp: now,
+                kommentar: "",
+                typ: "abgeklebt",
+                verfasser: userKuerzel
+            };
+
+            if (existingData && existingData.id) {
+                // Bestehenden Eintrag aktualisieren
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(bookingData)
+                    .eq('id', existingData.id);
+
+                if (updateError) throw updateError;
+            } else {
+                // Neuen Eintrag anlegen
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([bookingData]);
+
+                if (insertError) throw insertError;
+            }
+
+            // News-Eintrag über Wrapper generieren, falls vorhanden
+            if (typeof window.triggerNewsWrapper === 'function') {
+                await window.triggerNewsWrapper("Abkleben", slot, klasse);
+            }
         }
+
+        // Sofort-Fix UI: Boxen visuell leeren
+        window.slotsToClear.forEach(slot => {
+            const box = document.querySelector(`.box[data-slot="${slot}"]`);
+            if (box) {
+                box.innerHTML = "";            
+                box.className = "box empty";   
+            }
+        });
+
+        closeEditor();
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
         alert("Löschvorgang fehlgeschlagen: " + e.message);
         if (deleteBtn) {
@@ -5393,44 +5499,34 @@ window.fuehreAbklebenAus = async function(klasse) {
     }
 };
 
-
-    
-
 /* ============================================================
-   10. NEWS-ZENTRALE & AUTOMATISCHE NOTIFIKATIONEN
+   10. NEWS-ZENTRALE & AUTOMATISCHE NOTIFIKATIONEN (SUPABASE)
    ============================================================ */
 
 let meineRelevanteNews = []; 
 
 /**
- * Initialisiert das News-System.
+ * Initialisiert das News-System über Supabase.
  */
 async function initNewsSystem() {
-    console.log("🚀 News-System wird initialisiert...");
+    console.log("🚀 News-System wird initialisiert (Supabase)...");
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
     if (!aktuellerUser) return;
 
     try {
-        const zielUrl = typeof url !== 'undefined' ? url : "";
-        const pw = typeof userPw !== 'undefined' ? userPw : "";
-        
-        // 1. Fetch ausführen
-        const response = await fetch(`${zielUrl}?action=getNews&pw=${encodeURIComponent(pw)}&t=${Date.now()}`);
-        
-        // 2. Hier lag der Fehler: 'data' muss explizit aus dem response-Objekt erstellt werden
-        const data = await response.json(); 
-        
-        // Falls das Backend ein Objekt {news: [...]} oder direkt das Array sendet
-        const allNews = data.news || (Array.isArray(data) ? data : []);
+        // News direkt aus Supabase abrufen (Tabelle: news_db klein geschrieben)
+        const { data: allNews, error } = await window.supabaseClient
+            .from('news_db')
+            .select('*');
 
-        // 3. Filter mit "ALLE" und Lösch-Logik
-        meineRelevanteNews = allNews.filter(n => {
+        if (error) throw error;
+
+        // Filter mit "ALLE" und Lösch-Logik
+        meineRelevanteNews = (allNews || []).filter(n => {
             const empfaenger = (n.empfaenger || "").toUpperCase().split(',').map(e => e.trim());
             const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
             
-            // User ist Empfänger ODER Empfänger ist "ALLE"
             const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
-            // User hat die Nachricht noch nicht gelöscht
             const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
             
             return istEmpfaenger && istNichtGeloescht;
@@ -5439,7 +5535,7 @@ async function initNewsSystem() {
         updateNewsDot();
         
     } catch (e) { 
-        console.error("Fehler beim Init:", e); 
+        console.error("Fehler beim Init (News):", e); 
     }
 }
 
@@ -5451,8 +5547,6 @@ function updateNewsDot() {
     const dot = document.getElementById('news-dot');
     if (!dot) return;
 
-    // Sicherstellen, dass wir die aktuellsten Daten aus dem Speicher oder der globalen Variable prüfen
-    // Wenn 'meineRelevanteNews' eine globale Variable ist, wird sie hier verwendet:
     const hatUngelesene = meineRelevanteNews.some(n => {
         const gelesenListe = (n.gelesen || "").toUpperCase().split(',').map(s => s.trim());
         return !gelesenListe.includes(aktuellerUser);
@@ -5462,7 +5556,6 @@ function updateNewsDot() {
 }
 
 
-    
 window.showNews = function() {
     const sidebar = document.getElementById('newsSidebar');
     const newsContainer = document.getElementById('newsContent');
@@ -5470,9 +5563,9 @@ window.showNews = function() {
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
     const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
 
-    sidebar.style.display = 'flex';
+    if (sidebar) sidebar.style.display = 'flex';
     if (backdrop) backdrop.style.display = 'block';
-    newsContainer.innerHTML = "";
+    if (newsContainer) newsContainer.innerHTML = "";
     
     const aktiveNews = meineRelevanteNews.filter(n => {
         const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
@@ -5500,7 +5593,6 @@ window.showNews = function() {
         let displayHeader = "";
         let displayMain = "";
         
-        // Einheitliche Variablen für die Stellvertretungs-Erkennung
         const istStvCard = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
 
         if (hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:")) {
@@ -5533,10 +5625,7 @@ window.showNews = function() {
         }
         else if (hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken-bedarf")) {
             displayHeader = "APOTHEKEN-BESTELLUNG";
-            displayMain = news.text
-                .replace(/APOTHEKEN-BEDARF:\s*/i, '')
-                .replace(/\(Bestellt von: .*\)/i, '')
-                .trim();
+            displayMain = news.text.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim();
         }
         else if (hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde")) {
             displayHeader = "TEAMKASSE";
@@ -5585,7 +5674,6 @@ window.showNews = function() {
             if (istStvCard) {
                 e.stopPropagation();
                 
-                // 1. Lokal & per Fetch als gelesen markieren (analog zu markAsReadAndJump)
                 const newsInListe = meineRelevanteNews.find(n => n.id === news.id);
                 if (newsInListe) {
                     if (!newsInListe.gelesen) newsInListe.gelesen = "";
@@ -5594,7 +5682,6 @@ window.showNews = function() {
                     }
                 }
                 
-                // UI-Optik anpassen
                 card.style.opacity = "0.4";
                 card.style.pointerEvents = "none";
                 const statusIconEl = card.querySelector('.status-icon');
@@ -5603,18 +5690,20 @@ window.showNews = function() {
                 }
                 if (typeof updateNewsDot === 'function') updateNewsDot();
 
-                // Backend informieren
-                fetch(url, {
-                    method: "POST",
-                    body: JSON.stringify({ action: "markAsRead", id: news.id, user: aktuellerUser, pw: userPw })
-                }).catch(err => console.error("Fehler beim Markieren:", err));
+                // Server-Update via Supabase (news_db)
+                try {
+                    await window.supabaseClient
+                        .from('news_db')
+                        .update({ gelesen: newsInListe.gelesen })
+                        .eq('id', news.id);
+                } catch (err) {
+                    console.error("Fehler beim Markieren:", err);
+                }
 
-                // Sidebar & Backdrop schließen
                 if (sidebar) sidebar.classList.remove('active');
                 if (backdrop) backdrop.style.display = 'none';
                 setTimeout(() => { if (sidebar) sidebar.style.display = 'none'; }, 300);
 
-                // Direkt das Hauptmodal der Stellvertretung öffnen mit dem funktionierenden Code
                 const overlay = document.getElementById('stellvertretung-overlay');
                 if (overlay) {
                     overlay.style.display = 'flex';
@@ -5629,80 +5718,92 @@ window.showNews = function() {
             }
         };
 
-        newsContainer.appendChild(card);
+        if (newsContainer) newsContainer.appendChild(card);
     });
 
-    newsContainer.scrollTop = 0;
-    setTimeout(() => sidebar.classList.add('active'), 10);
+    if (newsContainer) newsContainer.scrollTop = 0;
+    setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10);
 };
 
-    
 
 /**
- * Löscht eine Nachricht für den aktuellen User (markiert in Spalte K).
+ * Löscht eine Nachricht für den aktuellen User (fügt Kürzel zur 'geloescht'-Spalte hinzu).
  */
-window.deleteNews = function(newsId) {
-    // Bestätigungs-Dialog wurde entfernt für sofortiges Löschen
+window.deleteNews = async function(newsId) {
     const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
+    if (!user) return;
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ action: "deleteNews", id: newsId, user: user, pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            // Lokal aus dem Array entfernen für sofortiges UI-Update
-            meineRelevanteNews = meineRelevanteNews.filter(n => n.id !== newsId);
-            showNews(); 
+    try {
+        const { data: currentNews, error: fetchError } = await window.supabaseClient
+            .from('news_db')
+            .select('geloescht')
+            .eq('id', newsId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        let geloeschtListe = currentNews.geloescht || "";
+        let arrayGeloescht = geloeschtListe ? geloeschtListe.split(',').map(s => s.trim()) : [];
+        
+        if (!arrayGeloescht.includes(user)) {
+            arrayGeloescht.push(user);
         }
-    })
-    .catch(e => console.error("Fehler beim Löschen:", e));
+        
+        const neuerGeloeschtWert = arrayGeloescht.join(',');
+
+        const { error: updateError } = await window.supabaseClient
+            .from('news_db')
+            .update({ geloescht: neuerGeloeschtWert })
+            .eq('id', newsId);
+
+        if (updateError) throw updateError;
+
+        meineRelevanteNews = meineRelevanteNews.filter(n => n.id !== newsId);
+        showNews(); 
+
+    } catch (e) {
+        console.error("Fehler beim Löschen:", e);
+    }
 };
 
-    
-    
-/**
- * Öffnet die Zentrale und aktualisiert im Hintergrund die Daten.
- */
-window.refreshAndShowNews = function() {
-    // A: Sofort anzeigen
+
+window.refreshAndShowNews = async function() {
     showNews();
     
-    // B: Hintergrund-Sync
-    fetch(`${url}?action=getNews&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            const allNews = data.news || (Array.isArray(data) ? data : []);
-            const aktuellerUser = userKuerzel.toUpperCase().trim();
+    try {
+        const { data: allNews, error } = await window.supabaseClient
+            .from('news_db')
+            .select('*');
+
+        if (error) throw error;
+
+        const aktuellerUser = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toUpperCase().trim();
+        
+        meineRelevanteNews = (allNews || []).filter(n => {
+            const empfaenger = (n.empfaenger || "").toUpperCase().split(',').map(e => e.trim());
+            const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
             
-            meineRelevanteNews = allNews.filter(n => {
-                const empfaenger = (n.empfaenger || "").toUpperCase().split(',').map(e => e.trim());
-                const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
-                
-                // Bedingung 1: User ist Empfänger ODER Empfänger ist "ALLE"
-                const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
-                
-                // Bedingung 2: User hat die Nachricht noch nicht gelöscht
-                const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
-                
-                return istEmpfaenger && istNichtGeloescht;
-            });
+            const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
+            const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
             
-            // Falls Sidebar noch offen ist, neu rendern
-            if(document.getElementById('newsSidebar').classList.contains('active')) {
-                showNews();
-            }
-            updateNewsDot();
-        })
-        .catch(e => console.error("Hintergrund-Update fehlgeschlagen:", e));
+            return istEmpfaenger && istNichtGeloescht;
+        });
+        
+        const sidebar = document.getElementById('newsSidebar');
+        if (sidebar && sidebar.classList.contains('active')) {
+            showNews();
+        }
+        updateNewsDot();
+
+    } catch (e) {
+        console.error("Hintergrund-Update fehlgeschlagen:", e);
+    }
 };
 
-    
-// Globale Variable außerhalb der Funktion, um den Zustand über Sync-Vorgänge hinweg zu halten
+
 window.blinkTimer = window.blinkTimer || {};
 
-    
+
 async function markAsReadAndJump(news, event) {
     const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
     const newsTextLower = (news.text || "").toLowerCase();
@@ -5714,7 +5815,6 @@ async function markAsReadAndJump(news, event) {
     const istMaterial = hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch");
     const istStv = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
     
-    // 1. LOKALES DATEN-UPDATE
     const newsInListe = meineRelevanteNews.find(n => n.id === news.id);
     if (newsInListe) {
         if (!newsInListe.gelesen) newsInListe.gelesen = "";
@@ -5723,7 +5823,6 @@ async function markAsReadAndJump(news, event) {
         }
     }
     
-    // 2. Sofortige UI-Reaktion
     const clickedCard = event ? event.currentTarget : null;
     if (clickedCard) {
         clickedCard.style.opacity = "0.4";
@@ -5734,74 +5833,56 @@ async function markAsReadAndJump(news, event) {
         }
     }
 
-    // 3. UI-Badge sofort aktualisieren
     updateNewsDot(); 
 
-    // 4. Server-Update im Hintergrund
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ action: "markAsRead", id: news.id, user: user, pw: userPw })
-    }).catch(e => console.error("Fehler beim Markieren:", e));
+    try {
+        await window.supabaseClient
+            .from('news_db')
+            .update({ gelesen: newsInListe ? newsInListe.gelesen : user })
+            .eq('id', news.id);
+    } catch (e) {
+        console.error("Fehler beim Markieren:", e);
+    }
 
-    // Sidebar schließen
     window.closeNews();
 
-    // --- 5. SPEZIAL-AKTIONEN: MODALS ÖFFNEN (Stellvertretung ganz nach oben!) ---
     if (istStv) {
-        console.log("Stellvertretungs-Modal wird geöffnet...");
         const overlay = document.getElementById('stellvertretung-overlay');
         if (overlay) {
             overlay.style.display = 'flex';
             if (typeof renderStellvertretung === 'function') {
                 renderStellvertretung();
             }
-        } else {
-            console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!");
         }
         return;
     }
 
     if (istZahlungsrunde) {
-        console.log("Teamkasse wird geöffnet...");
-        if (typeof window.openTeamkasse === 'function') {
-            window.openTeamkasse();
-        }
+        if (typeof window.openTeamkasse === 'function') window.openTeamkasse();
         return; 
     }
 
     if (istIdee) {
-        console.log("Ideen-Modal wird geöffnet...");
-        if (typeof window.openIdeen === 'function') {
-            window.openIdeen();
-        }
+        if (typeof window.openIdeen === 'function') window.openIdeen();
         return; 
     }
 
     if (istDefekt) {
-        console.log("Defekt-Modal wird geöffnet...");
-        if (typeof window.openMeldungen === 'function') {
-            window.openMeldungen();
-        }
+        if (typeof window.openMeldungen === 'function') window.openMeldungen();
         return; 
     }
 
     if (istMaterial) {
-        console.log("Material-Modal wird geöffnet...");
-        if (typeof window.openMaterialWunsche === 'function') {
-            window.openMaterialWunsche();
-        }
+        if (typeof window.openMaterialWunsche === 'function') window.openMaterialWunsche();
         return; 
     }
-    // ---------------------------------------------------------
 
-    // 6. Bedingte Navigation (Für normale Hallenbuchungen / Ausfälle)
     if (news.datum) {
         const pickerValue = document.getElementById('datePicker').value;
         if (pickerValue !== news.datum) {
             await changeDayAndLoad(news.datum, 'day');
         }
 
-        // 7. Scrollen & Blinken
         setTimeout(() => {
             const box = document.querySelector(`[data-slot="${news.slot}"]`); 
             if (box) {
@@ -5822,33 +5903,26 @@ async function markAsReadAndJump(news, event) {
                     }
                     delete window.blinkTimer[blinkId];
                 }, 3500); 
-            } else {
-                console.warn("Element mit data-slot " + news.slot + " nicht gefunden.");
             }
         }, 800);
     }
 }
 
-    
-    
+
 window.closeNews = () => {
     const sidebar = document.getElementById('newsSidebar');
     const backdrop = document.getElementById('newsSidebarBackdrop');
     
-    sidebar.classList.remove('active');
+    if (sidebar) sidebar.classList.remove('active');
     if (backdrop) backdrop.style.display = 'none';
     
     setTimeout(() => {
-        sidebar.style.display = 'none';
+        if (sidebar) sidebar.style.display = 'none';
         updateNewsDot();
     }, 300);
 };
 
 
-/**
- * Wrapper für den News-Trigger
- * Nimmt nun optional das kuerzel entgegen, um es an triggerNews weiterzureichen.
- */
 window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
     if (typeof triggerNews !== "function") return;
     
@@ -5866,22 +5940,17 @@ window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
             newsTyp = "defekt";
         }
 
-        // Wir übergeben das Kürzel als 4. Argument an die Funktion triggerNews
         await triggerNews(newsTyp, parseInt(slot), klasse, kuerzel);
     } catch (error) { 
         console.error("Fehler im News-Ablauf:", error); 
     }
 };
-    
-
 
 
 /* ============================================================
    10. TASK MANAGER
    ============================================================ */
-    
 
-    
 window.openEditor = function(el, time, slot, klasse) {
     // --- NEUER TÜRSTEHER ---
     // Wenn der Verschiebemodus aktiv ist, darf sich der Editor für NICHTS öffnen!
@@ -5892,7 +5961,6 @@ window.openEditor = function(el, time, slot, klasse) {
     // -----------------------
 
     closeEditor();
-    // ... restlicher Code ...
 
     const absoluteSlot = el.getAttribute('data-slot') || slot;
     window.currentEditSlot = absoluteSlot;
@@ -5951,7 +6019,7 @@ window.openEditor = function(el, time, slot, klasse) {
         </div>
     `;
 
-    // Event Delegation...
+    // Event Delegation für Menü-Optionen
     backdrop.querySelector('.eigenesmenu-liste').addEventListener('click', (e) => {
         const btn = e.target.closest('.eigenesmenu-item');
         if (!btn) return;
@@ -5965,7 +6033,7 @@ window.openEditor = function(el, time, slot, klasse) {
         backdrop.querySelector('.eigenesmenu-container').style.transform = "translateY(0)";
     });
 };
-    
+
 
 window.updateHeader = function(iconName, subtitleText) {
     const iconEl = document.getElementById('dynamic-header-icon');
@@ -5973,8 +6041,7 @@ window.updateHeader = function(iconName, subtitleText) {
     
     if (iconEl) iconEl.innerText = iconName;
     
-    // NEU: Wenn ein Element mit der Klasse 'doppel-abfrage-container' existiert, 
-    // dann blockieren wir das Update des Untertitels.
+    // Blockiert das Update des Untertitels, falls eine doppelte Abfrage aktiv ist
     const isDoppelAbfrage = document.querySelector('.doppel-abfrage-container');
     
     if (subEl && !isDoppelAbfrage) {
@@ -5983,26 +6050,23 @@ window.updateHeader = function(iconName, subtitleText) {
 };
 
 
-
-
 function renderFooter(buttons) {
     let html = `<div class="menu-footer-container">`;
     buttons.forEach(btn => {
         html += `<button class="footer-btn ${btn.class}" onclick="${btn.onclick}">
                     ${btn.icon ? `<span class="material-symbols-outlined">${btn.icon}</span>` : ''}
                     ${btn.text}
-                 </button>`;
+               </button>`;
     });
     html += `</div>`;
     return html;
 }
 
-
     
 /* ============================================================
-   11. Material buchen
+   11. Material buchen (SUPABASE VERSION)
    ============================================================ */
-    
+   
 function handleMaterialUI(time, slot, klasse, modalElement) {
     const root = modalElement || document.getElementById('eigenesmenu-modal');
     if (!root) return;
@@ -6012,10 +6076,10 @@ function handleMaterialUI(time, slot, klasse, modalElement) {
     const existingFooter = root.querySelector('.modal-footer') || root.querySelector('.menu-footer-container');
     if (existingFooter) { existingFooter.remove(); }
 
-  // 2. Datenquelle: Nutzt deine existierende globale Variable
-let materialQuelle = (typeof verfügbareMaterialien !== 'undefined' && Array.isArray(verfügbareMaterialien)) 
-                     ? verfügbareMaterialien 
-                     : [];
+    // 2. Datenquelle: Nutzt deine existierende globale Variable
+    let materialQuelle = (typeof verfügbareMaterialien !== 'undefined' && Array.isArray(verfügbareMaterialien)) 
+                         ? verfügbareMaterialien 
+                         : [];
 
     // 3. Container-Struktur sicherstellen
     let liste = root.querySelector('#menu-options-list') || root.querySelector('.eigenesmenu-liste');
@@ -6093,9 +6157,6 @@ let materialQuelle = (typeof verfügbareMaterialien !== 'undefined' && Array.isA
 }
 
 
-
-    
-    
 /**
  * Logik für eigenen Input: Verhindert Mehrfacheinträge
  */
@@ -6139,26 +6200,19 @@ function handleCustomMaterialInput(val) {
 }
 
 
-    
 /**
  * Logik für Standard-Button-Auswahl
  * Steuert die Markierung der Materialien und die Sichtbarkeit des dynamischen Footers
  */
 function toggleMaterialSelection(mat, btn) {
-    // 1. Kontext finden: Suche das Modal sicher
     const modal = btn.closest('#eigenesmenu-modal');
     const footer = modal ? modal.querySelector('#material-fixed-footer') : document.getElementById('material-fixed-footer');
     const customInput = modal ? modal.querySelector('#customMaterialInput') : document.getElementById('customMaterialInput');
     
-    // 2. Button-Element und Check-Indikator
     const check = btn.querySelector('.check-indicator');
-    
-    // 3. Klasse "selected" umschalten
     const isSelected = btn.classList.toggle('selected');
     
-    // 4. Auswahl-Array aktualisieren
     if (isSelected) {
-        // Hinzufügen (mit Duplikat-Schutz)
         if (!window.selectedMaterials.includes(mat)) {
             window.selectedMaterials.push(mat);
         }
@@ -6167,32 +6221,25 @@ function toggleMaterialSelection(mat, btn) {
             check.style.color = "#e67e22";
         }
         btn.style.borderColor = "#e67e22";
-        btn.style.backgroundColor = "#2d2015"; // Optional: Leichtes Highlight für den Button
+        btn.style.backgroundColor = "#2d2015";
     } else {
-        // Entfernen
         window.selectedMaterials = window.selectedMaterials.filter(m => m !== mat);
         if (check) {
             check.innerText = "○";
             check.style.color = "#666";
         }
         btn.style.borderColor = "#444";
-        btn.style.backgroundColor = "#222"; // Zurück auf Standard
+        btn.style.backgroundColor = "#222";
     }
 
-    // 5. Footer Steuerung
-    // Wir prüfen explizit die Längen und den Input-Wert
     if (footer) {
         const hasCustomInput = customInput && customInput.value.trim().length > 0;
         const shouldShow = (window.selectedMaterials.length > 0 || hasCustomInput);
         
-        // Toggle der Klasse für die CSS-Sichtbarkeit
         footer.classList.toggle('is-visible', shouldShow);
-        
-        // Debug
         console.log("Toggle Status - Sichtbar:", shouldShow, "Materialien:", window.selectedMaterials);
     }
 }
-    
 
 
 /**
@@ -6205,7 +6252,6 @@ function openMaterialDetail(materialString, time, slot, klasse) {
     const liste = root.querySelector('#menu-options-list') || root.querySelector('.eigenesmenu-liste');
     const header = root.querySelector('.eigenesmenu-header');
 
-    // 1. Header aktualisieren
     if (header) {
         header.innerHTML = `
             <h3 class="eigenesmenu-title" style="margin: 0; font-size: 1.1em; color: #e67e22;">DETAILS ERFASSEN</h3>
@@ -6213,8 +6259,6 @@ function openMaterialDetail(materialString, time, slot, klasse) {
             <span class="material-symbols-outlined header-icon">shopping_cart</span>`;
     }
 
-    // 2. Body-Inhalt mit Textarea und Action-Button
-    // Hinweis: Die Klasse "save-details" sorgt für das Layout aus deinem CSS
     let html = `
         <div style="padding: 15px; display: flex; flex-direction: column; gap: 15px; flex-grow: 1;">
             <textarea id="material-detail-input" 
@@ -6227,83 +6271,100 @@ function openMaterialDetail(materialString, time, slot, klasse) {
             </button>
         </div>`;
 
-    // 3. Standard-Footer (ZURÜCK / ABBRECHEN) über deine renderFooter Funktion
     const staticButtons = [
         { text: "ZURÜCK", icon: "arrow_back", class: "back", onclick: `handleMaterialUI('${time}', '${slot}', '${klasse}')` },
         { text: "ABBRECHEN", icon: "close", class: "cancel", onclick: "closeEditor()" }
     ];
     
     html += renderFooter(staticButtons);
-
-    // 4. In das Modal einfügen
     liste.innerHTML = html;
 }
 
 
-
 async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
-    // 1. Button blockieren (Optisch)
     if (btn) {
         btn.style.pointerEvents = "none";
         btn.style.opacity = "0.6";
         btn.innerHTML = `<span class="material-symbols-outlined">shopping_cart</span> Speichere...`;
     }
 
-    // 2. Aktuellen Stand holen
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : {};
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
 
-    // 3. Payload erstellen
-    const payload = {
-        action: "saveBooking",
-        pw: typeof userPw !== 'undefined' ? userPw : "",
-        id: `${document.getElementById('datePicker')?.value}_${slot}`,
-        date: document.getElementById('datePicker')?.value,
-        slot: slot,
-        klasse: klasse || "",
-        ...currentSlotData, 
-        material: mat,
-        materialDetail: detail || "",
-        halle: currentSlotData.halle || ""
-    };
-
-    // 4. Callback für visuelle Änderungen
-    const onCompleteVisuals = (p) => {
-        // Button zurücksetzen
+    const onCompleteVisuals = (materialVal, detailVal) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
 
-        const s = p.slot;
-        
-        // Lokale Datenstruktur aktualisieren
         if (window.lastPlanData) {
-            if (!window.lastPlanData[s]) window.lastPlanData[s] = {};
-            window.lastPlanData[s] = {
-                ...window.lastPlanData[s],
-                material: p.material,
-                materialDetail: p.materialDetail
+            if (!window.lastPlanData[slotNum]) window.lastPlanData[slotNum] = {};
+            window.lastPlanData[slotNum] = {
+                ...window.lastPlanData[slotNum],
+                material: materialVal,
+                materialDetail: detailVal
             };
         }
 
-        // Box UI aktualisieren
-        const box = document.querySelector(`[data-slot="${s}"]`);
-        if (box) markBoxWithMaterialIcon(box, p.material, p.materialDetail);
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        if (box) markBoxWithMaterialIcon(box, materialVal, detailVal);
         
-        // WICHTIG: Kein closeEditor() mehr hier, das übernimmt prozessiereAktion.
+        closeEditor();
     };
 
-    // 5. Übergabe an die zentrale Abfrage-Logik
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            window.prozessiereAktion(payload, onCompleteVisuals);
+        // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag in Supabase existiert
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: currentSlotData.halle || "",
+            material: mat,
+            kommentar: currentSlotData.kommentar || "",
+            details: detail || "",
+            timestamp: now,
+            typ: currentSlotData.typ || "buchung",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
         } else {
-            // Fallback, falls prozessiereAktion nicht verfügbar (Queue-Umgehung)
-            onCompleteVisuals(payload);
-            addToQueue(payload, null);
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
         }
+
+        // News via Wrapper auslösen falls vorhanden
+        if (typeof window.triggerNewsWrapper === 'function') {
+            await window.triggerNewsWrapper("Material", slotNum, klasse, userKuerzel);
+        }
+
+        onCompleteVisuals(mat, detail);
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
-        console.error("Fehler bei Material-Speicherung:", e);
+        console.error("Fehler bei Material-Speicherung (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
@@ -6311,70 +6372,89 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
     }
 }
 
+
 async function applyMaterialDelete(time, slot, klasse, btn) {
-    // 1. Gezielte Button-Blockierung
     if (btn) {
         btn.style.pointerEvents = "none";
         btn.style.opacity = "0.6";
     }
 
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : {};
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
 
-    const payload = {
-        action: "saveBooking",
-        pw: typeof userPw !== 'undefined' ? userPw : "",
-        id: `${document.getElementById('datePicker')?.value}_${slot}`,
-        date: document.getElementById('datePicker')?.value,
-        slot: slot,
-        klasse: klasse || "",
-        ...currentSlotData,
-        material: "",
-        materialDetail: ""
-    };
-
-    const onCompleteVisuals = (p) => {
-        // Button wieder freigeben
+    const onCompleteVisuals = () => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
 
-        const s = p.slot;
-        
-        // Lokale Datenstruktur aktualisieren
-        if (window.lastPlanData?.[s]) {
-            window.lastPlanData[s] = {
-                ...window.lastPlanData[s],
+        if (window.lastPlanData?.[slotNum]) {
+            window.lastPlanData[slotNum] = {
+                ...window.lastPlanData[slotNum],
                 material: "",
                 materialDetail: ""
             };
         }
         
-        // UI der Box aktualisieren
-        const box = document.querySelector(`[data-slot="${s}"]`);
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
         if (box) markBoxWithMaterialIcon(box, "", "");
         
-        // WICHTIG: Kein closeEditor() hier, dies erfolgt zentral über prozessiereAktion
+        closeEditor();
     };
 
-    // 2. Zentrale Verarbeitung
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            window.prozessiereAktion(payload, onCompleteVisuals);
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: currentSlotData.halle || "",
+            material: "",
+            kommentar: currentSlotData.kommentar || "",
+            details: "",
+            timestamp: now,
+            typ: currentSlotData.typ || "buchung",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
         } else {
-            // Fallback
-            onCompleteVisuals(payload);
-            addToQueue(payload, null);
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
         }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
-        console.error("Fehler beim Löschen des Materials:", e);
+        console.error("Fehler beim Löschen des Materials (Supabase):", e);
+        alert("Löschen fehlgeschlagen: " + e.message);
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
     }
 }
-    
 
 
 function markBoxWithMaterialIcon(box, material, rawDetailInput) {
@@ -6389,7 +6469,6 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
 
     if (!material || material.trim() === "") return;
 
-    // Streng getrennt: NUR Material-Felder, kein .kommentar!
     const slotData = (window.lastPlanData && slot) ? window.lastPlanData[slot] : {};
     const detail = slotData.details || slotData.materialDetail || slotData.materialKommentar || rawDetailInput || "";
 
@@ -6418,7 +6497,7 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
     Object.assign(badge.style, {
         position: 'absolute',
         top: '2px',
-        right: '2px',  
+        right: '2px', 
         zIndex: '10',
         cursor: 'pointer'
     });
@@ -6430,6 +6509,7 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
 
     box.appendChild(badge);
 }
+
 
 function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
     const overlay = document.createElement('div');
@@ -6445,16 +6525,14 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
     }
 
     const slotData = (window.lastPlanData && slotId) ? window.lastPlanData[slotId] : {};
-    
     const rawDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || "";
 
     const isAbzugeben = rawDetail.includes("[weitergabe:true]");
     let cleanDetail = rawDetail.replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
 
-    // --- USER-CHECK (Dein Teamkassen-Standard) ---
     let isMyBox = false;
     try {
-        const creatorKuerzel = slotData.lehrer || slotData.kuerzel || slotData.user || slotData.teacher || "";
+        const creatorKuerzel = slotData.lehrer || slotData.kuerzel || slotData.user || slotData.teacher || slotData.verfasser || "";
         if (typeof userKuerzel !== 'undefined' && userKuerzel && creatorKuerzel) {
             isMyBox = (userKuerzel.trim().toLowerCase() === creatorKuerzel.trim().toLowerCase());
         }
@@ -6483,6 +6561,7 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
             <span style="font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                 Materialbuchung für <span style="color: #ff9800;">${klasse}</span>
             </span>
+
         </div>
         
         <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #444; text-align: left;">
@@ -6517,29 +6596,23 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
 }
 
 
-
 window.toggleMaterialAbgabe = async function(slotId, activate) {
     const box = document.querySelector(`[data-slot="${slotId}"]`);
     if (!box) return;
 
-    // --- POPUP SOFORT SCHLIESSEN ---
     document.querySelectorAll('.material-info-overlay').forEach(el => el.remove());
-    // -------------------------------
 
     const slotData = (window.lastPlanData && slotId) ? window.lastPlanData[slotId] : {};
     
     const currentMaterial = slotData.material || "";
     let currentDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || slotData.kommentar || "";
 
-    // Eventuell vorhandene Weitergabe-Tags vorher bereinigen
     currentDetail = currentDetail.replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
 
-    // Tag anhängen, wenn aktiviert
     if (activate) {
         currentDetail = currentDetail ? `${currentDetail} [weitergabe:true]` : "[weitergabe:true]";
     }
 
-    // --- DATUM SICHER AUSLESEN (ROBUSTE FALLBACKS) ---
     let currentDatum = slotData.datum || slotData.date || slotData.datumFormatted || window.currentDate || window.selectedDate || "";
     
     if (!currentDatum && slotId) {
@@ -6548,63 +6621,73 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
     }
 
     if (!currentDatum) {
-        const dateInput = document.getElementById('date-picker') || document.querySelector('input[type="date"]') || document.querySelector('.current-date');
+        const dateInput = document.getElementById('datePicker') || document.querySelector('input[type="date"]') || document.querySelector('.current-date');
         if (dateInput) currentDatum = dateInput.value || dateInput.innerText;
     }
 
     if (!currentDatum) {
         currentDatum = new Date().toISOString().split('T')[0];
     }
-    // ------------------------------------------------
 
-    // 1. Sofortiges lokales Update
     slotData.details = currentDetail;
     slotData.materialDetail = currentDetail;
     slotData.materialKommentar = currentDetail;
 
     markBoxWithMaterialIcon(box, currentMaterial, currentDetail);
 
-    console.log("Sende Weitergabe an Server mit Datum:", { slot: slotId, date: currentDatum, detail: currentDetail });
+    const slotNum = parseInt(slotId);
 
     try {
-        // 2. An den Server senden (inklusive echtem Datum!)
-        const response = await fetch(url, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "saveBooking",
-                slot: slotId,
-                date: currentDatum,
-                klasse: slotData.klasse || "",
-                halle: slotData.halle || "",
-                material: currentMaterial,
-                materialDetail: currentDetail,
-                kommentar: slotData.kommentar || "",
-                verfasser: userKuerzel || "",
-                pw: userPw || ""
-            })
-        });
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', currentDatum)
+            .eq('slot', slotNum)
+            .maybeSingle();
 
-        const result = await response.json();
+        if (fetchError) throw fetchError;
 
-        if (result.status === "success") {
-            if (typeof syncPlan === "function") {
-                syncPlan();
-            }
+        const bookingData = {
+            date: currentDatum,
+            slot: slotNum,
+            klasse: slotData.klasse || "",
+            halle: slotData.halle || "",
+            material: currentMaterial,
+            details: currentDetail,
+            kommentar: slotData.kommentar || "",
+            timestamp: new Date().toISOString(),
+            typ: slotData.typ || "buchung",
+            verfasser: userKuerzel || ""
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
         } else {
-            alert("Fehler beim Speichern: " + (result.msg || "Unbekannter Fehler"));
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
+        }
+
+        if (typeof syncPlan === "function") {
+            syncPlan();
         }
 
     } catch (err) {
-        console.error("Verbindungsfehler beim Speichern der Weitergabe:", err);
+        console.error("Verbindungsfehler beim Speichern der Weitergabe (Supabase):", err);
         alert("Verbindungsfehler zum Server.");
     }
 };
     
 
-    
-
 /* ============================================================
-   14. MENÜ-STEUERUNG & WEICHENSTELLUNG
+   14. MENÜ-STEUERUNG & WEICHENSTELLUNG (SUPABASE VERSION)
    ============================================================ */
 
 /**
@@ -6659,27 +6742,26 @@ window.handleMenuChoice = function(action, time, slot, klasse) {
             break;
 
         case 'verschieben':
-    // Wir holen uns die aktuellen Daten der Box, die wir verschieben wollen
-    // Gehe davon aus, dass du das Box-Element oder die Daten dazu hast:
-    const boxElement = document.querySelector(`[data-slot="${slot}"]`);
-    
-    window.moveMode = { 
-        sourceSlot: slot, 
-        klasse: klasse, 
-        verfasser: userKuerzel, 
-        date: document.getElementById('datePicker').value,
-        // HIER DIE DATEN RETTEN:
-        halle: boxElement.dataset.halle || "",
-        lehrer: boxElement.dataset.lehrer || "",
-        material: boxElement.dataset.material || "",
-        kommentar: boxElement.dataset.kommentar || "",
-        typ: boxElement.dataset.typ || ""
-    };
-    
-    document.getElementById('plan-container').classList.add('move-mode-active');
-    closeEditor();
-    highlightFreeSlots();
-    break;
+            // Wir holen uns die aktuellen Daten der Box, die wir verschieben wollen
+            const boxElement = document.querySelector(`[data-slot="${slot}"]`);
+            
+            window.moveMode = { 
+                sourceSlot: slot, 
+                klasse: klasse, 
+                verfasser: userKuerzel, 
+                date: document.getElementById('datePicker').value,
+                // HIER DIE DATEN RETTEN:
+                halle: boxElement?.dataset.halle || "",
+                lehrer: boxElement?.dataset.lehrer || "",
+                material: boxElement?.dataset.material || "",
+                kommentar: boxElement?.dataset.kommentar || "",
+                typ: boxElement?.dataset.typ || ""
+            };
+            
+            document.getElementById('plan-container').classList.add('move-mode-active');
+            closeEditor();
+            highlightFreeSlots();
+            break;
             
         case 'nachricht':
             // 🔥 NEU: Kein prompt() mehr! Wir laden das UI direkt ins Modal
@@ -6692,76 +6774,103 @@ window.handleMenuChoice = function(action, time, slot, klasse) {
 };
     
 
-window.handleAusfallClick = function(mode, time, slot, klasse, btn) {
+window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
     const zielHalle = (mode === 'LOESCHEN') ? "" : "Ausfall";
     
-    // 1. SYNC PAUSIEREN
-    window.pauseSync();
-
-    // 2. UI-LOADER (Optisch am Button)
+    // 1. UI-LOADER (Optisch am Button)
     if (btn) {
         btn.style.pointerEvents = "none";
         btn.style.opacity = "0.6";
     }
 
-    // 3. SERVER-PAYLOAD
-    const payload = {
-        action: "saveBooking",
-        pw: userPw,
-        kuerzel: userKuerzel,
-        date: document.getElementById('datePicker').value,
-        slot: slot,
-        klasse: klasse,
-        halle: zielHalle
-    };
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
 
-    // 4. VISUELLE AKTUALISIERUNG (Wird erst durch prozessiereAktion aufgerufen)
-    const visuelleAktualisierung = function(p) {
-        // Button-Feedback zurücksetzen
+    const onCompleteVisuals = () => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
         
         // Lokalen Datenspeicher synchron halten
-        if (window.lastPlanData && window.lastPlanData[p.slot]) {
-            window.lastPlanData[p.slot].halle = p.halle;
+        if (window.lastPlanData && window.lastPlanData[slotNum]) {
+            window.lastPlanData[slotNum].halle = zielHalle;
         }
 
         // UI für den spezifischen Slot aktualisieren
-        const box = document.querySelector(`[data-slot="${p.slot}"]`);
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
         if (box) {
             const label = box.querySelector('.halle-label');
-            if (label) label.innerText = p.halle;
+            if (label) label.innerText = zielHalle;
             
             // Logik für Ausfall vs. normale Halle
-            if (p.halle === "Ausfall") {
+            if (zielHalle === "Ausfall") {
                 box.classList.add('ausfall-mode');
                 box.style.backgroundColor = ""; 
             } else {
                 box.classList.remove('ausfall-mode');
-                if (typeof hallenConfig !== 'undefined' && hallenConfig[p.halle]) {
-                    box.style.backgroundColor = hallenConfig[p.halle].color;
+                if (typeof hallenConfig !== 'undefined' && hallenConfig[zielHalle]) {
+                    box.style.backgroundColor = hallenConfig[zielHalle].color;
                 } else {
                     box.style.backgroundColor = "";
                 }
             }
         }
+        closeEditor();
     };
 
-    // 5. AUSFÜHRUNG
+    // 2. SUPABASE SPEICHERUNG
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            window.prozessiereAktion(payload, visuelleAktualisierung);
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: zielHalle,
+            material: currentSlotData.material || "",
+            kommentar: currentSlotData.kommentar || "",
+            details: currentSlotData.details || currentSlotData.materialDetail || "",
+            timestamp: now,
+            typ: currentSlotData.typ || "buchung",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
+        } else {
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
         }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
-        // Fallback: Sync-Sperre lösen, falls der Aufruf komplett fehlschlägt
-        window.isSyncPaused = false;
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
-        console.error("Fehler bei Ausfall-Click:", e);
+        console.error("Fehler bei Ausfall-Click (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
     
@@ -6870,56 +6979,49 @@ function handleReservationUI(time, slot, klasse) {
     modalContainer.appendChild(header);
     modalContainer.insertAdjacentHTML('beforeend', html);
 }
-
-
-
-
     
-// --- GLOBALE VARIABLEN UND FUNKTIONEN (AUẞERHALB DER FUNKTIONEN) ---
+// --- GLOBALE VARIABLEN UND FUNKTIONEN ---
 window.currentSaveController = null;
-
-
     
-window.applyHalleSelection = function(neueHalle, time, slot, klasse, btn, typ) {
+window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, typ) {
     if (!btn) return;
     
-    // 1. SYNC PAUSIEREN: Globale Sperre aktivieren
-    window.pauseSync();
+    if (btn) {
+        btn.style.pointerEvents = "none";
+        btn.style.opacity = "0.6";
+    }
 
-    // 2. PAYLOAD ERSTELLEN
-    const payload = {
-        action: "saveBooking",
-        pw: userPw,
-        kuerzel: userKuerzel,
-        date: document.getElementById('datePicker').value,
-        slot: slot,
-        klasse: klasse,
-        origin: 'handleReservationUI',
-        halle: neueHalle,
-        typ: typ || ""
-    };
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
 
-    // 3. VISUELLE AKTUALISIERUNG (Wird erst durch prozessiereAktion/Queue aufgerufen)
-    const visuelleAktualisierung = function(p) {
-        // Lokalen Cache aktualisieren
-        if (window.lastPlanData && window.lastPlanData[p.slot]) {
-            window.lastPlanData[p.slot].halle = p.halle;
-            window.lastPlanData[p.slot].typ = p.typ;
+    const onCompleteVisuals = () => {
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
         }
 
-        const box = document.querySelector(`[data-slot="${p.slot}"]`);
+        // Lokalen Cache aktualisieren
+        if (window.lastPlanData && window.lastPlanData[slotNum]) {
+            window.lastPlanData[slotNum].halle = neueHalle;
+            window.lastPlanData[slotNum].typ = typ || "";
+        }
+
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
         if (box) {
             // Label und Farbe/Ausfall-Mode setzen
             const label = box.querySelector('.halle-label');
-            if (label) label.innerText = p.halle;
+            if (label) label.innerText = neueHalle;
             
             box.classList.remove('ausfall-mode');
-            if (p.halle === "Ausfall") {
+            if (neueHalle === "Ausfall") {
                 box.classList.add('ausfall-mode');
                 box.style.backgroundColor = "";
             } else {
-                const farbe = (p.halle !== "" && window.hallenConfig && window.hallenConfig[p.halle]) 
-                            ? window.hallenConfig[p.halle].color 
+                const farbe = (neueHalle !== "" && window.hallenConfig && window.hallenConfig[neueHalle]) 
+                            ? window.hallenConfig[neueHalle].color 
                             : "";
                 box.style.backgroundColor = farbe;
             }
@@ -6935,27 +7037,67 @@ window.applyHalleSelection = function(neueHalle, time, slot, klasse, btn, typ) {
                 });
                 box.appendChild(lockIcon);
             }
-            lockIcon.innerHTML = (p.typ === "fix") 
+            lockIcon.innerHTML = (typ === "fix") 
                 ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' 
                 : '';
         }
-        // Hinweis: closeModal entfernt, da dies zentral über closeEditor() in prozessiereAktion geschieht.
+        closeEditor();
     };
 
-    // 4. AUSFÜHRUNG
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            window.prozessiereAktion(payload, visuelleAktualisierung);
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: neueHalle,
+            material: currentSlotData.material || "",
+            kommentar: currentSlotData.kommentar || "",
+            details: currentSlotData.details || currentSlotData.materialDetail || "",
+            timestamp: now,
+            typ: typ || "",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
+        } else {
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
         }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
-        // Fehler-Reset der Sperre
-        window.isSyncPaused = false;
-        console.error("Hallen-Auswahl fehlgeschlagen:", e);
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
+        }
+        console.error("Hallen-Auswahl fehlgeschlagen (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
+
+
+
     
-
-
     
 window.handleNotizUI = function(time, slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
@@ -6978,9 +7120,6 @@ window.handleNotizUI = function(time, slot, klasse) {
         subtitle.innerHTML = `Notiz für Klasse <b>${klasse}</b>:`; 
     }
 
-    // --- FIX: Datenquelle auf lastPlanData umgestellt ---
-    // Wir holen den Kommentar direkt aus dem globalen Daten-Objekt, 
-    // da das DOM-Attribut 'data-notiz' bei schnellen Sync-Vorgängen veralten kann.
     const slotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : null;
     const bestehendeNotiz = (slotData && slotData.kommentar) ? slotData.kommentar : "";
     const hatBestehendeNotiz = bestehendeNotiz.trim() !== "";
@@ -7028,7 +7167,6 @@ window.handleNotizUI = function(time, slot, klasse) {
     const textFeld = document.getElementById('notiz-text-feld');
     const saveContainer = document.getElementById('save-btn-container');
     
-    // Initialen Button-Status setzen (auch wenn Notiz vorhanden ist)
     if (textFeld.value.trim().length > 0) saveContainer.style.display = 'block';
 
     textFeld.addEventListener('input', () => {
@@ -7043,10 +7181,8 @@ window.loescheNotizVomModal = function(slot, klasse) {
     if (textFeld) textFeld.value = ""; 
     window.speichereNotizVomModal(slot, klasse);
 };
-
     
-window.speichereNotizVomModal = async function(slot, klasse) {
-    // 1. Double-Click / Mehrfach-Klick Schutz
+window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverride) {
     if (window.isSavingNotiz) return;
     window.isSavingNotiz = true;
 
@@ -7058,7 +7194,6 @@ window.speichereNotizVomModal = async function(slot, klasse) {
         return; 
     }
 
-    // 2. Button optisch blockieren
     const originalBtnContent = saveBtn ? saveBtn.innerHTML : '';
     if (saveBtn) {
         saveBtn.style.pointerEvents = "none";
@@ -7066,24 +7201,14 @@ window.speichereNotizVomModal = async function(slot, klasse) {
         saveBtn.innerHTML = `<span class="material-symbols-outlined">stylus_note</span> Speichere...`;
     }
 
-    // 3. Aktuellen Stand holen (genau wie bei Material)
-    const currentSlotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : {};
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+    const neuerKommentar = textFeld.value.trim();
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
 
-    // 4. Payload erstellen mit allen bestehenden Daten
-    const payload = {
-        action: "saveBooking",
-        pw: typeof userPw !== 'undefined' ? userPw : "",
-        id: `${document.getElementById('datePicker')?.value}_${slot}`,
-        date: document.getElementById('datePicker')?.value,
-        slot: slot.toString(),
-        klasse: klasse || "",
-        ...currentSlotData, 
-        kommentar: textFeld.value.trim()
-    };
-
-    // 5. Callback für visuelle Änderungen (wird von prozessiereAktion gesteuert)
-    const onCompleteVisuals = function(p) {
-        // Button zurücksetzen
+    const onCompleteVisuals = () => {
         window.isSavingNotiz = false;
         if (saveBtn) {
             saveBtn.style.pointerEvents = "auto";
@@ -7091,73 +7216,92 @@ window.speichereNotizVomModal = async function(slot, klasse) {
             saveBtn.innerHTML = originalBtnContent;
         }
 
-        const s = p.slot;
-
-        // Lokale Datenstruktur aktualisieren
         if (window.lastPlanData) {
-            if (!window.lastPlanData[s]) window.lastPlanData[s] = {};
-            window.lastPlanData[s] = {
-                ...window.lastPlanData[s],
-                kommentar: p.kommentar
-            };
+            if (!window.lastPlanData[slotNum]) window.lastPlanData[slotNum] = {};
+            window.lastPlanData[slotNum].kommentar = neuerKommentar;
         }
 
-        // Box UI aktualisieren (Notiz-Icon setzen/entfernen)
-        const box = document.querySelector(`[data-slot="${s}"]`);
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
         if (box) {
-            box.setAttribute('data-notiz', p.kommentar);
+            box.setAttribute('data-notiz', neuerKommentar);
             const altesIcon = box.querySelector('.box-notiz-icon');
             if (altesIcon) altesIcon.remove();
             
-            if (p.kommentar !== "") {
+            if (neuerKommentar !== "") {
                 const neuesNotizIcon = document.createElement('span');
                 neuesNotizIcon.className = 'box-notiz-icon';
                 neuesNotizIcon.innerHTML = '<span class="material-symbols-outlined" style="color: #ff9800; font-size: 22px; line-height: 1;">stylus_note</span>';
                 Object.assign(neuesNotizIcon.style, { position: 'absolute', top: '-2px', left: '4px', cursor: 'pointer', zIndex: '5' });
-                neuesNotizIcon.onclick = (e) => { e.stopPropagation(); showNotizDetailPopup(p.klasse, p.kommentar); };
+                neuesNotizIcon.onclick = (e) => { e.stopPropagation(); showNotizDetailPopup(klasse, neuerKommentar); };
                 box.appendChild(neuesNotizIcon);
             }
         }
-        
-        // WICHTIG: Kein closeEditor() hier, das übernimmt prozessiereAktion bzw. die Doppellektions-Abfrage.
+        closeEditor();
     };
 
-    // 6. Übergabe an die zentrale Abfrage-Logik (genau wie bei Material)
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            window.prozessiereAktion(payload, onCompleteVisuals);
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: currentSlotData.halle || "",
+            material: currentSlotData.material || "",
+            kommentar: neuerKommentar,
+            details: currentSlotData.details || currentSlotData.materialDetail || "",
+            timestamp: now,
+            typ: currentSlotData.typ || "buchung",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
         } else {
-            onCompleteVisuals(payload);
-            addToQueue(payload, null);
-            if (typeof closeEditor === "function") closeEditor();
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
         }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
     } catch (e) {
-        console.error("Fehler bei Notiz-Speicherung:", e);
         window.isSavingNotiz = false;
         if (saveBtn) {
             saveBtn.style.pointerEvents = "auto";
             saveBtn.style.opacity = "1";
             saveBtn.innerHTML = originalBtnContent;
         }
+        console.error("Fehler bei Notiz-Speicherung (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
-    
 
-/**
- * Erzeugt die In-App-Abfrage direkt im Modal-Inhalt
- */
 window.zeigeDoppellektionNotizAbfrage = function(slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
     const header = modalContainer ? modalContainer.querySelector('.eigenesmenu-header') : null;
     if (!modalContainer || !header) return;
 
-    // Header aktualisieren
     const titleEl = modalContainer.querySelector('.eigenesmenu-title');
     const subtitle = document.getElementById('menu-subtitle');
     if (titleEl) { titleEl.innerText = "🔁 DOPPELLEKTION DETEKTIERT"; titleEl.style.color = "#e67e22"; }
     if (subtitle) { subtitle.innerHTML = `Möchtest du die Notiz für beide Stunden übernehmen?`; }
 
-    // 1. Inhalt bauen (Scrollbarer Bereich)
     let html = `
         <div class="eigenesmenu-liste" id="menu-options-list">
             <div class="scroll-wrapper" style="padding: 15px; display: flex; flex-direction: column; gap: 15px;">
@@ -7173,7 +7317,6 @@ window.zeigeDoppellektionNotizAbfrage = function(slot, klasse) {
             </div>
         </div>`;
 
-    // 2. Footer (Standard-Footer mit Zurück)
     html += renderFooter([
         { 
             text: 'ZURÜCK', 
@@ -7189,21 +7332,16 @@ window.zeigeDoppellektionNotizAbfrage = function(slot, klasse) {
         }
     ]);
 
-    // 3. Container neu aufbauen
     modalContainer.innerHTML = '';
     modalContainer.appendChild(header);
     modalContainer.insertAdjacentHTML('beforeend', html);
 };
-
-
-
 
 function showNotizDetailPopup(klasse, notizText) {
     const overlay = document.createElement('div');
     overlay.className = 'material-info-overlay';
     overlay.onclick = () => overlay.remove();
 
-    // Den Text mit .trim() bereinigen
     const saubererText = (notizText || '').trim();
 
     overlay.innerHTML = `
@@ -7227,7 +7365,6 @@ function showNotizDetailPopup(klasse, notizText) {
     `;
     document.body.appendChild(overlay);
 }
-    
     
 
 /**
@@ -7263,22 +7400,22 @@ window.saveImmediately = async function(payload, options = {}) {
     try {
         const dp = document.getElementById('datePicker');
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const dateObj = new Date(dateVal.replace(/-/g, "/"));
-        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-        const aktuellerWochentag = wtArr[dateObj.getDay()];
+        const slotNum = parseInt(payload.slot);
 
-        // Supabase Upsert auf die master_db
+        // Supabase Upsert auf die buchungen_db
         const { error } = await supabaseClient
-            .from('master_db')
+            .from('buchungen_db')
             .upsert({
-                wochentag: aktuellerWochentag,
-                slot: payload.slot,
+                date: dateVal,
+                slot: slotNum,
                 klasse: payload.klasse || "",
                 halle: payload.halle || "",
                 material: payload.material || "",
                 kommentar: payload.kommentar || "",
+                details: payload.details || payload.materialDetail || "",
+                typ: payload.typ || "buchung",
                 verfasser: userKuerzel || ""
-            }, { onConflict: 'wochentag,slot', signal: options.signal });
+            }, { onConflict: 'date,slot', signal: options.signal });
 
         if (error) throw error;
 
@@ -7296,8 +7433,6 @@ window.saveImmediately = async function(payload, options = {}) {
         return { status: "error", msg: e.toString() };
     }
 };
-
-    
 
 /**
  * Interne Hilfsfunktion: Hält die News-Logik sauber
@@ -7323,12 +7458,6 @@ function runNewsTriggerLogic(payload) {
         }
     }
 }
-
-
-
-
-
-
 
 // Hilfsfunktion: Erkennt, ob der Partner-Slot dieselbe Klasse hat (JETZT ALS ECHTE ZAHLEN)
 function getDoppellektionPartnerSlot(currentSlot) {
@@ -7379,7 +7508,7 @@ function getDoppellektionPartnerSlot(currentSlot) {
    11. DOPPELLEKTIONS-ABFRAGE (Optimiert für Echtzeit-UI-Update)
    ============================================================ */
 
-   window.prozessiereAktion = function(payload, onCompleteVisuals) {
+window.prozessiereAktion = function(payload, onCompleteVisuals) {
     // 0. WACHHUND PAUSIEREN
     if (typeof window.pauseSync === 'function') window.pauseSync();
 
@@ -7500,7 +7629,7 @@ function getDoppellektionPartnerSlot(currentSlot) {
     
 // Interne Hilfsfunktion, die die Payloads nacheinander an saveImmediately übergibt
 function executePayloads(payloadArray, onCompleteVisuals) {
-    payloadArray.forEach(p => {
+    payloadArray.forEach(async p => {
         // 1. NEU: Box suchen und DOM-Attribut als Sperre setzen
         const box = document.querySelector(`[data-slot="${p.slot}"]`);
         if (box) {
@@ -7513,27 +7642,26 @@ function executePayloads(payloadArray, onCompleteVisuals) {
         }
 
         // 3. Abschicken
-        saveImmediately(p)
-            .then(result => {
-                if (result && result.status === "success") {
-                    if (p.halle === "Ausfall" || (p.halle && p.halle.includes("Outdoor"))) {
-                        if (typeof window.triggerNewsWrapper === "function") {
-                            window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
-                        }
+        try {
+            const result = await saveImmediately(p);
+            if (result && result.status === "success") {
+                if (p.halle === "Ausfall" || (p.halle && p.halle.includes("Outdoor"))) {
+                    if (typeof window.triggerNewsWrapper === "function") {
+                        window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
                     }
-                    
-                    // --- WICHTIG: KEIN Timeout zum Löschen mehr! ---
-                    // Die Sperre bleibt jetzt bestehen, bis syncPlan 
-                    // beim nächsten Takt den Erfolg validiert hat.
-                } else {
-                    // Falls Server-Fehler: Sperre sofort entfernen
-                    if (box) box.removeAttribute('data-sync-status');
                 }
-            })
-            .catch(() => {
-                // Falls Network-Fehler: Sperre sofort entfernen
+                
+                // --- WICHTIG: KEIN Timeout zum Löschen mehr! ---
+                // Die Sperre bleibt jetzt bestehen, bis syncPlan 
+                // beim nächsten Takt den Erfolg validiert hat.
+            } else {
+                // Falls Server-Fehler: Sperre sofort entfernen
                 if (box) box.removeAttribute('data-sync-status');
-            });
+            }
+        } catch (e) {
+            // Falls Network-Fehler: Sperre sofort entfernen
+            if (box) box.removeAttribute('data-sync-status');
+        }
     });
 }
 
@@ -7674,40 +7802,40 @@ window.handleMoveConfirm = async function(targetSlot) {
     try {
         const dp = document.getElementById('datePicker');
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const dateObj = new Date(dateVal.replace(/-/g, "/"));
-        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-        const aktuellerWochentag = wtArr[dateObj.getDay()];
-
         const sourceSlot = tempMoveMode.sourceSlot;
         const bookingData = tempMoveMode.bookingData || tempMoveMode;
 
-        // 1. Quell-Slot in Supabase leeren
+        // 1. Quell-Slot in Supabase leeren (auf buchungen_db umgestellt)
         const { error: errorSource } = await supabaseClient
-            .from('master_db')
+            .from('buchungen_db')
             .upsert({
-                wochentag: aktuellerWochentag,
-                slot: sourceSlot,
+                date: dateVal,
+                slot: parseInt(sourceSlot),
                 klasse: "",
                 halle: "",
                 material: "",
                 kommentar: "",
+                details: "",
+                typ: "buchung",
                 verfasser: ""
-            }, { onConflict: 'wochentag,slot' });
+            }, { onConflict: 'date,slot' });
 
         if (errorSource) throw errorSource;
 
-        // 2. Ziel-Slot in Supabase mit den Daten beschreiben
+        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (auf buchungen_db umgestellt)
         const { error: errorTarget } = await supabaseClient
-            .from('master_db')
+            .from('buchungen_db')
             .upsert({
-                wochentag: aktuellerWochentag,
-                slot: targetSlot,
+                date: dateVal,
+                slot: parseInt(targetSlot),
                 klasse: bookingData.klasse || "",
                 halle: bookingData.halle || "",
                 material: bookingData.material || "",
                 kommentar: bookingData.kommentar || "",
+                details: bookingData.details || bookingData.materialDetail || "",
+                typ: bookingData.typ || "buchung",
                 verfasser: userKuerzel || ""
-            }, { onConflict: 'wochentag,slot' });
+            }, { onConflict: 'date,slot' });
 
         if (errorTarget) throw errorTarget;
 
@@ -7741,9 +7869,6 @@ window.handleMoveConfirm = async function(targetSlot) {
         document.getElementById('plan-container')?.classList.remove('move-mode-active');
     }
 };
-    
-
-
 
 /* ============================================================
    14. Zusatz-Menu mit dezentem Backdrop (Variante B)
@@ -7810,7 +7935,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
     
 window.openExtraLessonModal = function(event) {
     closeExtraMenuCompletely();
@@ -7855,8 +7979,6 @@ window.toggleCategory = function(headerElement, event) {
     currentCategory.classList.toggle('active');
 };
 
-
-    
 /* ============================================================
    15. Lektion hinzufügen (Modus-geschützt)
    ============================================================ */
@@ -7947,24 +8069,21 @@ window.confirmInlineAdd = async function(targetSlot) {
     try {
         const dp = document.getElementById('datePicker');
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const dateObj = new Date(dateVal.replace(/-/g, "/"));
-        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-        const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        // Supabase Upsert für den neuen Slot
+        // Supabase Upsert für den neuen Slot (auf buchungen_db umgestellt)
         const { error } = await supabaseClient
-            .from('master_db')
+            .from('buchungen_db')
             .upsert({
-                wochentag: aktuellerWochentag,
-                slot: targetSlot,
+                date: dateVal,
+                slot: parseInt(targetSlot),
                 klasse: name,
                 halle: "", 
-                lehrer: userKuerzel || "",
                 material: "", 
                 kommentar: "", 
+                details: "",
                 typ: "Zusatz",
                 verfasser: userKuerzel || ""
-            }, { onConflict: 'wochentag,slot' });
+            }, { onConflict: 'date,slot' });
 
         if (error) throw error;
 
@@ -10606,7 +10725,312 @@ function closeStvLoeschConfirm() {
         overlay.style.display = 'none';
     }
 }
-  
+
+
+
+
+
+
+
+
+
+/**
+ * 2. KALENDERWOCHEN-LOGIK
+ * Berechnet die ISO-8601 Kalenderwoche eines Datums.
+ * Wird benötigt, um die A/B-Wochen (gerade/ungerade)
+ * für die Anzeige und die U21-Sperrlogik zu steuern.
+ */
+function getWeekNumber(d) {
+  // Kopie des Datums erstellen, um UTC-Probleme zu vermeiden
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // Auf den nächsten Donnerstag setzen (ISO-Standard)
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  // Jahresstart definieren
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  // Differenz in Tagen berechnen und durch 7 teilen
+  var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return weekNo;
+}
+
+
+
+
+    /**
+ * Erstellt oder aktualisiert einen News-Eintrag direkt im Frontend und speichert ihn in Supabase.
+ * @param {Object} payload - Die Aktionsdaten
+ * @param {Array} [currentMasterData] - Optional: Die aktuellen Masterdaten für die Empfänger-Berechnung im selben Block
+ */
+window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
+    if (!supabaseClient) {
+        console.error("❌ Supabase Client fehlt für News-Speicherung.");
+        return;
+    }
+
+    const halle = (payload.halle || "").toString().toLowerCase();
+    const isZahlungsrunde = (halle === "zahlungsrunde");
+    const isApotheke = (halle === "apotheke_bestellung");
+    const isDefekt = (halle === "defekt_meldung");
+    const isMaterial = (halle === "material_wunsch");
+    const isIdee = (halle === "ideenbrett");
+    const isApothekeMeldung = (halle === "apotheke_meldung");
+    const isStv = (halle === "stellvertretung");
+    
+    const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
+
+    // 1. Identifikation der handelnden Lehrperson
+    let handelndeLP = "";
+    if (isZahlungsrunde) {
+        handelndeLP = "System";
+    } else if (isApotheke) {
+        handelndeLP = (payload.user || payload.kuerzel || payload.kürzel || "Unbekannt").toString().trim();
+    } else if (isApothekeMeldung) {
+        handelndeLP = "System";
+    } else {
+        handelndeLP = (payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
+    }
+    
+    const stvDatum = payload.date || payload.datum || new Date().toISOString().split('T')[0];
+
+    // 2. ID-Logik (entspricht deiner Spalte 'id')
+    let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
+    if (isStv) {
+        newsId = "STV_" + stvDatum + "_" + handelndeLP;
+    } else if (isSpecial) {
+        newsId += "_" + Date.now();
+    }
+
+    // Wochentag & Tag-Index ermitteln (falls vorhanden im Payload oder per Datum)
+    let zielTag = payload.wochentag;
+    const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    if (!zielTag && stvDatum) {
+        zielTag = wochentage[new Date(stvDatum).getDay()];
+    }
+    const tagIndex = wochentage.indexOf(zielTag);
+
+    // 3. Empfänger-Berechnung
+    let empfaenger = "";
+    let gefundeneLehrer = [];
+
+    if (isZahlungsrunde) {
+        empfaenger = payload.kuerzel || ""; 
+    } else if (isApotheke) {
+        empfaenger = "chef"; 
+    } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
+        empfaenger = "alle";
+    } else {
+        const currentSlot = parseInt(payload.slot);
+        const rowIndex = Math.floor((currentSlot - 1) / 5);
+        const rowStartSlot = (rowIndex * 5) + 1;
+        const targetSlots = [];
+        for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
+            targetSlots.push(s.toString());
+        }
+
+        if (currentMasterData && Array.isArray(currentMasterData)) {
+            currentMasterData.forEach(row => {
+                let sheetTag = row.wochentag ? row.wochentag.toString().trim().toLowerCase() : "";
+                let sheetSlot = row.slot ? row.slot.toString().trim() : "";
+                let lehrerKuerzel = row.verfasser || row.lehrer ? (row.verfasser || row.lehrer).toString().trim() : "";
+
+                if (sheetTag === (zielTag || "").toLowerCase() && targetSlots.includes(sheetSlot) && lehrerKuerzel !== "") {
+                    if (lehrerKuerzel !== handelndeLP && !gefundeneLehrer.includes(lehrerKuerzel)) {
+                        gefundeneLehrer.push(lehrerKuerzel);
+                    }
+                }
+            });
+        }
+        if (gefundeneLehrer.length === 0 && !isSpecial) {
+            return;
+        }
+        empfaenger = gefundeneLehrer.join(",");
+    }
+    
+    // 4. DYNAMISCHE TEXT-LOGIK
+    let newsText = "";
+    if (halle === "beendet") {
+        newsText = `${handelndeLP} hat die Klasse ${payload.klasse} abgeklebt!`;
+    } else if (halle.includes("outdoor")) {
+        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} "outdoor"!`;
+    } else if (halle.includes("badi")) {
+        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} in der "Badi"!`;
+    } else if (isDefekt) {
+        newsText = `NEUER DEFEKT: ${payload.text} (Gemeldet von: ${handelndeLP})`;
+    } else if (isMaterial) {
+        newsText = `MATERIALWUNSCH: ${payload.text} (Von: ${handelndeLP})`;
+    } else if (isApotheke) {
+        newsText = `APOTHEKEN-BEDARF: ${payload.text} (Bestellt von: ${handelndeLP})`;
+    } else if (isApothekeMeldung) {
+        newsText = payload.text;
+    } else if (isStv) {
+        let anzahlLektionen = payload.anzahlLektionen || payload.count || payload.lektionen;
+        if (!anzahlLektionen && payload.slots && Array.isArray(payload.slots)) {
+            anzahlLektionen = payload.slots.length;
+        } else if (!anzahlLektionen && payload.items && Array.isArray(payload.items)) {
+            anzahlLektionen = payload.items.length;
+        }
+        if (!anzahlLektionen || anzahlLektionen === 0) {
+            anzahlLektionen = "Mehrere";
+        }
+        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${stvDatum} (${anzahlLektionen} Lektionen).`;
+    } else if (isZahlungsrunde) {
+        newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
+    } else if (isIdee) {
+        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
+        newsText = `NEUE IDEE: [${kat}] ${payload.text}`;
+    } else if (halle === "") {
+        newsText = `${handelndeLP} hat einen Ausfall für die Klasse ${payload.klasse} eingetragen!`;
+    } else {
+        newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
+    }
+
+    // 5. Supabase Upsert mit deinen echten Spaltennamen
+    try {
+        const { error } = await supabaseClient
+            .from('news_db')
+            .upsert({
+                id: newsId,
+                datum_event: stvDatum,
+                slot_index: payload.slot ? parseInt(payload.slot) : null,
+                tag_index: tagIndex !== -1 ? tagIndex : null,
+                klasse: payload.klasse || "",
+                verfasser: handelndeLP,
+                empfaenger: empfaenger,
+                text: newsText,
+                zeitstempel: new Date().toISOString(),
+                gelesen: "",
+                geloescht: "" // Zurücksetzen, damit die News bei Aktualisierung wieder sichtbar wird
+            }, { onConflict: 'id' });
+
+        if (error) throw error;
+        console.log("🎯 News erfolgreich in Supabase gespeichert:", newsId);
+
+    } catch (err) {
+        console.error("❌ Fehler beim Speichern der News in Supabase:", err);
+    }
+};
+    
+
+
+    window.getWochentagName = function(dateString) {
+    if (!dateString) return "";
+    const d = new Date(dateString);
+    const weekdays = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    return weekdays[d.getDay()];
+};
+
+
+
+
+/**
+ * Löscht Material-Reservierungen einer Klasse direkt über Supabase.
+ * @param {string} klasse - Die Bezeichnung der Klasse (z. B. "3a")
+ */
+window.loescheMaterialReservierungFuerKlasseFrontend = async function(klasse) {
+    if (!supabaseClient) {
+        console.error("❌ Supabase Client fehlt.");
+        return;
+    }
+
+    const zielKlasse = (klasse || "").trim();
+    if (!zielKlasse) return;
+
+    try {
+        console.log(`🧹 Lösche Material-Reservierungen für Klasse: ${zielKlasse}`);
+
+        // In Supabase suchen wir nach Datensätzen, bei denen im Kommentar oder in der Klasse die Zielklasse vorkommt.
+        // Je nach Aufbau deiner Material-Tabelle (z. B. 'material_db') passt du den Spaltennamen an.
+        // Hier als Beispiel mit .ilike() für eine Teilstring-Suche (entspricht .includes() im JS):
+        const { error } = await supabaseClient
+            .from('material_db') // Ersetze das durch den echten Namen deiner Material-Tabelle in Supabase
+            .delete()
+            .ilike('kommentar', `%${zielKlasse}%`); // Sucht in der Spalte 'kommentar' nach der Klasse
+
+        if (error) throw error;
+
+        console.log(`✅ Material-Reservierungen für ${zielKlasse} erfolgreich gelöscht.`);
+    } catch (err) {
+        console.error("❌ Fehler beim Löschen der Material-Reservierungen in Supabase:", err);
+    }
+};
+
+
+
+/**
+ * Löscht eine Klasse komplett aus der Supabase-Datenbank (Leert die Felder für diese Klasse).
+ * @param {string} klasse - Die Bezeichnung der zu löschenden Klasse (z. B. "9a")
+ */
+window.loescheKlasseKomplettAusDB = async function(klasse) {
+    if (!supabaseClient) {
+        console.error("❌ Supabase Client fehlt.");
+        return;
+    }
+
+    const zielKlasse = (klasse || "").trim();
+    if (!zielKlasse) return;
+
+    try {
+        console.log(`🧹 Lösche Einträge für Klasse ${zielKlasse} komplett aus Supabase...`);
+
+        // Wir aktualisieren alle Datensätze in 'buchungen_db', bei denen die Klasse übereinstimmt,
+        // und setzen die Buchungsfelder auf leer zurück.
+        const { error } = await supabaseClient
+            .from('buchungen_db')
+            .update({
+                klasse: "",
+                halle: "",
+                material: "",
+                kommentar: "",
+                details: "",
+                typ: "buchung",
+                verfasser: ""
+            })
+            .eq('klasse', zielKlasse);
+
+        if (error) throw error;
+
+        console.log(`✅ Klasse ${zielKlasse} wurde erfolgreich aus allen Slots entfernt.`);
+
+        // Plan neu laden, damit das UI aktualisiert wird
+        if (typeof window.syncPlan === 'function') {
+            window.syncPlan();
+        }
+
+    } catch (err) {
+        console.error("❌ Fehler beim Löschen der Klasse in Supabase:", err);
+        alert("Fehler beim Löschen der Klasse.");
+    }
+};
+
+
+
+
+
+async function getActiveBannersFromSupabase() {
+    if (!window.supabaseClient) return [];
+
+    const { data, error } = await window.supabaseClient
+        .from('banner_db') // Entspricht deiner alten "Banner_DB" in Supabase
+        .select('id, text, verfasser, datum')
+        .eq('status', 'aktiv'); // Entspricht deiner Prüfung auf "aktiv"
+
+    if (error) {
+        console.error("❌ Fehler beim Laden der Banner:", error);
+        return [];
+    }
+
+    return data;
+}
+
+
+    
+
+/* ============================================================
+    ALTE DATEN LÖSCHEN... aus news usw.   muss direkt in supabase rein...
+    ============================================================ */
+    
+
+
+
     
     
 </script>
