@@ -7,7 +7,8 @@
 
    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
- 
+ <!-- Supabase JavaScript Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 
@@ -4236,10 +4237,17 @@ input.stellvertretung-input {
 
 
 
-    /* ============================================================
-       1. GLOBALE KONFIGURATION & VARIABLEN
-       ============================================================ */
-    const url = "https://script.google.com/macros/s/AKfycbzS3wJZAYQqp_HF2kAncH_5QUO5jofuCzbpHqI4GgfxAzzIVj4dU5URZgmp644XQJRt1Q/exec"; 
+/* ============================================================
+        1. GLOBALE KONFIGURATION & VARIABLEN
+        ============================================================ */
+        // Supabase-Verbindung einrichten
+        const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
+        // Hinweis: Der von dir kopierte Link war die komplette REST-URL. 
+        // Für den anon-Key nehmen wir hier deinen echten anonymen Schlüssel aus dem Dashboard:
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4"; 
+
+        // Supabase-Client initialisieren
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Status-Variablen
     let userPw = "", userKuerzel = "";
@@ -4288,79 +4296,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function checkGlobalSync() {
     try {
-        const response = await fetch(`${url}?action=getNews&pw=${encodeURIComponent(userPw)}`);
-        const text = await response.text(); 
-        
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch (e) {
-            console.warn("Sync: Empfangene Daten sind kein valides JSON.");
+        // --- QUEUE-VETO: WENN GERADE GESPEICHERT WIRD, NICHT STÖREN ---
+        if (window.actionQueue && (window.actionQueue.length > 0 || window.isProcessingQueue)) {
             return; 
         }
 
-        // Sicherheitscheck: Existiert g1 überhaupt?
-        if (data.g1 === undefined || data.g1 === null) {
-            console.warn("Sync: g1 ist nicht im Datenpaket vorhanden.");
-            return;
-        }
-
-        const serverZeit = Number(data.g1); 
-
-        // Initialisierung
-        if (lastKnownChange === 0) {
-            lastKnownChange = serverZeit;
-            console.log("Sync: Initialer Zeitstempel gesetzt auf", lastKnownChange);
-            return;
-        }
-
-        // Vergleich
-        if (serverZeit > lastKnownChange) {
-            
-            // --- QUEUE-VETO: DER MASTER-BLOCKER ---
-            // Wenn die Queue arbeitet oder noch Aufträge hat, brechen wir hier ab.
-            // WICHTIG: Wir aktualisieren lastKnownChange NICHT, damit der Sync 
-            // beim nächsten Intervall-Durchlauf erneut versucht, aktuell zu werden.
-            if (window.actionQueue.length > 0 || window.isProcessingQueue) {
-                console.log("Sync-Veto: Queue aktiv. Warte mit Sync...");
-                return; 
-            }
-
-            console.log(`Änderung erkannt! Alt: ${lastKnownChange} | Neu: ${serverZeit}. Starte Updates...`);
-            
-            // 2. Systeme zünden (News & UI aktualisieren)
+        // Wenn eine Funktion zum Neuladen des Plans existiert, führen wir sie leise im Hintergrund aus
+        if (typeof window.loadPlan === 'function' && document.visibilityState === 'visible') {
+            // Wir rufen loadPlan auf (kannst du auch dezent halten, damit es nicht flackert)
+            // Alternativ triggern wir nur die News:
             if (typeof initNewsSystem === 'function') {
                 await initNewsSystem();
-                
-                // Falls die News-Sidebar gerade offen ist, Ansicht sofort neu zeichnen
-                const sidebar = document.getElementById('newsSidebar');
-                if (sidebar && sidebar.classList.contains('active') && typeof showNews === 'function') {
-                    showNews();
-                }
-                console.log("NewsSystem & Ansicht aktualisiert.");
             }
-
-            // 3. syncPlan ausführen
-            if (typeof syncPlan === 'function') {
-                console.log("Führe syncPlan() aus...");
-                await syncPlan(); 
-                
-                // Zeitstempel erst HIER aktualisieren, wenn der Sync erfolgreich durchgelaufen ist!
-                lastKnownChange = serverZeit;
-            } else {
-                console.error("syncPlan ist keine Funktion!");
-            }
-            
-        } else {
-            // Kein Log, um Konsole sauber zu halten
         }
-
     } catch (err) {
-        // Netzwerkfehler leise behandeln
-        console.error("Sync: Netzwerkfehler", err);
+        // Netzwerkfehler stumm abfangen
+        console.error("Sync-Fehler:", err);
     }
 }
 
+
+    
     
 async function handleLogin() {
     const btn = document.getElementById('loginBtn');
@@ -4377,15 +4333,27 @@ async function handleLogin() {
         return; 
     }
 
+    // --- GEMEINSAMES PASSWORT HIER ANPASSEN ---
+    const GEMEINSAMES_PASSWORT = "bbzo";
+
+    if (pwVal !== GEMEINSAMES_PASSWORT) {
+        errorDiv.innerText = "Falsches Passwort!";
+        return;
+    }
+
     btn.classList.add('is-loading');
     errorDiv.innerText = "";
 
     try {
-        const response = await fetch(`${url}?mode=login&pw=${encodeURIComponent(pwVal)}&kuerzel=${encodeURIComponent(kuerzelVal)}`);
-        const json = await response.json();
+        // --- PRÜFEN, OB ES DAS KÜRZEL IN DER LEHRER-TABELLE GIBT ---
+        const { data: userRows, error: userError } = await supabaseClient
+            .from('lehrer') // Passe den Tabellennamen an, falls nötig
+            .select('*')
+            .eq('kuerzel', kuerzelVal)
+            .single();
 
-        if (json.status !== "success") {
-            errorDiv.innerText = json.msg || "Login fehlgeschlagen!";
+        if (userError || !userRows) {
+            errorDiv.innerText = "Unbekanntes Kürzel!";
             btn.classList.remove('is-loading');
             return;
         }
@@ -4393,28 +4361,28 @@ async function handleLogin() {
         userPw = pwVal;
         userKuerzel = kuerzelVal;
         
-        // --- LINKS VORLADEN & DIREKT RENDEREN ---
-        fetch(`${url}?action=getLinks&pw=${encodeURIComponent(userPw)}&kuerzel=${encodeURIComponent(userKuerzel)}`)
-            .then(res => res.json())
-            .then(data => {
-                window.lastLinks = data.links || [];
-                console.log("Links im Hintergrund vorgeladen.");
-                
-                // Hier wird das Untermenü sofort befüllt, sobald die Daten da sind!
-                if (typeof window.renderLinks === 'function') {
-                    window.renderLinks();
-                }
-            })
-            .catch(e => console.error("Fehler beim Vorladen der Links:", e));
+        // --- LINKS VORLADEN AUS SUPABASE ---
+        const { data: linksData, error: linksError } = await supabaseClient
+            .from('links')
+            .select('*');
+            
+        if (!linksError) {
+            window.lastLinks = linksData || [];
+            console.log("Links im Hintergrund geladen.");
+            if (typeof window.renderLinks === 'function') {
+                window.renderLinks();
+            }
+        }
         
-        // --- MATERIALIEN VORLADEN ---
-        fetch(`${url}?action=getMaterialien&pw=${encodeURIComponent(userPw)}&kuerzel=${encodeURIComponent(userKuerzel)}`)
-            .then(res => res.json())
-            .then(data => {
-                window.verfügbareMaterialien = data.verfügbareMaterialien || [];
-                console.log("Materialien im Hintergrund vorgeladen:", window.verfügbareMaterialien);
-            })
-            .catch(e => console.error("Fehler beim Vorladen der Materialien:", e));
+        // --- MATERIALIEN VORLADEN AUS SUPABASE ---
+        const { data: matData, error: matError } = await supabaseClient
+            .from('materialien')
+            .select('*');
+            
+        if (!matError) {
+            window.verfügbareMaterialien = matData || [];
+            console.log("Materialien geladen:", window.verfügbareMaterialien);
+        }
         
         loadingOverlay.classList.add('is-visible');
         loginOverlay.classList.add('fade-out');
@@ -4428,22 +4396,10 @@ async function handleLogin() {
         await initNewsSystem();
         await changeDayAndLoad(dp.value);
 
-        // --- G1 GATE INITIALISIERUNG ---
-        window.lastKnownChange = Number(json.g1 || 0);
-        console.log("Sync-Startpunkt (g1) gesetzt auf:", window.lastKnownChange);
-        
-        if (json.hallenConfig) {
-            window.hallenConfig = json.hallenConfig;
-        }
+        window.lastKnownChange = Number(userRows.g1 || 0);
+        console.log("Sync-Startpunkt gesetzt.");
         
         loadingOverlay.classList.remove('is-visible');
-
-        // --- HINTERGRUND-SYNC ---
-        setInterval(async () => {
-            if (document.visibilityState === 'visible') {
-                await checkGlobalSync();
-            }
-        }, 5000); 
 
         // --- TAGESWECHSEL-CHECK ---
         setInterval(async () => {
@@ -4537,25 +4493,14 @@ planContainer.addEventListener('click', function(e) {
    HILFSFUNKTION: Slot-Index zu Daten-Mapping
    ============================================================ */
 function getDataBySlotIndex(index) {
-    // Wir ziehen 1 ab, damit wir intern mit 0-basiertem Index rechnen (1 -> 0)
-    const korrigierterIndex = index - 1;
-
-    // Da wir nur die 5 Wochentage zählen (ohne die Zeitspalte):
-    const spaltenProWoche = 5; 
-    
-    // Berechne die Zeile (Stunde)
-    // Wir addieren 1 bei der Zeile, falls currentPlanData[0] der Header ist
-    const zeile = Math.floor(korrigierterIndex / spaltenProWoche) + 1;
-    
-    // Berechne die Spalte (Tag)
-    // Wir addieren 1, um die Zeitspalte (Index 0) zu überspringen
-    const spalte = (korrigierterIndex % spaltenProWoche) + 1;
-
-    console.log(`Slot ${index} -> Suche in currentPlanData[Zeile ${zeile}][Spalte ${spalte}]`);
-
-    if (currentPlanData[zeile] && currentPlanData[zeile][spalte]) {
-        return currentPlanData[zeile][spalte];
+    // Da wir in Supabase nun ein direktes Objekt mit der Slot-Nummer als Schlüssel nutzen (z.B. window.lastPlanData[1]),
+    // können wir den Index direkt abfragen!
+    if (window.lastPlanData && window.lastPlanData[index]) {
+        console.log(`Slot ${index} erfolgreich im Plan gefunden:`, window.lastPlanData[index]);
+        return window.lastPlanData[index];
     }
+
+    console.log(`Slot ${index} nicht in window.lastPlanData gefunden.`);
     return null;
 }
     
@@ -4585,15 +4530,12 @@ function getDataBySlotIndex(index) {
 window.actionQueue = [];
 window.isProcessingQueue = false;
 
-    
 // Funktion zum Hinzufügen
 function addToQueue(payload, onCompleteVisuals) {
     window.actionQueue.push({ payload, onCompleteVisuals });
     processQueue();
 }
 
-
-    
 // Die zentrale Verarbeitungs-Logik (Der Küchenchef)
 async function processQueue() {
     // 1. Wenn wir gerade arbeiten oder bereits eine Instanz läuft, nichts tun
@@ -4630,7 +4572,6 @@ async function processQueue() {
         window.isProcessingQueue = false;
         
         // 6. Nächste Aktion verarbeiten (Rekursion)
-        // Wir rufen processQueue erneut auf, um den nächsten Auftrag zu prüfen
         processQueue();
     }
 }
@@ -4810,17 +4751,6 @@ window.updateDateText = (dateValue) => {
     
 
 /* ============================================================
-   ZENTRALE DATENWEICHE... local oder webtool
-   ============================================================ */
-function getFetchUrl(dateVal) {
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-    return isLocal ? 'data.json' : `${url}?date=${dateVal}&pw=${userPw}&kuerzel=${userKuerzel}`;
-}
-
-
-
-
-/* ============================================================
    LADE-OVERLAY
    ============================================================ */
 
@@ -4858,11 +4788,8 @@ window.loadPlan = async function() {
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
     
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     const dateVal = dp.value;
-    const fetchUrl = isLocal ? 'data.json' : `${url}?date=${dateVal}&pw=${userPw}&kuerzel=${userKuerzel}`;
-
-    if (!isLocal && (!userPw || !dateVal)) return;
+    if (!dateVal) return;
 
     container.innerHTML = ""; 
     if (typeof updateNavButtons === 'function') updateNavButtons();
@@ -4874,25 +4801,47 @@ window.loadPlan = async function() {
     }
 
     try {
-        const res = await fetch(fetchUrl);
-        const json = await res.json();
-        
-        if (json.sperrMsg) {
-            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${json.sperrMsg}</div>`;
-            return;
-        }
-        
-        window.hallenConfig = json.hallenConfig || {}; 
-        const plan = json.plan || {}; 
-        window.lastPlanData = plan; 
-        myClasses = json.userClasses || [];
-        allClassTeachers = json.allClassTeachers || {};
-        
+        // --- DATEN AUS SUPABASE LADEN ---
+        // Wochentag ermitteln (z.B. für Filterung, falls nötig)
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        // Wir laden die Master-Daten für den Wochentag aus Supabase
+        const { data: masterData, error: masterError } = await supabaseClient
+            .from('master_db')
+            .select('*')
+            .eq('wochentag', aktuellerWochentag);
+
+        if (masterError) {
+            throw masterError;
+        }
+
+        // Plan-Objekt aufbauen (Mappt absolute Slot-Nummern auf die Datenbankeinträge)
+        const plan = {};
+        if (masterData) {
+            masterData.forEach(row => {
+                // row.slot enthält z.B. die Slot-Nummer (1 bis 60)
+                plan[row.slot] = {
+                    klasse: row.klasse || "",
+                    lehrer: row.lehrer || "",
+                    halle: row.halle || "",
+                    typ: row.typ || "",
+                    verfasser: row.verfasser || "",
+                    kommentar: row.kommentar || "",
+                    material: row.material || ""
+                };
+            });
+        }
+
+        window.lastPlanData = plan; 
+        // myClasses kannst du bei Bedarf ebenfalls aus einer Tabelle laden oder global definieren
+        myClasses = window.myClasses || []; 
+        allClassTeachers = window.allClassTeachers || {};
+        
         const [y, m, d] = dateVal.split('-').map(Number);
         const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
 
-        let html = `<div class="box header-row" style="grid-column: span 6;"><span>${wtArr[dateObj.getDay()]}, ${d}.${m}.${y}</span></div>`;
+        let html = `<div class="box header-row" style="grid-column: span 6;"><span>${aktuellerWochentag}, ${d}.${m}.${y}</span></div>`;
 
         zeiten.forEach((zeitStr, rowIndex) => {
             if (rowIndex + 1 === 4 || rowIndex + 1 === 10) html += `<div class="divider-thin" style="grid-column: span 6;"></div>`;
@@ -4922,7 +4871,7 @@ window.loadPlan = async function() {
                 const isMyBooking = (verfasser.trim().toLowerCase() === userKuerzel.toLowerCase());
                 const canEdit = isMyClass || isMyBooking;
 
-                const bgFarbe = (window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
+                const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
                 const classList = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
                 
                 html += `
@@ -5029,11 +4978,11 @@ window.resumeSync = function() {
 
     
 /* ============================================================
-   SYNC PLAN - DOM-Sicher (Globale Wachhund-Architektur)
+   SYNC PLAN - DOM-Sicher (Supabase-Architektur)
    ============================================================ */
 window.syncPlan = async function() {
     // 1. EISERNE SPERRE
-    if (window.actionQueue.length > 0 || window.isProcessingQueue) {
+    if (window.actionQueue && (window.actionQueue.length > 0 || window.isProcessingQueue)) {
         return;
     }
 
@@ -5041,22 +4990,42 @@ window.syncPlan = async function() {
 
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
-    const cacheKiller = new Date().getTime();
-    const fetchUrl = `${url}?date=${dp.value}&pw=${userPw}&kuerzel=${userKuerzel}&t=${cacheKiller}`;
+    if (!dp || !container) return;
 
     try {
-        const res = await fetch(fetchUrl);
-        const json = await res.json();
-        
-        if (json.sperrMsg || !json.plan) return;
-        
+        const dateVal = dp.value;
+        const dateObj = new Date(dateVal.replace(/-/g, "/"));
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        // Daten frisch aus Supabase laden
+        const { data: masterData, error } = await supabaseClient
+            .from('master_db')
+            .select('*')
+            .eq('wochentag', aktuellerWochentag);
+
+        if (error || !masterData) return;
+
+        // Plan-Objekt aufbauen
+        const newPlan = {};
+        masterData.forEach(row => {
+            newPlan[row.slot] = {
+                klasse: row.klasse || "",
+                lehrer: row.lehrer || "",
+                halle: row.halle || "",
+                typ: row.typ || "",
+                verfasser: row.verfasser || "",
+                kommentar: row.kommentar || "",
+                material: row.material || ""
+            };
+        });
+
         // Wenn Modus aktiv, Sync abbrechen
         if (window.currentInteractionMode !== null) return;
 
-        const newPlan = json.plan;
         window.lastPlanData = newPlan;
-        window.hallenConfig = json.hallenConfig || window.hallenConfig;
-        const myClasses = json.userClasses || [];
+        const myClasses = window.myClasses || [];
+        const allClassTeachers = window.allClassTeachers || {};
         
         Object.keys(newPlan).forEach(slot => {
             const slotData = newPlan[slot] || {};
@@ -5082,7 +5051,7 @@ window.syncPlan = async function() {
             const canEdit = isMyClass || isMyBooking;
             
             box.className = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
-            box.style.backgroundColor = (window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
+            box.style.backgroundColor = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
             box.style.cursor = canEdit ? 'pointer' : 'default';
 
             const klassenEl = box.querySelector('.klasse-label');
@@ -5126,9 +5095,10 @@ window.syncPlan = async function() {
             }
 
             if (slotData.material && slotData.material.trim() !== "") {
-                // Korrigiert: Hier wird nun das echte Material-Detail übergeben statt des allgemeinen Kommentars
                 let matDetail = slotData.materialKommentar || slotData.materialDetail || slotData.details || "";
-                markBoxWithMaterialIcon(box, slotData.material, matDetail);
+                if (typeof markBoxWithMaterialIcon === "function") {
+                    markBoxWithMaterialIcon(box, slotData.material, matDetail);
+                }
             }
         });
     } catch(e) {
@@ -5207,27 +5177,25 @@ async function changeDayAndLoad(zielDatum, mode = 'initial') {
  * Der Zeit-String dient als zusätzlicher Sicherheitscheck.
  */
 function findBoxByTimeAndSlot(time, slot) {
-    // Da die Slot-ID (1-60) eindeutig ist, reicht diese eigentlich aus
+    // Da die Slot-ID (1-60) eindeutig ist, reicht diese völlig aus
     return document.querySelector(`.box[data-slot="${slot}"]`);
 }
 
 /**
- * Baut das Daten-Objekt für das Google Sheet Update.
- * WICHTIG: In der DB-Version schicken wir kein "Klasse | Halle" mehr,
- * sondern die reinen Werte, die das Backend dann in die richtigen Spalten schreibt.
+ * Baut das Daten-Objekt für das Datenbank-Update.
  */
 function prepareUpdateData(slotId, neueHalle, neueKlasse, neuesMaterial, neuerKommentar) {
-    // Wir holen uns die Basis-Daten des Slots, falls vorhanden
-    // 'plan' ist das Objekt, das wir beim Laden vom Server erhalten haben
-    const aktuellerSlot = (window.currentPlan && window.currentPlan[slotId]) ? window.currentPlan[slotId] : {};
+    // Wir holen uns die Basis-Daten des Slots aus unserem globalen Speicher
+    const aktuellerSlot = (window.lastPlanData && window.lastPlanData[slotId]) ? window.lastPlanData[slotId] : {};
 
-    // Logik: Nutze den neuen Wert, falls vorhanden, sonst den alten aus dem Speicher
+    // Logik: Nutze den neuen Wert, falls angegeben, sonst den alten aus dem Speicher
     const updateObj = {
         slot: slotId,
         klasse: (neueKlasse !== undefined) ? neueKlasse : (aktuellerSlot.klasse || ""),
         halle: (neueHalle !== undefined) ? neueHalle : (aktuellerSlot.halle || ""),
         material: (neuesMaterial !== undefined) ? neuesMaterial : (aktuellerSlot.material || ""),
-        kommentar: (neuerKommentar !== undefined) ? neuerKommentar : (aktuellerSlot.kommentar || "")
+        kommentar: (neuerKommentar !== undefined) ? neuerKommentar : (aktuellerSlot.kommentar || ""),
+        verfasser: userKuerzel // Direkt den aktuellen Benutzer als Verfasser mitgeben
     };
 
     console.log(`🛠 Update-Daten für Slot ${slotId} vorbereitet:`, updateObj);
@@ -7263,7 +7231,7 @@ function showNotizDetailPopup(klasse, notizText) {
     
 
 /**
- * Der "Postbote": Sendet Daten an das Google Apps Script
+ * Der "Postbote": Sendet Daten direkt an Supabase
  * Inklusive lokaler Entwicklungs-Weiche für VS Code (localhost)
  */
 window.saveImmediately = async function(payload, options = {}) {
@@ -7274,15 +7242,17 @@ window.saveImmediately = async function(payload, options = {}) {
         console.log("🎯 LOKALER MODUS: Speicherbefehl simuliert:", payload);
         
         // Führe News-Trigger lokal aus, damit das UI sofort reagiert
-        runNewsTriggerLogic(payload);
+        if (typeof runNewsTriggerLogic === 'function') {
+            runNewsTriggerLogic(payload);
+        }
         
         return { status: "success", msg: "Lokal erfolgreich simuliert" };
     }
 
-    // 2. ONLINE-MODUS (Dein bestehender Produktions-Code)
-    if (typeof url === 'undefined') {
-        console.error("❌ saveImmediately abgebrochen: Die Variable 'url' ist nicht definiert!");
-        return { status: "error", msg: "Skript-URL fehlt" };
+    // 2. ONLINE-MODUS (Supabase-Anbindung)
+    if (!supabaseClient) {
+        console.error("❌ saveImmediately abgebrochen: 'supabaseClient' ist nicht definiert!");
+        return { status: "error", msg: "Supabase-Client fehlt" };
     }
 
     if (!payload) {
@@ -7291,31 +7261,43 @@ window.saveImmediately = async function(payload, options = {}) {
     }
 
     try {
-        const response = await fetch(url, {
-            method: "POST",
-            body: JSON.stringify(payload),
-            signal: options.signal
-        });
+        const dp = document.getElementById('datePicker');
+        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
+        const dateObj = new Date(dateVal.replace(/-/g, "/"));
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
+        // Supabase Upsert auf die master_db
+        const { error } = await supabaseClient
+            .from('master_db')
+            .upsert({
+                wochentag: aktuellerWochentag,
+                slot: payload.slot,
+                klasse: payload.klasse || "",
+                halle: payload.halle || "",
+                material: payload.material || "",
+                kommentar: payload.kommentar || "",
+                verfasser: userKuerzel || ""
+            }, { onConflict: 'wochentag,slot', signal: options.signal });
 
-        const result = await response.json();
+        if (error) throw error;
 
-        if (result.status === "success") {
-            console.log("🎯 Speicherbefehl erfolgreich ausgeführt:", payload);
+        console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
+        
+        if (typeof runNewsTriggerLogic === 'function') {
             runNewsTriggerLogic(payload);
-            return result;
-        } else {
-            console.error("❌ Server meldete einen Fehler:", result.msg);
-            return result;
         }
+        
+        return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
+
     } catch (e) {
         if (e.name === 'AbortError') throw e;
-        console.error("❌ Kritischer Fehler:", e);
+        console.error("❌ Kritischer Fehler beim Supabase-Speichern:", e);
         return { status: "error", msg: e.toString() };
     }
 };
-       
+
+    
 
 /**
  * Interne Hilfsfunktion: Hält die News-Logik sauber
@@ -7348,7 +7330,6 @@ function runNewsTriggerLogic(payload) {
 
 
 
-
 // Hilfsfunktion: Erkennt, ob der Partner-Slot dieselbe Klasse hat (JETZT ALS ECHTE ZAHLEN)
 function getDoppellektionPartnerSlot(currentSlot) {
     const slot = parseInt(currentSlot, 10);
@@ -7357,7 +7338,6 @@ function getDoppellektionPartnerSlot(currentSlot) {
         return null;
     }
     
-    // Tippfehler korrigiert: Variable heißt jetzt durchgehend "aktuellerDatenSatz"
     const aktuellerDatenSatz = window.lastPlanData[slot] || window.lastPlanData[slot.toString()];
     if (!aktuellerDatenSatz) {
         console.warn(`❌ Doppellektion-Abbruch: Keine Daten für Slot ${slot} in lastPlanData gefunden.`);
@@ -7537,7 +7517,9 @@ function executePayloads(payloadArray, onCompleteVisuals) {
             .then(result => {
                 if (result && result.status === "success") {
                     if (p.halle === "Ausfall" || (p.halle && p.halle.includes("Outdoor"))) {
-                        window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
+                        if (typeof window.triggerNewsWrapper === "function") {
+                            window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
+                        }
                     }
                     
                     // --- WICHTIG: KEIN Timeout zum Löschen mehr! ---
@@ -7615,17 +7597,12 @@ window.cancelMoveMode = function() {
     });
 
     // --- DER FIX: Daten neu laden ---
-    // Da wir den Modus beendet haben, MÜSSEN wir jetzt den Sync ausführen, 
-    // um die während der Pause verpassten Änderungen der Kollegen zu laden.
     console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
     if (typeof window.syncPlan === 'function') {
         window.syncPlan(); 
     }
 };
 
-
-
-    
 window.highlightFreeSlots = function() {
     const boxes = document.querySelectorAll('.box');
 
@@ -7692,27 +7669,60 @@ window.handleMoveConfirm = async function(targetSlot) {
     
     document.getElementById('plan-container')?.classList.remove('move-mode-active');
 
-    showLoading('saving');
-
-    const movePayload = {
-        action: "moveBooking",
-        date: tempMoveMode.date,
-        sourceSlot: tempMoveMode.sourceSlot,
-        targetSlot: targetSlot,
-        bookingData: tempMoveMode,
-        user: userKuerzel,
-        pw: userPw
-    };
+    if (typeof showLoading === 'function') showLoading('saving');
 
     try {
-        await fetch(url, { method: "POST", body: JSON.stringify(movePayload) });
-        await loadPlan(); 
+        const dp = document.getElementById('datePicker');
+        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
+        const dateObj = new Date(dateVal.replace(/-/g, "/"));
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        const sourceSlot = tempMoveMode.sourceSlot;
+        const bookingData = tempMoveMode.bookingData || tempMoveMode;
+
+        // 1. Quell-Slot in Supabase leeren
+        const { error: errorSource } = await supabaseClient
+            .from('master_db')
+            .upsert({
+                wochentag: aktuellerWochentag,
+                slot: sourceSlot,
+                klasse: "",
+                halle: "",
+                material: "",
+                kommentar: "",
+                verfasser: ""
+            }, { onConflict: 'wochentag,slot' });
+
+        if (errorSource) throw errorSource;
+
+        // 2. Ziel-Slot in Supabase mit den Daten beschreiben
+        const { error: errorTarget } = await supabaseClient
+            .from('master_db')
+            .upsert({
+                wochentag: aktuellerWochentag,
+                slot: targetSlot,
+                klasse: bookingData.klasse || "",
+                halle: bookingData.halle || "",
+                material: bookingData.material || "",
+                kommentar: bookingData.kommentar || "",
+                verfasser: userKuerzel || ""
+            }, { onConflict: 'wochentag,slot' });
+
+        if (errorTarget) throw errorTarget;
+
+        console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlot} verschoben.`);
+
+        // 3. Plan neu laden
+        if (typeof loadPlan === 'function') {
+            await loadPlan(); 
+        }
 
         if (typeof initEventListeners === 'function') {
             initEventListeners();
         }
 
-        // Cleanup: Modus hier beenden, damit syncPlan wieder darf
+        // Cleanup
         window.moveMode = null;
         window.currentInteractionMode = null;
         
@@ -7721,10 +7731,11 @@ window.handleMoveConfirm = async function(targetSlot) {
         }
 
     } catch (err) {
-        console.error("Verschiebe-Fehler:", err);
+        console.error("Verschiebe-Fehler (Supabase):", err);
+        alert("Fehler beim Verschieben der Lektion.");
     } finally {
-        hideLoading();
-        window.currentInteractionMode = null; // Sicherstellen, dass Sperre immer fällt
+        if (typeof hideLoading === 'function') hideLoading();
+        window.currentInteractionMode = null;
         document.getElementById('move-panel-ui')?.remove();
         document.getElementById('move-overlay')?.remove();
         document.getElementById('plan-container')?.classList.remove('move-mode-active');
@@ -7792,7 +7803,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Prüfen, ob direkt auf einen Hauptkategorie-Header geklickt wurde
             const isCategoryHeader = e.target.closest('.menu-category-header');
             
-            // Wenn es KEIN Kategorie-Header war (also z.B. "Krückenverwaltung", ein Link etc.), alles sofort schließen!
+            // Wenn es KEIN Kategorie-Header war (also z.B. ein Link etc.), alles sofort schließen!
             if (!isCategoryHeader) {
                 closeExtraMenuCompletely();
             }
@@ -7800,18 +7811,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+    
 window.openExtraLessonModal = function(event) {
     closeExtraMenuCompletely();
     
     const modal = document.getElementById('modal-overlay');
+    if (!modal) return;
+    
     const modalContent = modal.querySelector('.modal-content');
     const btn = document.getElementById('menu-trigger');
-    const rect = btn.getBoundingClientRect();
     
-    modalContent.style.marginTop = '0';
-    modalContent.style.top = (rect.bottom + 10) + 'px';
-    modalContent.style.right = '20px';
-    modalContent.style.left = 'auto'; 
+    if (modalContent && btn) {
+        const rect = btn.getBoundingClientRect();
+        modalContent.style.marginTop = '0';
+        modalContent.style.top = (rect.bottom + 10) + 'px';
+        modalContent.style.right = '20px';
+        modalContent.style.left = 'auto'; 
+    }
     
     modal.style.display = 'flex';
 };
@@ -7824,7 +7840,10 @@ window.showPlaceholder = function(name) {
 window.toggleCategory = function(headerElement, event) {
     if (event) event.stopPropagation();
     
+    if (!headerElement) return;
     const currentCategory = headerElement.closest('.menu-category');
+    if (!currentCategory) return;
+    
     const allCategories = document.querySelectorAll('.extra-menu-panel .menu-category');
 
     allCategories.forEach(cat => {
@@ -7843,7 +7862,8 @@ window.toggleCategory = function(headerElement, event) {
    ============================================================ */
 
 window.startAddMode = function() {
-    document.getElementById('extra-menu').style.display = 'none';
+    const extraMenu = document.getElementById('extra-menu');
+    if (extraMenu) extraMenu.style.display = 'none';
     
     // MODUS STARTEN: Sync pausieren
     window.currentInteractionMode = 'HINZUFUEGEN';
@@ -7861,18 +7881,20 @@ window.startAddMode = function() {
     `;
     document.body.appendChild(panel);
 
-    document.getElementById('plan-container').classList.add('move-mode-active');
-
-    // Event-Delegation am Container
     const container = document.getElementById('plan-container');
-    container.onclick = function(e) {
-        if (!window.addMode) return;
-        
-        const box = e.target.closest('.box.empty');
-        if (box && !box.classList.contains('header-row')) {
-            showInlineInput(box);
-        }
-    };
+    if (container) {
+        container.classList.add('move-mode-active');
+
+        // Event-Delegation am Container
+        container.onclick = function(e) {
+            if (!window.addMode) return;
+            
+            const box = e.target.closest('.box.empty');
+            if (box && !box.classList.contains('header-row')) {
+                showInlineInput(box);
+            }
+        };
+    }
 
     // Optisches Highlight
     document.querySelectorAll('.box.empty:not(.header-row)').forEach(box => {
@@ -7912,30 +7934,39 @@ window.showInlineInput = function(box) {
 };
 
 window.confirmInlineAdd = async function(targetSlot) {
-    const name = document.getElementById('inline-klasse-name').value;
+    const nameInput = document.getElementById('inline-klasse-name');
+    const name = nameInput ? nameInput.value.trim() : "";
     if (!name) return alert("Bitte Namen eingeben!");
 
     // Panel entfernen
     document.getElementById('inline-input-panel')?.remove();
     
     // Lade-Overlay starten
-    showLoading('saving');
-
-    const payload = {
-        action: "saveBooking",
-        date: window.addMode.date,
-        slot: targetSlot,
-        klasse: name,
-        halle: "", 
-        lehrer: userKuerzel,
-        material: "", 
-        kommentar: "", 
-        typ: "Zusatz",
-        pw: userPw
-    };
+    if (typeof showLoading === 'function') showLoading('saving');
 
     try {
-        await fetch(url, { method: "POST", body: JSON.stringify(payload) });
+        const dp = document.getElementById('datePicker');
+        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
+        const dateObj = new Date(dateVal.replace(/-/g, "/"));
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        // Supabase Upsert für den neuen Slot
+        const { error } = await supabaseClient
+            .from('master_db')
+            .upsert({
+                wochentag: aktuellerWochentag,
+                slot: targetSlot,
+                klasse: name,
+                halle: "", 
+                lehrer: userKuerzel || "",
+                material: "", 
+                kommentar: "", 
+                typ: "Zusatz",
+                verfasser: userKuerzel || ""
+            }, { onConflict: 'wochentag,slot' });
+
+        if (error) throw error;
 
         // 1. UI-Update für den Slot
         const box = document.querySelector(`[data-slot="${targetSlot}"]`);
@@ -7945,21 +7976,22 @@ window.confirmInlineAdd = async function(targetSlot) {
             box.style.cursor = 'pointer';
             box.innerHTML = `
                 <div class="klasse-label">${name}</div>
-                <div class="lehrer-info">${userKuerzel}</div>
+                <div class="lehrer-info">${userKuerzel || ""}</div>
                 <div class="halle-label"></div>
             `;
-            setBoxClick(box, name, targetSlot, true);
+            if (typeof setBoxClick === 'function') {
+                setBoxClick(box, name, targetSlot, true);
+            }
         }
 
-        // 2. Modus beenden (das ruft auch cancelAddMode auf, was Sync triggert)
+        // 2. Modus beenden
         cancelAddMode(); 
         
     } catch (err) {
-        console.error("Fehler:", err);
+        console.error("Fehler beim Hinzufügen (Supabase):", err);
+        alert("Fehler beim Speichern der Lektion.");
     } finally {
-        // --- DAS HIER WAR DAS PROBLEM ---
-        // Das Overlay muss in jedem Fall verschwinden, egal ob Erfolg oder Fehler
-        hideLoading(); 
+        if (typeof hideLoading === 'function') hideLoading();
     }
 };
 
@@ -7989,8 +8021,12 @@ window.cancelAddMode = function() {
     });
 
     // 5. Sync erzwingen, um aktuelle Daten zu laden
-    syncPlan(); 
+    if (typeof window.syncPlan === 'function') {
+        window.syncPlan(); 
+    }
 };
+
+
     
 
 /* ============================================================
@@ -8635,7 +8671,7 @@ window.markBannerResolved = function(id, btnElement) {
 
 /* ============================================================
    19. LINKS (Direkt im Untermenü)
-   ============================================================ */   
+   ============================================================ */    
 
 window.renderLinks = function() {
     const container = document.getElementById('links-container');
@@ -8656,9 +8692,6 @@ window.renderLinks = function() {
         </div>
     `).join('');
 };
-
-// Falls du eine Funktion hast, die aufgerufen wird, wenn die Daten da sind (z.B. am Ende von loadPlan):
-// Achte darauf, dass dort einmalig window.renderLinks(); aufgerufen wird!
 
 
 
@@ -8883,8 +8916,6 @@ window.cancelPasteMode = function() {
     });
 
     // --- DER FIX: Daten neu laden ---
-    // Da wir den Modus beendet haben, MÜSSEN wir jetzt den Sync ausführen, 
-    // um die während der Pause verpassten Änderungen der Kollegen zu laden.
     console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
     if (typeof window.syncPlan === 'function') {
         window.syncPlan(); 
@@ -8908,7 +8939,7 @@ async function performPaste(targetSlot, data) {
         for (let s = startSlot; s <= endSlot; s++) {
             if (s === parseInt(targetSlot)) continue;
             
-            const andereData = window.lastPlanData[s];
+            const andereData = window.lastPlanData ? window.lastPlanData[s] : null;
             if (andereData && andereData.halle && andereData.halle !== "Ausfall") {
                 const besetzteTeile = andereData.halle.toLowerCase().split('+').map(h => h.trim());
                 if (zuPruefendeTeile.some(t => t !== "outdoor" && t !== "badi" && besetzteTeile.includes(t))) {
@@ -8925,16 +8956,16 @@ async function performPaste(targetSlot, data) {
     }
 
     // 2. Daten für den Ziel-Slot
-    const zielSlotData = window.lastPlanData[targetSlot] || {};
+    const zielSlotData = window.lastPlanData && window.lastPlanData[targetSlot] ? window.lastPlanData[targetSlot] : {};
     const klasseImZiel = zielSlotData.klasse || "";
     const isAusfall = (data.halle === "Ausfall");
 
     // 3. Payload erstellen
     const payload = {
         action: "saveBooking",
-        pw: userPw,
-        kuerzel: userKuerzel,
-        date: dp.value,
+        pw: typeof userPw !== 'undefined' ? userPw : "",
+        kuerzel: typeof userKuerzel !== 'undefined' ? userKuerzel : "",
+        date: dp ? dp.value : "",
         slot: targetSlot,
         klasse: klasseImZiel, 
         origin: 'pasteMode',
@@ -8946,34 +8977,37 @@ async function performPaste(targetSlot, data) {
         if (typeof window.prozessiereAktion === 'function') {
             console.log(`Paste: Kopiere ${data.halle} nach Slot ${targetSlot}`);
             
+            if (!window.lastPlanData) window.lastPlanData = {};
             window.lastPlanData[targetSlot] = { 
                 ...zielSlotData, 
                 halle: data.halle, 
                 typ: data.typ,
-                verfasser: userKuerzel 
+                verfasser: typeof userKuerzel !== 'undefined' ? userKuerzel : "" 
             };
 
-            box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig[data.halle]?.color || "");
-            
-            const kLabel = box.querySelector('.klasse-label');
-            if (kLabel) kLabel.textContent = klasseImZiel;
-            
-            const hLabel = box.querySelector('.halle-label');
-            if (hLabel) hLabel.textContent = data.halle;
-            
-            box.classList.remove('empty', 'not-mine');
-            box.classList.add('is-mine');
-            
-            if (isAusfall) {
-                box.classList.add('ausfall-mode');
-            } else {
-                box.classList.remove('ausfall-mode');
-            }
-            
-            const lockContainer = box.querySelector('.lock-icon-container');
-            if (lockContainer) {
-                lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
-                    '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
+            if (box) {
+                box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig && window.hallenConfig[data.halle]?.color || "");
+                
+                const kLabel = box.querySelector('.klasse-label');
+                if (kLabel) kLabel.textContent = klasseImZiel;
+                
+                const hLabel = box.querySelector('.halle-label');
+                if (hLabel) hLabel.textContent = data.halle;
+                
+                box.classList.remove('empty', 'not-mine');
+                box.classList.add('is-mine');
+                
+                if (isAusfall) {
+                    box.classList.add('ausfall-mode');
+                } else {
+                    box.classList.remove('ausfall-mode');
+                }
+                
+                const lockContainer = box.querySelector('.lock-icon-container');
+                if (lockContainer) {
+                    lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
+                        '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
+                }
             }
 
             window.prozessiereAktion(payload, (p) => {
