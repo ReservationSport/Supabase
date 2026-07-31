@@ -4337,11 +4337,17 @@ async function handleLogin() {
     if (errorDiv) errorDiv.innerText = "";
 
     try {
+        // --- DEBUGGING: Prüfen was gesendet wird ---
+        console.log("Suche in master_db nach Spalte 'lehrer' mit Wert:", kuerzelVal);
+
         // --- PRÜFEN, OB ES DAS KÜRZEL IN DER MASTER_DB GIBT ---
         const { data: userRows, error: userError } = await supabaseClient
             .from('master_db')
             .select('*')
             .eq('lehrer', kuerzelVal);
+
+        console.log("Supabase Fehler (userError):", userError);
+        console.log("Supabase Daten (userRows):", userRows);
 
         if (userError || !userRows || userRows.length === 0) {
             if (errorDiv) errorDiv.innerText = "Unbekanntes Kürzel!";
