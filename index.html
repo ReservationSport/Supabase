@@ -5406,236 +5406,7 @@ window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial
     return updateObj;
 };
 
-/* ============================================================
-    9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL / SUPABASE)
-   ============================================================ */
 
-window.starteAbklebenWorkflow = function(time, slot, klasse) {
-    const modalContainer = document.querySelector('.eigenesmenu-container');
-    if (!modalContainer) return;
-
-    const currentSlot = parseInt(slot, 10);
-    const safeKlasse = (klasse !== null && klasse !== undefined) ? klasse.toString() : "";
-    const safeTime = (time !== null && time !== undefined) ? time.toString() : "";
-    const safeSlot = (slot !== null && slot !== undefined) ? slot.toString() : "";
-
-    const aktuelleHalle = (window.lastPlanData && window.lastPlanData[currentSlot]?.halle) || "";
-    
-    // Partner-Suche (NUR nach Klasse prüfen, unabhängig von der Halle!)
-    const nextSlot = currentSlot + 5;
-    const prevSlot = currentSlot - 5;
-    const nextSlotData = (window.lastPlanData && window.lastPlanData[nextSlot]) || {};
-    const prevSlotData = (window.lastPlanData && window.lastPlanData[prevSlot]) || {};
-
-    const nextKlasse = nextSlotData.klasse ? nextSlotData.klasse.toString() : "";
-    const prevKlasse = prevSlotData.klasse ? prevSlotData.klasse.toString() : "";
-
-    let partnerSlot = null;
-    if (nextKlasse && nextKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
-        partnerSlot = nextSlot;
-    } else if (prevKlasse && prevKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
-        partnerSlot = prevSlot;
-    }
-
-    // 1. Direkt zum Security Check, wenn keine Doppellektion
-    if (!partnerSlot) {
-        window.slotsToClear = [currentSlot];
-        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, false);
-        return;
-    }
-
-    // 2. Header im orangenen "Zielflaggen"-Design
-    const headerHtml = `
-        <div class="eigenesmenu-header">
-            <div id="dynamic-header-title" style="color: #e67e22; font-size: 1.2em; font-weight: bold;">KLASSE ABKLEBEN</div>
-            <div id="dynamic-header-subtitle">Willst du die Aktion für die <b>gesamte Doppellektion</b> durchführen?</div>
-            <span class="material-symbols-outlined header-icon" style="color: #e67e22;">sports_score</span>
-        </div>
-    `;
-
-    // 3. Buttons im einheitlichen Stil
-    let html = `
-        <div class="eigenesmenu-liste" id="menu-options-list">
-            <div class="doppel-abfrage-container" style="padding: 15px; display: flex; flex-direction: column; gap: 10px;">
-                <button id="btn-doppel-beide" class="doppel-btn">
-                    <span class="material-symbols-outlined">group</span> Für beide Lektionen
-                </button>
-                <button id="btn-doppel-einzel" class="doppel-btn">
-                    <span class="material-symbols-outlined">person</span> Nur für eine Lektion
-                </button>
-            </div>
-        </div>
-    `;
-
-    // 4. Standard Footer
-    const backCall = `window.openEditor(window.currentEditBox, '${safeTime}', '${safeSlot}', '${safeKlasse}')`;
-    html += renderFooter([
-        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backCall },
-        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
-    ]);
-
-    modalContainer.innerHTML = headerHtml + html;
-
-    // 5. Events
-    document.getElementById('btn-doppel-beide')?.addEventListener('click', () => {
-        window.slotsToClear = [currentSlot, partnerSlot];
-        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
-    });
-    
-    document.getElementById('btn-doppel-einzel')?.addEventListener('click', () => {
-        window.slotsToClear = [currentSlot];
-        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
-    });
-};
-
-
-window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
-    const container = document.querySelector('.eigenesmenu-container');
-    if (!container) return;
-
-    const backAction = isDoppel 
-        ? `window.starteAbklebenWorkflow('${time}', '${slot}', '${klasse}')` 
-        : `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')`;
-
-    // 1. Header
-    const headerHtml = `
-        <div class="eigenesmenu-header">
-            <div id="dynamic-header-title" style="color: #e67e22; font-size: 1.2em; font-weight: bold;">KLASSE ABKLEBEN</div>
-            <div id="dynamic-header-subtitle">Willst du <span style="color: #e67e22;"><b>${klasse}</b></span> dauerhaft entfernen?</div>
-            <span class="material-symbols-outlined header-icon" style="color: #e67e22; font-size: 24px;">sports_score</span>
-        </div>
-    `;
-
-    // 2. Inhalt
-    let html = `
-        <div class="eigenesmenu-liste" id="menu-options-list">
-            <div style="padding: 15px; display: flex; flex-direction: column; gap: 15px;">
-                <input type="password" id="abkleben-pw-field" placeholder="Passwort eingeben..." 
-                       style="width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; text-align: center;">
-                
-                <button id="btn-final-perma-delete" class="doppel-btn" style="background: #333;" onclick="window.fuehreAbklebenAus('${klasse}')">
-                    <span class="material-symbols-outlined">lock_open</span> JA, PERMANENT ABKLEBEN
-                </button>
-            </div>
-        </div>
-    `;
-
-    // 3. Footer
-    html += renderFooter([
-        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backAction },
-        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
-    ]);
-
-    container.innerHTML = headerHtml + html;
-    
-    const pwInput = document.getElementById('abkleben-pw-field');
-    pwInput?.focus();
-    pwInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') window.fuehreAbklebenAus(klasse); });
-};
-
-
-
-window.fuehreAbklebenAus = async function(klasse) {
-    const pwFeld = document.getElementById('abkleben-pw-field');
-    const deleteBtn = document.getElementById('btn-final-perma-delete');
-    
-    if (!pwFeld?.value.trim()) { alert("Bitte Passwort eingeben!"); return; }
-    
-    // Passwort-Prüfung (hier wird die globale Variable `userPw` genutzt)
-    const userPw = window.userPw || "";
-    if (pwFeld.value.trim() !== userPw) {
-        pwFeld.style.borderColor = "#c0392b";
-        pwFeld.value = "";
-        pwFeld.placeholder = "Falsches Passwort!";
-        return;
-    }
-
-    if (deleteBtn) {
-        deleteBtn.innerHTML = '<div class="eigenesmenu-loader" style="margin: 0 auto;"></div>';
-        deleteBtn.style.pointerEvents = "none";
-    }
-    
-    const gridContainer = document.querySelector('.stundentafel-container') || document.body;
-    gridContainer.style.opacity = "0.6";
-    gridContainer.style.pointerEvents = "none";
-
-    const targetDate = document.getElementById('datePicker').value;
-    const userKuerzel = window.userKuerzel || "";
-
-    try {
-        // Supabase-Operation für jeden betroffenen Slot durchführen
-        for (const slot of window.slotsToClear) {
-            const slotNum = parseInt(slot);
-            const now = new Date().toISOString();
-
-            // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag existiert (Tabelle: buchungen_db, Spalte: date)
-            const { data: existingData, error: fetchError } = await window.supabaseClient
-                .from('buchungen_db')
-                .select('id')
-                .eq('date', targetDate)
-                .eq('slot', slotNum)
-                .maybeSingle();
-
-            if (fetchError) throw fetchError;
-
-            const bookingData = {
-                date: targetDate,
-                slot: slotNum,
-                klasse: "abgeklebt", // Markierung für das Frontend
-                halle: "",
-                material: "",
-                timestamp: now,
-                kommentar: "",
-                typ: "abgeklebt",
-                verfasser: userKuerzel
-            };
-
-            if (existingData && existingData.id) {
-                // Bestehenden Eintrag aktualisieren
-                const { error: updateError } = await window.supabaseClient
-                    .from('buchungen_db')
-                    .update(bookingData)
-                    .eq('id', existingData.id);
-
-                if (updateError) throw updateError;
-            } else {
-                // Neuen Eintrag anlegen
-                const { error: insertError } = await window.supabaseClient
-                    .from('buchungen_db')
-                    .insert([bookingData]);
-
-                if (insertError) throw insertError;
-            }
-
-            // News-Eintrag über Wrapper generieren, falls vorhanden
-            if (typeof window.triggerNewsWrapper === 'function') {
-                await window.triggerNewsWrapper("Abkleben", slot, klasse);
-            }
-        }
-
-        // Sofort-Fix UI: Boxen visuell leeren
-        window.slotsToClear.forEach(slot => {
-            const box = document.querySelector(`.box[data-slot="${slot}"]`);
-            if (box) {
-                box.innerHTML = "";            
-                box.className = "box empty";   
-            }
-        });
-
-        closeEditor();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        alert("Löschvorgang fehlgeschlagen: " + e.message);
-        if (deleteBtn) {
-            deleteBtn.innerHTML = '<span class="material-symbols-outlined">lock_open</span> JA, PERMANENT ABKLEBEN';
-            deleteBtn.style.pointerEvents = "auto";
-        }
-    } finally {
-        gridContainer.style.opacity = "1";
-        gridContainer.style.pointerEvents = "auto";
-    }
-};
 
 /* ============================================================
    10. NEWS-ZENTRALE & AUTOMATISCHE NOTIFIKATIONEN (SUPABASE)
@@ -7917,6 +7688,248 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
         alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
+
+
+/* ============================================================
+    10.6 ABKLEBEN
+    ============================================================ */
+
+window.starteAbklebenWorkflow = function(time, slot, klasse) {
+    const modalContainer = document.querySelector('.eigenesmenu-container');
+    if (!modalContainer) return;
+
+    const currentSlot = parseInt(slot, 10);
+    const safeKlasse = (klasse !== null && klasse !== undefined) ? klasse.toString() : "";
+    const safeTime = (time !== null && time !== undefined) ? time.toString() : "";
+    const safeSlot = (slot !== null && slot !== undefined) ? slot.toString() : "";
+
+    const aktuelleHalle = (window.lastPlanData && window.lastPlanData[currentSlot]?.halle) || "";
+    
+    // Partner-Suche (NUR nach Klasse prüfen, unabhängig von der Halle!)
+    const nextSlot = currentSlot + 5;
+    const prevSlot = currentSlot - 5;
+    const nextSlotData = (window.lastPlanData && window.lastPlanData[nextSlot]) || {};
+    const prevSlotData = (window.lastPlanData && window.lastPlanData[prevSlot]) || {};
+
+    const nextKlasse = nextSlotData.klasse ? nextSlotData.klasse.toString() : "";
+    const prevKlasse = prevSlotData.klasse ? prevSlotData.klasse.toString() : "";
+
+    let partnerSlot = null;
+    if (nextKlasse && nextKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
+        partnerSlot = nextSlot;
+    } else if (prevKlasse && prevKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
+        partnerSlot = prevSlot;
+    }
+
+    // 1. Direkt zum Security Check, wenn keine Doppellektion
+    if (!partnerSlot) {
+        window.slotsToClear = [currentSlot];
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, false);
+        return;
+    }
+
+    // 2. Header im orangenen "Zielflaggen"-Design
+    const headerHtml = `
+        <div class="eigenesmenu-header">
+            <div id="dynamic-header-title" style="color: #e67e22; font-size: 1.2em; font-weight: bold;">KLASSE ABKLEBEN</div>
+            <div id="dynamic-header-subtitle">Willst du die Aktion für die <b>gesamte Doppellektion</b> durchführen?</div>
+            <span class="material-symbols-outlined header-icon" style="color: #e67e22;">sports_score</span>
+        </div>
+    `;
+
+    // 3. Buttons im einheitlichen Stil
+    let html = `
+        <div class="eigenesmenu-liste" id="menu-options-list">
+            <div class="doppel-abfrage-container" style="padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <button id="btn-doppel-beide" class="doppel-btn">
+                    <span class="material-symbols-outlined">group</span> Für beide Lektionen
+                </button>
+                <button id="btn-doppel-einzel" class="doppel-btn">
+                    <span class="material-symbols-outlined">person</span> Nur für eine Lektion
+                </button>
+            </div>
+        </div>
+    `;
+
+    // 4. Standard Footer
+    const backCall = `window.openEditor(window.currentEditBox, '${safeTime}', '${safeSlot}', '${safeKlasse}')`;
+    html += renderFooter([
+        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backCall },
+        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
+    ]);
+
+    modalContainer.innerHTML = headerHtml + html;
+
+    // 5. Events
+    document.getElementById('btn-doppel-beide')?.addEventListener('click', () => {
+        window.slotsToClear = [currentSlot, partnerSlot];
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
+    });
+    
+    document.getElementById('btn-doppel-einzel')?.addEventListener('click', () => {
+        window.slotsToClear = [currentSlot];
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
+    });
+};
+
+
+window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
+    const container = document.querySelector('.eigenesmenu-container');
+    if (!container) return;
+
+    const backAction = isDoppel 
+        ? `window.starteAbklebenWorkflow('${time}', '${slot}', '${klasse}')` 
+        : `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')`;
+
+    // 1. Header
+    const headerHtml = `
+        <div class="eigenesmenu-header">
+            <div id="dynamic-header-title" style="color: #e67e22; font-size: 1.2em; font-weight: bold;">KLASSE ABKLEBEN</div>
+            <div id="dynamic-header-subtitle">Willst du <span style="color: #e67e22;"><b>${klasse}</b></span> dauerhaft entfernen?</div>
+            <span class="material-symbols-outlined header-icon" style="color: #e67e22; font-size: 24px;">sports_score</span>
+        </div>
+    `;
+
+    // 2. Inhalt
+    let html = `
+        <div class="eigenesmenu-liste" id="menu-options-list">
+            <div style="padding: 15px; display: flex; flex-direction: column; gap: 15px;">
+                <input type="password" id="abkleben-pw-field" placeholder="Passwort eingeben..." 
+                       style="width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; text-align: center;">
+                
+                <button id="btn-final-perma-delete" class="doppel-btn" style="background: #333;" onclick="window.fuehreAbklebenAus('${klasse}')">
+                    <span class="material-symbols-outlined">lock_open</span> JA, PERMANENT ABKLEBEN
+                </button>
+            </div>
+        </div>
+    `;
+
+    // 3. Footer
+    html += renderFooter([
+        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backAction },
+        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
+    ]);
+
+    container.innerHTML = headerHtml + html;
+    
+    const pwInput = document.getElementById('abkleben-pw-field');
+    pwInput?.focus();
+    pwInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') window.fuehreAbklebenAus(klasse); });
+};
+
+
+
+window.fuehreAbklebenAus = async function(klasse) {
+    const pwFeld = document.getElementById('abkleben-pw-field');
+    const deleteBtn = document.getElementById('btn-final-perma-delete');
+    
+    if (!pwFeld?.value.trim()) { alert("Bitte Passwort eingeben!"); return; }
+    
+    // Robuste Passwort-Prüfung
+    const userPw = (typeof window.userPw === "string") ? window.userPw : (window.userPw?.password || "");
+    if (pwFeld.value.trim() !== userPw) {
+        pwFeld.style.borderColor = "#c0392b";
+        pwFeld.value = "";
+        pwFeld.placeholder = "Falsches Passwort!";
+        return;
+    }
+
+    if (deleteBtn) {
+        deleteBtn.innerHTML = '<div class="eigenesmenu-loader" style="margin: 0 auto;"></div>';
+        deleteBtn.style.pointerEvents = "none";
+    }
+    
+    const gridContainer = document.querySelector('.stundentafel-container') || document.body;
+    gridContainer.style.opacity = "0.6";
+    gridContainer.style.pointerEvents = "none";
+
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    
+    // Verfasser absichern (verhindert {} Überschreibung)
+    let userKuerzel = "";
+    if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
+        userKuerzel = window.userKuerzel;
+    }
+
+    try {
+        // Supabase-Operation für jeden betroffenen Slot durchführen
+        for (const slot of window.slotsToClear) {
+            const slotNum = parseInt(slot);
+            const now = new Date().toISOString();
+
+            // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag existiert (Spalte: datum)
+            const { data: existingData, error: fetchError } = await window.supabaseClient
+                .from('buchungen_db')
+                .select('id')
+                .eq('datum', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
+
+            if (fetchError) throw fetchError;
+
+            const bookingData = {
+                datum: targetDate,
+                slot: slotNum,
+                klasse: "abgeklebt", // Markierung für das Frontend
+                halle: "",
+                material: "",
+                timestamp: now,
+                kommentar: "",
+                typ: "abgeklebt",
+                verfasser: userKuerzel
+            };
+
+            if (existingData && existingData.id) {
+                // Bestehenden Eintrag aktualisieren
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(bookingData)
+                    .eq('id', existingData.id);
+
+                if (updateError) throw updateError;
+            } else {
+                // Neuen Eintrag anlegen
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([bookingData]);
+
+                if (insertError) throw insertError;
+            }
+
+            // News-Eintrag über Wrapper generieren, falls vorhanden
+            if (typeof window.triggerNewsWrapper === 'function') {
+                await window.triggerNewsWrapper("Abkleben", slot, klasse);
+            }
+        }
+
+        // Sofort-Fix UI: Boxen visuell leeren
+        window.slotsToClear.forEach(slot => {
+            const box = document.querySelector(`.box[data-slot="${slot}"]`);
+            if (box) {
+                box.innerHTML = "";            
+                box.className = "box empty";    
+            }
+        });
+
+        closeEditor();
+        if (typeof syncPlan === 'function') syncPlan();
+
+    } catch (e) {
+        alert("Löschvorgang fehlgeschlagen: " + e.message);
+        if (deleteBtn) {
+            deleteBtn.innerHTML = '<span class="material-symbols-outlined">lock_open</span> JA, PERMANENT ABKLEBEN';
+            deleteBtn.style.pointerEvents = "auto";
+        }
+    } finally {
+        gridContainer.style.opacity = "1";
+        gridContainer.style.pointerEvents = "auto";
+    }
+};
+
+
+
+
+
 
 
 
