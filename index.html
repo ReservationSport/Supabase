@@ -4924,7 +4924,7 @@ window.loadPlan = async function() {
                     String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
                 );
                 
-                // 🛠️ FIX KUERZEL-ZUGRIFF: Prüft explizit ob es ein Text oder ein HTML-Input ist!
+                // Kürzel aus Variable oder HTML-Element auslesen
                 let rawUserKuerzel = "";
                 if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
                     rawUserKuerzel = userKuerzel;
@@ -4934,7 +4934,12 @@ window.loadPlan = async function() {
                 }
 
                 const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
-                const isMyBooking = (safeUserKuerzel !== "" && verfasser.trim().toLowerCase() === safeUserKuerzel);               
+                
+                // 🛠️ ANPASSUNG: Prüft Verfasser ODER Lehrer aus den Master-Daten!
+                const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+                const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
+                const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
+                
                 const canEdit = isMyClass || isMyBooking;
 
                 const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
