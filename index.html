@@ -7386,6 +7386,8 @@ window.loescheNotizVomModal = function(slot, klasse) {
     if (textFeld) textFeld.value = ""; 
     window.speichereNotizVomModal(slot, klasse);
 };
+
+
     
 window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverride) {
     if (window.isSavingNotiz) return;
@@ -7411,7 +7413,9 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
     const neuerKommentar = textFeld.value.trim();
     const now = new Date().toISOString();
-    const userKuerzel = window.userKuerzel || "";
+    
+    // Verfasser absichern: Wenn kein neues Kürzel da ist, das bestehende aus den Slot-Daten behalten!
+    const userKuerzel = window.userKuerzel || currentSlotData.verfasser || currentSlotData.lehrperson || "";
 
     const onCompleteVisuals = () => {
         window.isSavingNotiz = false;
@@ -7424,6 +7428,7 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
         if (window.lastPlanData) {
             if (!window.lastPlanData[slotNum]) window.lastPlanData[slotNum] = {};
             window.lastPlanData[slotNum].kommentar = neuerKommentar;
+            window.lastPlanData[slotNum].verfasser = userKuerzel;
         }
 
         const box = document.querySelector(`[data-slot="${slotNum}"]`);
@@ -7496,6 +7501,7 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
         alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
+    
 
 window.zeigeDoppellektionNotizAbfrage = function(slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
