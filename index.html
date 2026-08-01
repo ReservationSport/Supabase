@@ -4796,6 +4796,8 @@ window.hideLoading = function() {
     }
 };
 
+
+    
 window.loadPlan = async function() {
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
@@ -4848,8 +4850,8 @@ window.loadPlan = async function() {
         if (masterData) {
             masterData.forEach(row => {
                 if (plan[row.slot]) {
-                    plan[row.slot].klasse = row.klasse || "";
-                    plan[row.slot].lehrer = row.lehrer || "";
+                    plan[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
+                    plan[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
                 }
             });
         }
@@ -4872,8 +4874,8 @@ window.loadPlan = async function() {
                         plan[slot].material = "";
                     } else {
                         if (klasseAusDB !== "") plan[slot].klasse = klasseAusDB;
-                        if (row.halle) plan[slot].halle = row.halle;
-                        if (row.material) plan[slot].material = row.material;
+                        if (row.halle) plan[slot].halle = row.halle.toString();
+                        if (row.material) plan[slot].material = row.material.toString();
                         if (row.kommentar) plan[slot].kommentar = row.kommentar.toString();
                         if (row.typ) plan[slot].typ = row.typ.toString();
                         if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
@@ -4962,6 +4964,7 @@ window.loadPlan = async function() {
         container.innerHTML = `<div class="box info-box" style="color:red; grid-column: span 6;">Fehler: Daten konnten nicht geladen werden.</div>`;
     }
 };
+    
 
 /* ============================================================
    ZENTRALE KLICK-STEUERUNG
@@ -5066,11 +5069,11 @@ window.syncPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen
+        // 4. Master-Daten eintragen (Sicher mit .toString())
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
-                newPlan[row.slot].klasse = row.klasse || "";
-                newPlan[row.slot].lehrer = row.lehrer || "";
+                newPlan[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
+                newPlan[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
             }
         });
 
@@ -5091,8 +5094,8 @@ window.syncPlan = async function() {
                         newPlan[slot].material = "";
                     } else {
                         if (klasseAusDB !== "") newPlan[slot].klasse = klasseAusDB;
-                        if (row.halle) newPlan[slot].halle = row.halle;
-                        if (row.material) newPlan[slot].material = row.material;
+                        if (row.halle) newPlan[slot].halle = row.halle.toString();
+                        if (row.material) newPlan[slot].material = row.material.toString();
                         if (row.kommentar) newPlan[slot].kommentar = row.kommentar.toString();
                         if (row.typ) newPlan[slot].typ = row.typ.toString();
                         if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
