@@ -7506,7 +7506,8 @@ window.handleMoveConfirm = async function(targetSlot) {
     try {
         const dp = document.getElementById('datePicker');
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const sourceSlot = tempMoveMode.sourceSlot;
+        const sourceSlot = parseInt(tempMoveMode.sourceSlot, 10);
+        const targetSlotNum = parseInt(targetSlot, 10);
         const bookingData = tempMoveMode.bookingData || tempMoveMode;
         
         let userKuerzel = "";
@@ -7514,41 +7515,54 @@ window.handleMoveConfirm = async function(targetSlot) {
             userKuerzel = window.userKuerzel;
         }
 
-        // 1. Quell-Slot in Supabase leeren (korrigiert von 'date' auf 'datum')
-        const { error: errorSource } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                datum: dateVal,
-                slot: parseInt(sourceSlot),
-                klasse: "",
-                halle: "",
-                material: "",
-                kommentar: "",
-                details: "",
-                typ: "buchung",
-                verfasser: ""
-            }, { onConflict: 'datum,slot' });
+        // Hilfsfunktion: Speicher-Logik ohne onConflict (Verwendet ID-Check)
+        const saveOrUpdateSlot = async (slotNum, dataPayload) => {
+            const { data: existing, error: fetchErr } = await supabaseClient
+                .from('buchungen_db')
+                .select('id')
+                .eq('datum', dateVal)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-        if (errorSource) throw errorSource;
+            if (fetchErr) throw fetchErr;
 
-        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (korrigiert von 'date' auf 'datum')
-        const { error: errorTarget } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                datum: dateVal,
-                slot: parseInt(targetSlot),
-                klasse: bookingData.klasse || "",
-                halle: bookingData.halle || "",
-                material: bookingData.material || "",
-                kommentar: bookingData.kommentar || "",
-                details: bookingData.details || bookingData.materialDetail || "",
-                typ: bookingData.typ || "buchung",
-                verfasser: userKuerzel
-            }, { onConflict: 'datum,slot' });
+            if (existing && existing.id) {
+                const { error: updateErr } = await supabaseClient
+                    .from('buchungen_db')
+                    .update(dataPayload)
+                    .eq('id', existing.id);
+                if (updateErr) throw updateErr;
+            } else {
+                const { error: insertErr } = await supabaseClient
+                    .from('buchungen_db')
+                    .insert([{ ...dataPayload, datum: dateVal, slot: slotNum }]);
+                if (insertErr) throw insertErr;
+            }
+        };
 
-        if (errorTarget) throw errorTarget;
+        // 1. Quell-Slot leeren
+        await saveOrUpdateSlot(sourceSlot, {
+            klasse: "",
+            halle: "",
+            material: "",
+            kommentar: "",
+            details: "",
+            typ: "buchung",
+            verfasser: ""
+        });
 
-        console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlot} verschoben.`);
+        // 2. Ziel-Slot beschreiben
+        await saveOrUpdateSlot(targetSlotNum, {
+            klasse: bookingData.klasse || "",
+            halle: bookingData.halle || "",
+            material: bookingData.material || "",
+            kommentar: bookingData.kommentar || "",
+            details: bookingData.details || bookingData.materialDetail || "",
+            typ: bookingData.typ || "buchung",
+            verfasser: userKuerzel
+        });
+
+        console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlotNum} verschoben.`);
 
         // 3. Plan neu laden
         if (typeof loadPlan === 'function') {
@@ -7569,7 +7583,7 @@ window.handleMoveConfirm = async function(targetSlot) {
 
     } catch (err) {
         console.error("Verschiebe-Fehler (Supabase):", err);
-        alert("Fehler beim Verschieben der Lektion.");
+        alert("Fehler beim Verschieben der Lektion: " + err.message);
     } finally {
         if (typeof hideLoading === 'function') hideLoading();
         window.currentInteractionMode = null;
@@ -7579,6 +7593,8 @@ window.handleMoveConfirm = async function(targetSlot) {
     }
 };
 
+
+    
 /* ============================================================
     10.5. AUSFALL
     ============================================================ */
