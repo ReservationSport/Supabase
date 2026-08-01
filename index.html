@@ -6848,18 +6848,19 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
     };
 
     try {
-        // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag in Supabase existiert
+        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
-            .eq('date', targetDate)
+            .eq('datum', targetDate)
             .eq('slot', slotNum)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
 
+        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const bookingData = {
-            date: targetDate,
+            datum: targetDate,
             slot: slotNum,
             klasse: klasse || currentSlotData.klasse || "",
             halle: currentSlotData.halle || "",
@@ -6938,17 +6939,19 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
     };
 
     try {
+        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
-            .eq('date', targetDate)
+            .eq('datum', targetDate)
             .eq('slot', slotNum)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
 
+        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const bookingData = {
-            date: targetDate,
+            datum: targetDate,
             slot: slotNum,
             klasse: klasse || currentSlotData.klasse || "",
             halle: currentSlotData.halle || "",
