@@ -7691,7 +7691,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
 
 
 /* ============================================================
-    10.6 ABKLEBEN (Mit robuster Passwort-Prüfung)
+    10.6 ABKLEBEN
     ============================================================ */
 
 window.starteAbklebenWorkflow = function(time, slot, klasse) {
@@ -7703,8 +7703,6 @@ window.starteAbklebenWorkflow = function(time, slot, klasse) {
     const safeTime = (time !== null && time !== undefined) ? time.toString() : "";
     const safeSlot = (slot !== null && slot !== undefined) ? slot.toString() : "";
 
-    const aktuelleHalle = (window.lastPlanData && window.lastPlanData[currentSlot]?.halle) || "";
-    
     // Partner-Suche (NUR nach Klasse prüfen, unabhängig von der Halle!)
     const nextSlot = currentSlot + 5;
     const prevSlot = currentSlot - 5;
@@ -7818,7 +7816,6 @@ window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
 };
 
 
-
 window.fuehreAbklebenAus = async function(klasse) {
     const pwFeld = document.getElementById('abkleben-pw-field');
     const deleteBtn = document.getElementById('btn-final-perma-delete');
@@ -7827,7 +7824,6 @@ window.fuehreAbklebenAus = async function(klasse) {
     
     const eingegebenesPW = pwFeld.value.trim();
 
-    // Robuste Passwort-Ermittlung aus allen gängigen globalen Quellen / Storage
     const gespeichertesPW = 
         (typeof window.userPw === "string" ? window.userPw : null) ||
         (window.userPw?.password) ||
@@ -7836,10 +7832,6 @@ window.fuehreAbklebenAus = async function(klasse) {
         (localStorage.getItem('adminPw')) ||
         ""; 
 
-    // Debugging-Hilfe: Schau in die F12-Konsole, falls es fehlschlägt
-    console.log("Passwort-Check Abkleben -> Eingegeben:", eingegebenesPW, "| Erwartet:", gespeichertesPW);
-
-    // Falls gar kein Passwort im System hinterlegt ist, bitteschön nicht blockieren oder anpassen
     if (gespeichertesPW && eingegebenesPW !== gespeichertesPW) {
         pwFeld.style.borderColor = "#c0392b";
         pwFeld.value = "";
@@ -7857,63 +7849,50 @@ window.fuehreAbklebenAus = async function(klasse) {
     gridContainer.style.pointerEvents = "none";
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    
-    let userKuerzel = "";
-    if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
-        userKuerzel = window.userKuerzel;
-    }
 
     try {
         for (const slot of window.slotsToClear) {
             const slotNum = parseInt(slot);
-            const now = new Date().toISOString();
 
-            const { data: existingData, error: fetchError } = await window.supabaseClient
-                .from('buchungen_db')
-                .select('id')
+            // 1. Aus master_db löschen (Klasse aus dem Master-Plan entfernen)
+            const { error: masterError } = await window.supabaseClient
+                .from('master_db')
+                .delete()
                 .eq('datum', targetDate)
-                .eq('slot', slotNum)
-                .maybeSingle();
+                .eq('slot', slotNum);
 
-            if (fetchError) throw fetchError;
-
-            const bookingData = {
-                datum: targetDate,
-                slot: slotNum,
-                klasse: "abgeklebt",
-                halle: "",
-                material: "",
-                timestamp: now,
-                kommentar: "",
-                typ: "abgeklebt",
-                verfasser: userKuerzel
-            };
-
-            if (existingData && existingData.id) {
-                const { error: updateError } = await window.supabaseClient
-                    .from('buchungen_db')
-                    .update(bookingData)
-                    .eq('id', existingData.id);
-
-                if (updateError) throw updateError;
-            } else {
-                const { error: insertError } = await window.supabaseClient
-                    .from('buchungen_db')
-                    .insert([bookingData]);
-
-                if (insertError) throw insertError;
+            if (masterError) {
+                console.error("Fehler beim Löschen aus master_db:", masterError);
             }
 
+            // 2. Vorhandene Buchungen aus buchungen_db löschen (kein "abgeklebt"-Eintrag mehr)
+            const { error: buchungenError } = await window.supabaseClient
+                .from('buchungen_db')
+                .delete()
+                .eq('datum', targetDate)
+                .eq('slot', slotNum);
+
+            if (buchungenError) {
+                console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
+            }
+
+            // 3. News-System weiterhin triggern
             if (typeof window.triggerNewsWrapper === 'function') {
                 await window.triggerNewsWrapper("Abkleben", slot, klasse);
             }
         }
 
+        // Sofort-Fix UI: Boxen komplett leeren (inkl. box-is-mine und Farben entfernen)
         window.slotsToClear.forEach(slot => {
-            const box = document.querySelector(`.box[data-slot="${slot}"]`);
+            const box = document.querySelector(`.box[data-slot="${slot}"]`) || document.querySelector(`[data-slot="${slot}"]`);
             if (box) {
                 box.innerHTML = "";            
                 box.className = "box empty";    
+                box.style.backgroundColor = "";
+                box.removeAttribute('data-notiz');
+            }
+            if (window.lastPlanData && window.lastPlanData[slot]) {
+                delete window.lastPlanData[slot];
             }
         });
 
