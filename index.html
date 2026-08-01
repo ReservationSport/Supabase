@@ -5714,7 +5714,6 @@ window.showNews = function() {
 
         const newsTextLower = (news.text !== null && news.text !== undefined) ? news.text.toString().toLowerCase() : ""; 
         const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase() : ""; 
-        const verf = safeVerfasserInput !== '' ? safeVerfasserInput : 'Jemand'; 
         const kl = (news.klasse !== null && news.klasse !== undefined) ? news.klasse.toString() : 'unbekannt'; 
         
         let displayHeader = ""; 
@@ -5766,19 +5765,19 @@ window.showNews = function() {
         } 
         else if (hallenTypLower.includes("badi") || newsTextLower.includes("badi")) { 
             displayHeader = "Halle frei!"; 
-            displayMain = `${verf} ist mit der ${kl} in der Badi!`; 
+            displayMain = `Die Klasse ${kl} ist in der Badi!`; 
         } 
         else if (hallenTypLower.includes("outdoor") || newsTextLower.includes("outdoor")) { 
             displayHeader = "Halle frei!"; 
-            displayMain = `${verf} ist mit der ${kl} draussen!`; 
+            displayMain = `Die Klasse ${kl} ist draussen!`; 
         } 
         else if (hallenTypLower.includes("beendet") || hallenTypLower.includes("abgeklebt") || newsTextLower.includes("abgeklebt")) { 
             displayHeader = "Halle frei!"; 
-            displayMain = `${verf} hat die Klasse ${kl} abgeklebt!`; 
+            displayMain = `Die Klasse ${kl} wurde abgeklebt!`; 
         } 
         else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall")) { 
             displayHeader = "Halle frei!"; 
-            displayMain = `${verf} hat für die ${kl} einen Ausfall eingetragen!`; 
+            displayMain = `Die Klasse ${kl} fällt aus!`; 
         } 
         else { 
             displayHeader = "Info:"; 
@@ -5788,6 +5787,10 @@ window.showNews = function() {
         const card = document.createElement('div'); 
         card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`; 
         const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : ''; 
+
+        // Unten links: Datum im Format 03.08.2026 (08:05-08:50) ohne Leerzeichen um den Bindestrich in der Uhrzeit
+        const formatierteUhrzeit = uhrzeit.replace(/\s*-\s*/g, '-');
+        const untenLinksText = uhrzeit ? `${formatiertesDatum} (${formatierteUhrzeit})` : formatiertesDatum;
 
         card.innerHTML = ` 
             <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;"> 
@@ -5799,7 +5802,7 @@ window.showNews = function() {
                 <div style="font-style: italic;">${displayMain}</div> 
             </div> 
             <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;"> 
-                <span>${formatiertesDatum} ${uhrzeit}</span> 
+                <span>${untenLinksText}</span> 
                 <span style="font-weight:bold;">${displayVerfasser}</span> 
             </div> 
         `; 
