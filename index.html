@@ -6305,7 +6305,6 @@ window.saveImmediately = async function(payload, options = {}) {
     if (isLocal) {
         console.log("🎯 LOKALER MODUS: Speicherbefehl simuliert:", payload);
         
-        // Führe News-Trigger lokal aus, damit das UI sofort reagiert
         if (typeof runNewsTriggerLogic === 'function') {
             runNewsTriggerLogic(payload);
         }
@@ -6329,22 +6328,58 @@ window.saveImmediately = async function(payload, options = {}) {
         const dateVal = payload.datum || (dp ? dp.value : new Date().toISOString().split('T')[0]);
         const slotNum = parseInt(payload.slot, 10);
 
-        // Supabase Upsert auf die buchungen_db (Korrigiert von 'date' zu 'datum')
-        const { error } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                datum: dateVal,
-                slot: slotNum,
-                klasse: payload.klasse || "",
-                halle: payload.halle || "",
-                material: payload.material || "",
-                kommentar: payload.kommentar || "",
-                details: payload.details || payload.materialDetail || "",
-                typ: payload.typ || "buchung",
-                verfasser: userKuerzel || ""
-            }, { onConflict: 'datum,slot', signal: options.signal });
+        const bookingData = {
+            datum: dateVal,
+            slot: slotNum,
+            klasse: payload.klasse || "",
+            halle: payload.halle || "",
+            material: payload.material || "",
+            kommentar: payload.kommentar || "",
+            details: payload.details || payload.materialDetail || "",
+            typ: payload.typ || "buchung",
+            verfasser: userKuerzel || ""
+        };
 
-        if (error) throw error;
+        // 3. Prüfen, ob für dieses Datum & diesen Slot bereits ein Eintrag existiert
+        let query = supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('datum', dateVal)
+            .eq('slot', slotNum);
+
+        if (options.signal) {
+            query = query.abortSignal(options.signal);
+        }
+
+        const { data: existingData, error: fetchError } = await query.maybeSingle();
+        if (fetchError) throw fetchError;
+
+        if (existingData && existingData.id) {
+            // Update, falls Eintrag existiert
+            let updateQuery = supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (options.signal) {
+                updateQuery = updateQuery.abortSignal(options.signal);
+            }
+
+            const { error: updateError } = await updateQuery;
+            if (updateError) throw updateError;
+        } else {
+            // Insert, falls noch kein Eintrag existiert
+            let insertQuery = supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (options.signal) {
+                insertQuery = insertQuery.abortSignal(options.signal);
+            }
+
+            const { error: insertError } = await insertQuery;
+            if (insertError) throw insertError;
+        }
 
         console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
         
@@ -6360,7 +6395,6 @@ window.saveImmediately = async function(payload, options = {}) {
         return { status: "error", msg: e.toString() };
     }
 };
-
     
 
 /* ============================================================
