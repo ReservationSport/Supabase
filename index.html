@@ -4820,13 +4820,21 @@ window.loadPlan = async function() {
     }
 
     try {
-        // 💡 NEU: Lädt automatisch alle Hallen, Farben & Icons aus "konfiguration", falls noch nicht geschehen
+        // 💡 NEU: Lädt automatisch Hallen- und Material-Konfigurationen parallel aus Supabase
+        const configPromises = [];
+
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
-            if (typeof window.initHallenConfig === 'function') {
-                await window.initHallenConfig();
-            } else if (typeof initHallenConfig === 'function') {
-                await initHallenConfig();
-            }
+            const initHallen = window.initHallenConfig || (typeof initHallenConfig === 'function' ? initHallenConfig : null);
+            if (initHallen) configPromises.push(initHallen());
+        }
+
+        if (!window.materialConfig || Object.keys(window.materialConfig).length === 0) {
+            const initMaterial = window.initMaterialConfig || (typeof initMaterialConfig === 'function' ? initMaterialConfig : null);
+            if (initMaterial) configPromises.push(initMaterial());
+        }
+
+        if (configPromises.length > 0) {
+            await Promise.all(configPromises);
         }
 
         // --- DATEN AUS SUPABASE LADEN ---
@@ -4951,7 +4959,7 @@ window.loadPlan = async function() {
                 
                 const canEdit = isMyClass || isMyBooking;
 
-                // 🛠️ Holt die Farbe direkt aus window.hallenConfig (unterstützt color & farbe)
+                // Holt die Farbe direkt aus window.hallenConfig (unterstützt color & farbe)
                 const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
                 const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
                 
@@ -6542,7 +6550,41 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
 /* ============================================================
    10.2. MATERIAL BUCHEN
    ============================================================ */
-   
+
+window.initMaterialConfig = async function() {
+    try {
+        console.log("Lade Material-Konfiguration aus Supabase...");
+        const { data, error } = await supabaseClient
+            .from('material')
+            .select('*'); // Lädt material, icon, beschreibung etc.
+
+        if (error) throw error;
+
+        window.materialConfig = {};
+        
+        if (data) {
+            data.forEach(item => {
+                // Liest die Spalte 'material' aus
+                const matName = item.material || item.name;
+                if (matName) {
+                    window.materialConfig[matName] = {
+                        name: matName,
+                        icon: item.icon || 'inventory_2', // Fallback Icon falls keins vorhanden
+                        ...item // Speichert alle weiteren Felder aus der DB
+                    };
+                }
+            });
+        }
+        console.log("Material-Konfiguration erfolgreich geladen:", window.materialConfig);
+        return window.materialConfig;
+    } catch (err) {
+        console.error("Fehler beim Laden der Material-Konfiguration:", err);
+        return {};
+    }
+};
+
+
+    
 function handleMaterialUI(time, slot, klasse, modalElement) {
     const root = modalElement || document.getElementById('eigenesmenu-modal');
     if (!root) return;
@@ -6552,10 +6594,22 @@ function handleMaterialUI(time, slot, klasse, modalElement) {
     const existingFooter = root.querySelector('.modal-footer') || root.querySelector('.menu-footer-container');
     if (existingFooter) { existingFooter.remove(); }
 
-    // 2. Datenquelle: Nutzt deine existierende globale Variable
-    let materialQuelle = (typeof verfügbareMaterialien !== 'undefined' && Array.isArray(verfügbareMaterialien)) 
-                         ? verfügbareMaterialien 
-                         : [];
+    // 2. Datenquelle: Priorisiert window.materialConfig, Fallback auf verfügbareMaterialien
+    let materialListe = [];
+
+    if (window.materialConfig && Object.keys(window.materialConfig).length > 0) {
+        // Material-Objekte aus window.materialConfig auslesen
+        materialListe = Object.values(window.materialConfig).map(item => ({
+            name: item.material || item.name || "",
+            icon: item.icon || 'inventory_2'
+        }));
+    } else if (typeof verfügbareMaterialien !== 'undefined' && Array.isArray(verfügbareMaterialien)) {
+        // Fallback: Array aus einfachen Strings
+        materialListe = verfügbareMaterialien.map(item => ({
+            name: typeof item === 'string' ? item : (item.material || item.name || ""),
+            icon: item.icon || 'inventory_2'
+        }));
+    }
 
     // 3. Container-Struktur sicherstellen
     let liste = root.querySelector('#menu-options-list') || root.querySelector('.eigenesmenu-liste');
@@ -6595,11 +6649,13 @@ function handleMaterialUI(time, slot, klasse, modalElement) {
             <span id="custom-check" class="check-indicator" style="margin-left: auto; color: #666; font-size: 20px;">○</span>
             </div>`;
 
-    materialQuelle.forEach(mat => {
-        const matClean = mat ? mat.toString().trim() : "";
+    materialListe.forEach(matObj => {
+        const matClean = matObj.name ? matObj.name.toString().trim() : "";
         if (matClean === "") return;
+        const iconName = matObj.icon || 'inventory_2';
+
         html += `<div class="hallen-option-wrapper material-selectable" style="display: flex; height: 50px; background: #222; border: 1px solid #444; border-radius: 8px; cursor: pointer; align-items: center; padding: 0 15px;" onclick="toggleMaterialSelection('${matClean}', this)">
-                <span class="material-symbols-outlined" style="margin-right: 12px; color: #fff;">deployed_code</span> 
+                <span class="material-symbols-outlined" style="margin-right: 12px; color: #fff;">${iconName}</span> 
                 <span class="btn-text" style="color: #fff;">${matClean}</span>
                 <span class="check-indicator" style="margin-left: auto; color: #666; font-size: 20px;">○</span>
                 </div>`;
