@@ -7064,16 +7064,26 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
     }
 
     const slotData = (window.lastPlanData && slotId) ? window.lastPlanData[slotId] : {};
-    const rawDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || "";
+    
+    // 💡 1. Alle möglichen Quellen für die Details in logischer Priorität abfragen
+    const rawDetail = detail 
+        || slotData.details 
+        || slotData.detail 
+        || slotData.materialDetail 
+        || slotData.materialKommentar 
+        || slotData.kommentar 
+        || "";
 
-    const isAbzugeben = rawDetail.includes("[weitergabe:true]");
-    let cleanDetail = rawDetail.replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
+    const isAbzugeben = String(rawDetail).includes("[weitergabe:true]");
+    let cleanDetail = String(rawDetail).replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
 
     let isMyBox = false;
     try {
-        const creatorKuerzel = slotData.lehrer || slotData.kuerzel || slotData.user || slotData.teacher || slotData.verfasser || "";
-        if (typeof userKuerzel !== 'undefined' && userKuerzel && creatorKuerzel) {
-            isMyBox = (userKuerzel.trim().toLowerCase() === creatorKuerzel.trim().toLowerCase());
+        const creatorKuerzel = slotData.verfasser || slotData.lehrer || slotData.kuerzel || slotData.user || slotData.teacher || "";
+        const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
+        
+        if (activeUser && creatorKuerzel) {
+            isMyBox = (activeUser.trim().toLowerCase() === String(creatorKuerzel).trim().toLowerCase());
         }
     } catch (err) {
         console.warn("Fehler bei der Besitzer-Prüfung:", err);
@@ -7087,7 +7097,7 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
         actionButtonHtml = `
         <div id="popup-action-btn" style="margin-top: 12px; padding: 12px; border-radius: 8px; text-align: center; cursor: pointer; font-size: 0.95rem; font-weight: bold; transition: all 0.2s; background: #ff9800; color: #111; box-shadow: 0 2px 6px rgba(255,152,0,0.3);"
              onmouseover="this.style.background='#e08600'" onmouseout="this.style.background='#ff9800'">
-            <span class="material-symbols-outlined" style="position: relative; top: -1px; vertical-align: middle; font-size: 18px; margin-right: 6px; margin-right: 0 !important;">${buttonIcon}</span> 
+            <span class="material-symbols-outlined" style="position: relative; top: -1px; vertical-align: middle; font-size: 18px; margin-right: 0 !important;">${buttonIcon}</span> 
             <span id="popup-btn-text">${buttonText}</span>
         </div>`;
     }
@@ -7100,7 +7110,6 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
             <span style="font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                 Materialbuchung für <span style="color: #ff9800;">${klasse}</span>
             </span>
-
         </div>
         
         <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #444; text-align: left;">
@@ -7155,7 +7164,7 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
     let currentDatum = slotData.datum || slotData.date || slotData.datumFormatted || window.currentDate || window.selectedDate || "";
     
     if (!currentDatum && slotId) {
-        const match = slotId.match(/\d{4}-\d{2}-\d{2}/);
+        const match = String(slotId).match(/\d{4}-\d{2}-\d{2}/);
         if (match) currentDatum = match[0];
     }
 
@@ -7176,18 +7185,22 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
 
     const slotNum = parseInt(slotId);
 
+    // Kürzel sicher ermitteln (ohne DOM-Kollision & Fallback auf bestehenden Verfasser)
+    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
+    const finalVerfasser = activeUser || slotData.verfasser || "";
+
     try {
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
-            .eq('date', currentDatum)
+            .eq('datum', currentDatum) // ✅ 'datum' statt 'date'
             .eq('slot', slotNum)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
 
         const bookingData = {
-            date: currentDatum,
+            datum: currentDatum, // ✅ 'datum' statt 'date'
             slot: slotNum,
             klasse: slotData.klasse || "",
             halle: slotData.halle || "",
@@ -7196,7 +7209,7 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
             kommentar: slotData.kommentar || "",
             timestamp: new Date().toISOString(),
             typ: slotData.typ || "buchung",
-            verfasser: userKuerzel || ""
+            verfasser: finalVerfasser
         };
 
         if (existingData && existingData.id) {
