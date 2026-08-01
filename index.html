@@ -6825,8 +6825,8 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
 
-    // 💡 1. Übergebenen User nutzen, sonst Fallback auf window.userKuerzel, sonst bisherigen Verfasser behalten
-    const activeUser = (userKuerzel || window.userKuerzel || "").trim();
+    // 💡 Kürzel direkt inline prüfen (nur verarbeiten, wenn es wirklich ein Text ist)
+    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
     const onCompleteVisuals = (materialVal, detailVal) => {
@@ -6841,7 +6841,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
                 ...window.lastPlanData[slotNum],
                 material: materialVal,
                 materialDetail: detailVal,
-                verfasser: finalVerfasser // Auch lokal aktualisieren
+                verfasser: finalVerfasser
             };
         }
 
@@ -6871,7 +6871,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
             details: detail || "",
             timestamp: now,
             typ: currentSlotData.typ || "buchung",
-            verfasser: finalVerfasser // ✅ Sicheres Kürzel verwenden
+            verfasser: finalVerfasser
         };
 
         if (existingData && existingData.id) {
@@ -6919,8 +6919,8 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
 
-    // 💡 1. Übergebenen User nutzen, sonst Fallback auf window.userKuerzel, sonst bisherigen Verfasser behalten
-    const activeUser = (userKuerzel || window.userKuerzel || "").trim();
+    // 💡 Kürzel direkt inline prüfen (nur verarbeiten, wenn es wirklich ein Text ist)
+    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
     const onCompleteVisuals = () => {
@@ -6934,7 +6934,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
                 ...window.lastPlanData[slotNum],
                 material: "",
                 materialDetail: "",
-                verfasser: finalVerfasser // Auch lokal aktualisieren
+                verfasser: finalVerfasser
             };
         }
         
@@ -6964,7 +6964,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
             details: "",
             timestamp: now,
             typ: currentSlotData.typ || "buchung",
-            verfasser: finalVerfasser // ✅ Sicheres Kürzel verwenden
+            verfasser: finalVerfasser
         };
 
         if (existingData && existingData.id) {
