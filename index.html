@@ -5471,7 +5471,7 @@ async function initNewsSystem() {
         console.error("Fehler beim Init (News):", e); 
     }
 }
-
+    
 /**
  * Aktualisiert den roten Punkt (Badge).
  */
@@ -5582,7 +5582,7 @@ window.showNews = function() {
         } else if (hallenTypLower.includes("outdoor") || newsTextLower.includes("outdoor")) {
             displayHeader = "Halle frei!";
             displayMain = `${verf} ist mit der ${kl} draussen!`;
-        } else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall")) {
+        } else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall") || hallenTypLower.includes("beendet") || hallenTypLower.includes("abgeklebt")) {
             displayHeader = "Halle frei!";
             displayMain = `${verf} hat für die ${kl} einen Ausfall eingetragen!`;
         } else {
@@ -5632,7 +5632,6 @@ window.showNews = function() {
                 }
                 if (typeof updateNewsDot === 'function') updateNewsDot();
 
-                // Server-Update via Supabase (news_db)
                 try {
                     await window.supabaseClient
                         .from('news_db')
@@ -5903,6 +5902,8 @@ window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
             newsTyp = "outdoor";
         } else if (aktionLower.includes("badi")) {
             newsTyp = "badi";
+        } else if (aktionLower.includes("ausfall")) {
+            newsTyp = "ausfall";
         } else if (aktionLower === "beendet" || aktionLower === "abgeklebt") {
             newsTyp = "beendet";
         } else if (aktionLower === "defekt") {
@@ -5915,6 +5916,8 @@ window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
     }
 };
 
+
+    
 
 /* ============================================================
    10. TASK MANAGER
@@ -6296,23 +6299,9 @@ function getDoppellektionPartnerSlot(currentSlot) {
 
 /**
  * Der "Postbote": Sendet Daten direkt an Supabase
- * Inklusive lokaler Entwicklungs-Weiche für VS Code (localhost)
  */
 window.saveImmediately = async function(payload, options = {}) {
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-
-    // 1. LOKALER MODUS (Simuliert den Erfolg ohne Server-Call)
-    if (isLocal) {
-        console.log("🎯 LOKALER MODUS: Speicherbefehl simuliert:", payload);
-        
-        if (typeof runNewsTriggerLogic === 'function') {
-            runNewsTriggerLogic(payload);
-        }
-        
-        return { status: "success", msg: "Lokal erfolgreich simuliert" };
-    }
-
-    // 2. ONLINE-MODUS (Supabase-Anbindung)
+    // 1. Validierung
     if (!supabaseClient) {
         console.error("❌ saveImmediately abgebrochen: 'supabaseClient' ist nicht definiert!");
         return { status: "error", msg: "Supabase-Client fehlt" };
@@ -6340,7 +6329,7 @@ window.saveImmediately = async function(payload, options = {}) {
             verfasser: userKuerzel || ""
         };
 
-        // 3. Prüfen, ob für dieses Datum & diesen Slot bereits ein Eintrag existiert
+        // 2. Prüfen, ob für dieses Datum & diesen Slot bereits ein Eintrag existiert
         let query = supabaseClient
             .from('buchungen_db')
             .select('id')
@@ -6383,10 +6372,6 @@ window.saveImmediately = async function(payload, options = {}) {
 
         console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
         
-        if (typeof runNewsTriggerLogic === 'function') {
-            runNewsTriggerLogic(payload);
-        }
-        
         return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
 
     } catch (e) {
@@ -6395,6 +6380,48 @@ window.saveImmediately = async function(payload, options = {}) {
         return { status: "error", msg: e.toString() };
     }
 };
+
+
+
+// Interne Hilfsfunktion, die die Payloads nacheinander an saveImmediately übergibt
+function executePayloads(payloadArray, onCompleteVisuals) {
+    payloadArray.forEach(async p => {
+        // 1. NEU: Box suchen und DOM-Attribut als Sperre setzen
+        const box = document.querySelector(`[data-slot="${p.slot}"]`);
+        if (box) {
+            box.setAttribute('data-sync-status', 'pending');
+        }
+
+        // 2. Visuelles UI-Update sofort triggern
+        if (typeof onCompleteVisuals === "function") {
+            onCompleteVisuals(p); 
+        }
+
+        // 3. Abschicken
+        try {
+            const result = await saveImmediately(p);
+            if (result && result.status === "success") {
+                if (p.halle === "Ausfall" || (p.halle && p.halle.includes("Outdoor"))) {
+                    if (typeof window.triggerNewsWrapper === "function") {
+                        window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
+                    }
+                }
+                
+                // --- WICHTIG: KEIN Timeout zum Löschen mehr! ---
+                // Die Sperre bleibt jetzt bestehen, bis syncPlan 
+                // beim nächsten Takt den Erfolg validiert hat.
+            } else {
+                // Falls Server-Fehler: Sperre sofort entfernen
+                if (box) box.removeAttribute('data-sync-status');
+            }
+        } catch (e) {
+            // Falls Network-Fehler: Sperre sofort entfernen
+            if (box) box.removeAttribute('data-sync-status');
+        }
+    });
+}
+
+
     
 
 /* ============================================================
@@ -8225,93 +8252,6 @@ window.fuehreAbklebenAus = async function(klasse) {
 
 
 
-
-    
-
-
-
-
-
-
-    
-/**
- * Interne Hilfsfunktion: Hält die News-Logik sauber
- */
-function runNewsTriggerLogic(payload) {
-    const action = payload.action || payload.mode;
-    
-    if (action === "saveBooking" && typeof triggerNews === "function") {
-        const slotIndex = parseInt(payload.slot);
-        const klasseName = payload.klasse || "";
-        const halleWert = payload.halle ? payload.halle.toString().trim() : "";
-        const userKuerzelInput = payload.kuerzel || (typeof userKuerzel !== 'undefined' ? userKuerzel : "System");
-
-        if (halleWert === "") {
-            triggerNews("", slotIndex, klasseName);
-        } 
-        else if (halleWert.includes("Outdoor")) {
-            triggerNews("outdoor", slotIndex, klasseName);
-        }
-        else if (halleWert === "Beendet" || halleWert === "beendet") {
-            console.log(`📢 AUTOMATISCHER NEWS-TRIGGER: Beendet durch ${userKuerzelInput} erkannt.`);
-            triggerNews("beendet", slotIndex, klasseName, userKuerzelInput);
-        }
-    }
-}
-
-
-
-
-
-
-    
-
-
-    
-
-
-
-
-
-    
-    
-// Interne Hilfsfunktion, die die Payloads nacheinander an saveImmediately übergibt
-function executePayloads(payloadArray, onCompleteVisuals) {
-    payloadArray.forEach(async p => {
-        // 1. NEU: Box suchen und DOM-Attribut als Sperre setzen
-        const box = document.querySelector(`[data-slot="${p.slot}"]`);
-        if (box) {
-            box.setAttribute('data-sync-status', 'pending');
-        }
-
-        // 2. Visuelles UI-Update sofort triggern
-        if (typeof onCompleteVisuals === "function") {
-            onCompleteVisuals(p); 
-        }
-
-        // 3. Abschicken
-        try {
-            const result = await saveImmediately(p);
-            if (result && result.status === "success") {
-                if (p.halle === "Ausfall" || (p.halle && p.halle.includes("Outdoor"))) {
-                    if (typeof window.triggerNewsWrapper === "function") {
-                        window.triggerNewsWrapper(p.halle, p.slot, p.klasse);
-                    }
-                }
-                
-                // --- WICHTIG: KEIN Timeout zum Löschen mehr! ---
-                // Die Sperre bleibt jetzt bestehen, bis syncPlan 
-                // beim nächsten Takt den Erfolg validiert hat.
-            } else {
-                // Falls Server-Fehler: Sperre sofort entfernen
-                if (box) box.removeAttribute('data-sync-status');
-            }
-        } catch (e) {
-            // Falls Network-Fehler: Sperre sofort entfernen
-            if (box) box.removeAttribute('data-sync-status');
-        }
-    });
-}
 
 
 
