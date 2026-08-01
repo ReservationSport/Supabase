@@ -7854,18 +7854,17 @@ window.fuehreAbklebenAus = async function(klasse) {
         for (const slot of window.slotsToClear) {
             const slotNum = parseInt(slot);
 
-            // 1. Aus master_db löschen (Klasse aus dem Master-Plan entfernen)
+            // 1. Aus master_db löschen (Hat kein Datum, Filter erfolgt nur über den Slot)
             const { error: masterError } = await window.supabaseClient
                 .from('master_db')
                 .delete()
-                .eq('datum', targetDate)
                 .eq('slot', slotNum);
 
             if (masterError) {
                 console.error("Fehler beim Löschen aus master_db:", masterError);
             }
 
-            // 2. Vorhandene Buchungen aus buchungen_db löschen (kein "abgeklebt"-Eintrag mehr)
+            // 2. Vorhandene Buchungen aus buchungen_db löschen (Verwendet Spalte 'datum')
             const { error: buchungenError } = await window.supabaseClient
                 .from('buchungen_db')
                 .delete()
