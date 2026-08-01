@@ -4245,7 +4245,7 @@ input.stellvertretung-input {
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
 
     // Supabase-Client initialisieren
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Status-Variablen
     let userPw = "", userKuerzel = "";
@@ -5543,8 +5543,21 @@ let meineRelevanteNews = [];
  */
 async function initNewsSystem() {
     console.log("🚀 News-System wird initialisiert (Supabase)...");
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
-    if (!aktuellerUser) return;
+
+    // 1. SCHUTZ: Prüfen, ob Supabase überhaupt geladen ist
+    if (!window.supabaseClient) {
+        console.error("Fehler beim Init (News): window.supabaseClient ist nicht definiert! Supabase wurde noch nicht initialisiert.");
+        return;
+    }
+
+    // 2. SCHUTZ: Benutzerkürzel sicher auslesen (egal ob als globale Variable oder unter window)
+    const rawUser = typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || "");
+    const aktuellerUser = (rawUser !== null && rawUser !== undefined) ? String(rawUser).toUpperCase().trim() : "";
+    
+    if (!aktuellerUser) {
+        console.warn("News-Init abgebrochen: Kein aktiver Benutzer (userKuerzel) vorhanden.");
+        return;
+    }
 
     try {
         // News direkt aus Supabase abrufen (Tabelle: news_db klein geschrieben)
@@ -5554,10 +5567,16 @@ async function initNewsSystem() {
 
         if (error) throw error;
 
-        // Filter mit "ALLE" und Lösch-Logik
+        // 3. SCHUTZ: Filter mit Typen-Konvertierung (String(...)) gegen toUpperCase-Fehler
         meineRelevanteNews = (allNews || []).filter(n => {
-            const empfaenger = (n.empfaenger || "").toUpperCase().split(',').map(e => e.trim());
-            const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
+            if (!n) return false;
+
+            // Sichere Umwandlung aller Datenbank-Felder in Text (selbst wenn sie null, undefined oder Zahlen sind)
+            const empfaengerStr = String(n.empfaenger || "");
+            const geloeschtStr = String(n.geloescht || "");
+
+            const empfaenger = empfaengerStr.toUpperCase().split(',').map(e => e.trim());
+            const geloeschtVon = geloeschtStr.toUpperCase().split(',').map(s => s.trim());
             
             const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
             const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
@@ -5565,7 +5584,12 @@ async function initNewsSystem() {
             return istEmpfaenger && istNichtGeloescht;
         });
 
-        updateNewsDot();
+        // 4. SCHUTZ: Prüfen, ob die Funktion updateNewsDot existiert
+        if (typeof updateNewsDot === 'function') {
+            updateNewsDot();
+        } else {
+            console.warn("Hinweis: updateNewsDot() ist noch nicht als Funktion definiert.");
+        }
         
     } catch (e) { 
         console.error("Fehler beim Init (News):", e); 
