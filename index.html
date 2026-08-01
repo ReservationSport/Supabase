@@ -4596,11 +4596,14 @@ window.changeDate = (days, mode = 'day') => {
     const dp = document.getElementById('datePicker');
     if (!dp) return;
     
-    // Wenn der Wert leer ist, nimm heute
-    if (!dp.value) dp.value = new Date().toISOString().split('T')[0];
+    // Wenn der Wert leer ist, nimm heute im Format YYYY-MM-DD
+    if (!dp.value) {
+        const now = new Date();
+        dp.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
 
     // Berechnung
-    let d = new Date(dp.value + 'T12:00:00'); 
+    let d = new Date((dp.value || "").toString() + 'T12:00:00'); 
     d.setUTCDate(d.getUTCDate() + days);
     
     const newDateStr = d.toISOString().split('T')[0];
@@ -4640,7 +4643,7 @@ function updateNavButtons() {
     if (!dp || !dp.value) return;
 
     // Aktuelles Datum im Picker und Heute (00:00:00)
-    const pickerDate = new Date(dp.value + 'T00:00:00');
+    const pickerDate = new Date(dp.value.toString() + 'T00:00:00');
     const heute = new Date();
     heute.setHours(0, 0, 0, 0);
 
@@ -5206,14 +5209,14 @@ window.changeDayAndLoad = async function(zielDatum, mode = 'initial') {
     // UI-Elemente
     const dp = document.getElementById('datePicker');
     
-    // Datum setzen
-    if (dp) {
-        dp.value = zielDatum;
+    // Datum setzen (sicher als String)
+    if (dp && zielDatum) {
+        dp.value = zielDatum.toString();
     }
     
     // Button-Text synchronisieren
-    if (typeof window.updateDateText === 'function') {
-        window.updateDateText(zielDatum);
+    if (typeof window.updateDateText === 'function' && zielDatum) {
+        window.updateDateText(zielDatum.toString());
     }
     
     // 2. Lotse: Overlay aktivieren (mit dem gewünschten Modus)
@@ -5269,22 +5272,21 @@ window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial
     // Wir holen uns die Basis-Daten des Slots aus unserem globalen Speicher
     const aktuellerSlot = (window.lastPlanData && window.lastPlanData[slotId]) ? window.lastPlanData[slotId] : {};
 
-    const userKuerzel = window.userKuerzel || "";
+    const userKuerzel = window.userKuerzel ? window.userKuerzel.toString() : "";
 
-    // Logik: Nutze den neuen Wert, falls angegeben, sonst den alten aus dem Speicher
+    // Logik: Nutze den neuen Wert, falls angegeben, sonst den alten aus dem Speicher (jeweils mit .toString() abgesichert)
     const updateObj = {
         slot: slotId,
-        klasse: (neueKlasse !== undefined) ? neueKlasse : (aktuellerSlot.klasse || ""),
-        halle: (neueHalle !== undefined) ? neueHalle : (aktuellerSlot.halle || ""),
-        material: (neuesMaterial !== undefined) ? neuesMaterial : (aktuellerSlot.material || ""),
-        kommentar: (neuerKommentar !== undefined) ? neuerKommentar : (aktuellerSlot.kommentar || ""),
+        klasse: (neueKlasse !== undefined && neueKlasse !== null) ? neueKlasse.toString() : (aktuellerSlot.klasse ? aktuellerSlot.klasse.toString() : ""),
+        halle: (neueHalle !== undefined && neueHalle !== null) ? neueHalle.toString() : (aktuellerSlot.halle ? aktuellerSlot.halle.toString() : ""),
+        material: (neuesMaterial !== undefined && neuesMaterial !== null) ? neuesMaterial.toString() : (aktuellerSlot.material ? aktuellerSlot.material.toString() : ""),
+        kommentar: (neuerKommentar !== undefined && neuerKommentar !== null) ? neuerKommentar.toString() : (aktuellerSlot.kommentar ? aktuellerSlot.kommentar.toString() : ""),
         verfasser: userKuerzel // Direkt den aktuellen Benutzer als Verfasser mitgeben
     };
 
     console.log(`🛠 Update-Daten für Slot ${slotId} vorbereitet:`, updateObj);
     return updateObj;
 };
-    
 
 /* ============================================================
    9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL / SUPABASE)
