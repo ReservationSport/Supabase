@@ -7489,9 +7489,7 @@ window.highlightFreeSlots = function() {
     });
 };
 
-/* ============================================================
-    10.4. LEKTION VERSCHIEBEN (Aktualisiert)
-    ============================================================ */
+
 
 window.handleMoveConfirm = async function(targetSlot) {
     if (!window.moveMode) return;
@@ -7544,9 +7542,9 @@ window.handleMoveConfirm = async function(targetSlot) {
             }
         };
 
-        // 1. Quell-Slot leeren und als "verschoben" markieren (Box wird komplett leer & is-mine / Farben verschwinden)
+        // 1. Quell-Slot als "verschoben" markieren (klasse wird auf "verschoben" gesetzt)
         await saveOrUpdateSlot(sourceSlot, {
-            klasse: "",
+            klasse: "verschoben",
             halle: "",
             material: "",
             kommentar: "",
