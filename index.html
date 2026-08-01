@@ -6164,9 +6164,340 @@ function renderFooter(buttons) {
     return html;
 }
 
+
+/**
+ * Verarbeitet die Wahl aus dem Task Manager (Haupt-Weiche)
+ */
+window.handleMenuChoice = function(action, time, slot, klasse) {
+    console.log("Aktion gewählt:", action); 
+
+    switch(action) {
+        case 'reservation':
+            // Öffnet die Hallenauswahl direkt im bestehenden Menü-Container
+            handleReservationUI(time, slot, klasse);
+            break;
+            
+        case 'material':
+            const activeModal = document.getElementById('eigenesmenu-modal');
+            if (typeof handleMaterialUI === 'function') {
+                handleMaterialUI(time, slot, klasse, activeModal);
+            }
+            break;
+
+        case 'ausfall':
+            // Wir prüfen den aktuellen Status direkt an der Box
+            const istBereitsAusfall = window.currentEditBox ? window.currentEditBox.classList.contains('ausfall-mode') : false;
+            // Wir nutzen den Button-Trigger aus dem DOM für den Loader
+            const btn = document.querySelector('.eigenesmenu-item:nth-child(3)'); 
+            if (typeof handleAusfallClick === 'function') {
+                handleAusfallClick(istBereitsAusfall ? 'LOESCHEN' : 'SETZEN', time, slot, klasse, btn);
+            }
+            break;
+
+       case 'beendet':
+            // 🔥 NEU: Kein separates Modal mehr aufwerfen!
+            // Wir starten direkt den einheitlichen Dynamic-Workflow im selben Taskmanager-Modal
+            window.starteAbklebenWorkflow(time, slot, klasse);
+            break;
+
+        case 'verschieben':
+            // Wir holen uns die aktuellen Daten der Box, die wir verschieben wollen
+            const boxElement = document.querySelector(`[data-slot="${slot}"]`);
+            
+            window.moveMode = { 
+                sourceSlot: slot, 
+                klasse: klasse, 
+                verfasser: userKuerzel, 
+                date: document.getElementById('datePicker').value,
+                // HIER DIE DATEN RETTEN:
+                halle: boxElement?.dataset.halle || "",
+                lehrer: boxElement?.dataset.lehrer || "",
+                material: boxElement?.dataset.material || "",
+                kommentar: boxElement?.dataset.kommentar || "",
+                typ: boxElement?.dataset.typ || ""
+            };
+            
+            document.getElementById('plan-container').classList.add('move-mode-active');
+            closeEditor();
+            highlightFreeSlots();
+            break;
+            
+        case 'nachricht':
+            // 🔥 NEU: Kein prompt() mehr! Wir laden das UI direkt ins Modal
+            window.handleNotizUI(time, slot, klasse);
+            break;
+            
+        default:
+            console.warn("Unbekannte Aktion im Task Manager:", action);
+    }
+};
+
+    
+
+/* ============================================================
+   10.1. HALLE RESERVIEREN
+   ============================================================ */
+
+
+// Beispiel für den App-Start:
+async function initHallenConfig() {
+    const { data } = await supabaseClient.from('konfiguration').select('raum, farbe, icon');
+    if (data) {
+        window.hallenConfig = {};
+        data.forEach(item => {
+            if (item.raum) {
+                window.hallenConfig[item.raum] = {
+                    color: item.farbe || '#333',
+                    icon: item.icon || 'meeting_room'
+                };
+            }
+        });
+    }
+}
+    
+
+function handleReservationUI(time, slot, klasse) {
+    const modalContainer = document.querySelector('.eigenesmenu-container');
+    const subtitle = document.getElementById('menu-subtitle');
+    const titleEl = modalContainer ? modalContainer.querySelector('.eigenesmenu-title') : null;
+    
+    if (!modalContainer) return;
+
+    // Header aktualisieren
+    if (titleEl) {
+        titleEl.innerText = "HALLE/RAUM WÄHLEN";
+        titleEl.style.color = "#e67e22";
+    }
+    if (subtitle) {
+        subtitle.innerHTML = `Reservierung für: <b>${klasse}</b>`;
+    }
+
+    const aktuelleHalleInBox = window.currentEditBox?.querySelector('.halle-label')?.innerText.trim() || "";
+    
+    // Logik für besetzte Hallen
+    const currentSlot = parseInt(slot);
+    const rowIndex = Math.floor((currentSlot - 1) / 5);
+    const startSlot = (rowIndex * 5) + 1;
+    const endSlot = startSlot + 4;
+    
+    // Wir sammeln hier alle atomaren Hallenteile (z.B. "halle 1", "halle 2")
+    let besetzteEinzelHallen = []; 
+
+    for (let s = startSlot; s <= endSlot; s++) {
+        if (s === currentSlot) continue;
+        
+        const data = window.lastPlanData ? window.lastPlanData[s] : null;
+        if (data && data.halle && data.halle !== "Ausfall") {
+            // Hallen-String am "+" trennen, trimmen und kleinschreiben
+            const teile = data.halle.split('+').map(h => h.trim().toLowerCase());
+            
+            teile.forEach(teil => {
+                if (teil !== "outdoor" && teil !== "badi") {
+                    besetzteEinzelHallen.push(teil);
+                }
+            });
+        }
+    }
+
+    let html = `
+        <div class="eigenesmenu-liste" id="menu-options-list">
+            <div class="scroll-wrapper">`;
+
+    // Löschen Button
+    if (aktuelleHalleInBox !== "" && aktuelleHalleInBox !== "---") {
+        html += `
+            <div class="hallen-option-wrapper" 
+                 style="display: flex; height: 50px; margin-bottom: 15px; background: #332222; border: 1px solid #553333; border-radius: 8px; cursor: pointer; align-items: center; justify-content: center; color: #ffaaaa;"
+                 onclick="applyHalleSelection('', '${time}', '${slot}', '${klasse}', this, '')">
+                <span class="material-symbols-outlined" style="margin-right: 10px;">delete</span>
+                RESERVIERUNG LÖSCHEN
+            </div>`;
+    }
+
+    // Hallen aus hallenConfig (oder Fallback-Array) ermitteln
+    let hallen = [];
+    if (window.hallenConfig) {
+        hallen = Array.isArray(window.hallenConfig) ? window.hallenConfig : Object.keys(window.hallenConfig);
+    }
+    
+    hallen.forEach(h => {
+        // Option aufbrechen, um Einzelteile zu vergleichen
+        const optionTeile = h.trim().toLowerCase().split('+').map(part => part.trim());
+        
+        // Prüfen, ob irgendein Teil dieser Option in den besetzten Hallen vorkommt
+        const istGesperrt = optionTeile.some(teil => besetzteEinzelHallen.includes(teil));
+        
+        const istAktiv = (h.trim() === aktuelleHalleInBox);
+        const wrapperClass = `hallen-option-wrapper ${istGesperrt ? 'disabled' : ''} ${istAktiv ? 'selected' : ''}`;
+        const iconName = (window.hallenConfig && window.hallenConfig[h] && window.hallenConfig[h].icon) ? window.hallenConfig[h].icon : "meeting_room";
+
+        if (istGesperrt) {
+            html += `
+                <div class="${wrapperClass}" style="opacity: 0.5; pointer-events: none;">
+                    <div class="opt-locker" style="display: flex; align-items: center; padding-left: 15px; color: #fff;">
+                        <span class="material-symbols-outlined" style="margin-right:12px;">${iconName}</span>${h}
+                    </div>
+                </div>`;
+        } else {
+            html += `
+                <div class="${wrapperClass}">
+                    <div class="opt-locker ${istAktiv ? 'active' : ''}" 
+                         onclick="applyHalleSelection('${h}', '${time}', '${slot}', '${klasse}', this, '')">
+                        <span class="material-symbols-outlined" style="margin-right: 12px;">${iconName}</span> <span>${h}</span>
+                    </div>
+                    <div class="opt-fix ${istAktiv ? 'active' : ''}" 
+                         onclick="applyHalleSelection('${h}', '${time}', '${slot}', '${klasse}', this, 'fix')">
+                        <span class="material-symbols-outlined">lock</span>
+                    </div>
+                </div>`;
+        }
+    });
+
+    html += `</div></div>`;
+
+    if (typeof renderFooter === 'function') {
+        html += renderFooter([
+            { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')` },
+            { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
+        ]);
+    }
+
+    const header = modalContainer.querySelector('.eigenesmenu-header');
+    modalContainer.innerHTML = '';
+    if (header) modalContainer.appendChild(header);
+    modalContainer.insertAdjacentHTML('beforeend', html);
+}
+    
+// --- GLOBALE VARIABLEN UND FUNKTIONEN ---
+window.currentSaveController = null;
+    
+window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, typ) {
+    if (!btn) return;
+    
+    btn.style.pointerEvents = "none";
+    btn.style.opacity = "0.6";
+
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+    const now = new Date().toISOString();
+
+    // 🛠️ KUERZEL ZUVERLÄSSIG HOLEN
+    let rawUserKuerzel = "";
+    if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+        rawUserKuerzel = userKuerzel;
+    } else if (typeof window.userKuerzel === 'string' && window.userKuerzel.trim() !== "") {
+        rawUserKuerzel = window.userKuerzel;
+    } else {
+        const el = document.getElementById('userKuerzel');
+        rawUserKuerzel = el ? (el.value || "") : "";
+    }
+    const safeUserKuerzel = String(rawUserKuerzel).trim();
+
+    const onCompleteVisuals = () => {
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
+        }
+
+        // Lokalen Cache aktualisieren
+        if (window.lastPlanData && window.lastPlanData[slotNum]) {
+            window.lastPlanData[slotNum].halle = neueHalle;
+            window.lastPlanData[slotNum].typ = typ || "";
+            if (safeUserKuerzel) window.lastPlanData[slotNum].verfasser = safeUserKuerzel;
+        }
+
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        if (box) {
+            // Label und Farbe/Ausfall-Mode setzen
+            const label = box.querySelector('.halle-label');
+            if (label) label.innerText = neueHalle;
+            
+            box.classList.remove('ausfall-mode');
+            if (neueHalle === "Ausfall") {
+                box.classList.add('ausfall-mode');
+                box.style.backgroundColor = "";
+            } else {
+                const farbe = (neueHalle !== "" && window.hallenConfig && window.hallenConfig[neueHalle]) 
+                            ? window.hallenConfig[neueHalle].color 
+                            : "";
+                box.style.backgroundColor = farbe;
+            }
+
+            // Icon-Logik (fix/lock)
+            let lockIcon = box.querySelector('.lock-icon-container');
+            if (!lockIcon) {
+                lockIcon = document.createElement('div');
+                lockIcon.className = 'lock-icon-container';
+                Object.assign(lockIcon.style, {
+                    position: 'absolute', right: '-3px', bottom: '5px',
+                    display: 'flex', alignItems: 'center'
+                });
+                box.appendChild(lockIcon);
+            }
+            lockIcon.innerHTML = (typ === "fix") 
+                ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' 
+                : '';
+        }
+        if (typeof closeEditor === 'function') closeEditor();
+    };
+
+    try {
+        // 🛠️ FIX: Spalte heißt 'datum' inSupabase (nicht 'date')
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('datum', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            datum: targetDate, // 🛠️ FIX: 'datum' statt 'date'
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: neueHalle,
+            material: currentSlotData.material || "",
+            kommentar: currentSlotData.kommentar || "",
+            details: currentSlotData.details || currentSlotData.materialDetail || "",
+            timestamp: now,
+            typ: typ || "",
+            verfasser: safeUserKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
+        } else {
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
+        }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
+    } catch (e) {
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
+        }
+        console.error("Hallen-Auswahl fehlgeschlagen (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
+    }
+};
+
+
     
 /* ============================================================
-   11. Material buchen (SUPABASE VERSION)
+   10.2. MATERIAL BUCHEN
    ============================================================ */
    
 function handleMaterialUI(time, slot, klasse, modalElement) {
@@ -6786,420 +7117,12 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
         alert("Verbindungsfehler zum Server.");
     }
 };
-    
 
-/* ============================================================
-   14. MENÜ-STEUERUNG & WEICHENSTELLUNG (SUPABASE VERSION)
+
+    /* ============================================================
+   10.3. NOTIZ ERFASSEN
    ============================================================ */
 
-/**
- * Schließt das Menü und bereinigt den Status
- */
-function closeEditor() {
-    const modal = document.getElementById('eigenesmenu-modal');
-    if (modal) {
-        modal.remove();
-    }
-    // Wichtig: Auswahl-Array für Materialien leeren, wenn das Menü schließt
-    if (typeof selectedMaterials !== 'undefined') {
-        selectedMaterials = [];
-    }
-}
-
-
-
-/**
- * Verarbeitet die Wahl aus dem Task Manager (Haupt-Weiche)
- */
-window.handleMenuChoice = function(action, time, slot, klasse) {
-    console.log("Aktion gewählt:", action); 
-
-    switch(action) {
-        case 'reservation':
-            // Öffnet die Hallenauswahl direkt im bestehenden Menü-Container
-            handleReservationUI(time, slot, klasse);
-            break;
-            
-        case 'material':
-            const activeModal = document.getElementById('eigenesmenu-modal');
-            if (typeof handleMaterialUI === 'function') {
-                handleMaterialUI(time, slot, klasse, activeModal);
-            }
-            break;
-
-        case 'ausfall':
-            // Wir prüfen den aktuellen Status direkt an der Box
-            const istBereitsAusfall = window.currentEditBox ? window.currentEditBox.classList.contains('ausfall-mode') : false;
-            // Wir nutzen den Button-Trigger aus dem DOM für den Loader
-            const btn = document.querySelector('.eigenesmenu-item:nth-child(3)'); 
-            if (typeof handleAusfallClick === 'function') {
-                handleAusfallClick(istBereitsAusfall ? 'LOESCHEN' : 'SETZEN', time, slot, klasse, btn);
-            }
-            break;
-
-       case 'beendet':
-            // 🔥 NEU: Kein separates Modal mehr aufwerfen!
-            // Wir starten direkt den einheitlichen Dynamic-Workflow im selben Taskmanager-Modal
-            window.starteAbklebenWorkflow(time, slot, klasse);
-            break;
-
-        case 'verschieben':
-            // Wir holen uns die aktuellen Daten der Box, die wir verschieben wollen
-            const boxElement = document.querySelector(`[data-slot="${slot}"]`);
-            
-            window.moveMode = { 
-                sourceSlot: slot, 
-                klasse: klasse, 
-                verfasser: userKuerzel, 
-                date: document.getElementById('datePicker').value,
-                // HIER DIE DATEN RETTEN:
-                halle: boxElement?.dataset.halle || "",
-                lehrer: boxElement?.dataset.lehrer || "",
-                material: boxElement?.dataset.material || "",
-                kommentar: boxElement?.dataset.kommentar || "",
-                typ: boxElement?.dataset.typ || ""
-            };
-            
-            document.getElementById('plan-container').classList.add('move-mode-active');
-            closeEditor();
-            highlightFreeSlots();
-            break;
-            
-        case 'nachricht':
-            // 🔥 NEU: Kein prompt() mehr! Wir laden das UI direkt ins Modal
-            window.handleNotizUI(time, slot, klasse);
-            break;
-            
-        default:
-            console.warn("Unbekannte Aktion im Task Manager:", action);
-    }
-};
-    
-
-window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
-    const zielHalle = (mode === 'LOESCHEN') ? "" : "Ausfall";
-    
-    // 1. UI-LOADER (Optisch am Button)
-    if (btn) {
-        btn.style.pointerEvents = "none";
-        btn.style.opacity = "0.6";
-    }
-
-    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
-    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
-    const now = new Date().toISOString();
-    const userKuerzel = window.userKuerzel || "";
-
-    const onCompleteVisuals = () => {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-        
-        // Lokalen Datenspeicher synchron halten
-        if (window.lastPlanData && window.lastPlanData[slotNum]) {
-            window.lastPlanData[slotNum].halle = zielHalle;
-        }
-
-        // UI für den spezifischen Slot aktualisieren
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
-        if (box) {
-            const label = box.querySelector('.halle-label');
-            if (label) label.innerText = zielHalle;
-            
-            // Logik für Ausfall vs. normale Halle
-            if (zielHalle === "Ausfall") {
-                box.classList.add('ausfall-mode');
-                box.style.backgroundColor = ""; 
-            } else {
-                box.classList.remove('ausfall-mode');
-                if (typeof hallenConfig !== 'undefined' && hallenConfig[zielHalle]) {
-                    box.style.backgroundColor = hallenConfig[zielHalle].color;
-                } else {
-                    box.style.backgroundColor = "";
-                }
-            }
-        }
-        closeEditor();
-    };
-
-    // 2. SUPABASE SPEICHERUNG
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('date', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            date: targetDate,
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: zielHalle,
-            material: currentSlotData.material || "",
-            kommentar: currentSlotData.kommentar || "",
-            details: currentSlotData.details || currentSlotData.materialDetail || "",
-            timestamp: now,
-            typ: currentSlotData.typ || "buchung",
-            verfasser: userKuerzel
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
-                .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
-
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
-
-            if (insertError) throw insertError;
-        }
-
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-        console.error("Fehler bei Ausfall-Click (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
-    }
-};
-    
-
-function handleReservationUI(time, slot, klasse) {
-    const modalContainer = document.querySelector('.eigenesmenu-container');
-    const subtitle = document.getElementById('menu-subtitle');
-    const titleEl = modalContainer ? modalContainer.querySelector('.eigenesmenu-title') : null;
-    
-    if (!modalContainer) return;
-
-    // Header aktualisieren
-    if (titleEl) {
-        titleEl.innerText = "HALLE/RAUM WÄHLEN";
-        titleEl.style.color = "#e67e22";
-    }
-    if (subtitle) {
-        subtitle.innerHTML = `Reservierung für: <b>${klasse}</b>`;
-    }
-
-    const aktuelleHalleInBox = window.currentEditBox?.querySelector('.halle-label')?.innerText.trim() || "";
-    
-    // Logik für besetzte Hallen
-    const currentSlot = parseInt(slot);
-    const rowIndex = Math.floor((currentSlot - 1) / 5);
-    const startSlot = (rowIndex * 5) + 1;
-    const endSlot = startSlot + 4;
-    
-    // Wir sammeln hier alle atomaren Hallenteile (z.B. "halle 1", "halle 2")
-    let besetzteEinzelHallen = []; 
-
-    for (let s = startSlot; s <= endSlot; s++) {
-        if (s === currentSlot) continue;
-        
-        const data = window.lastPlanData ? window.lastPlanData[s] : null;
-        if (data && data.halle && data.halle !== "Ausfall") {
-            // Hallen-String am "+" trennen, trimmen und kleinschreiben
-            const teile = data.halle.split('+').map(h => h.trim().toLowerCase());
-            
-            teile.forEach(teil => {
-                if (teil !== "outdoor" && teil !== "badi") {
-                    besetzteEinzelHallen.push(teil);
-                }
-            });
-        }
-    }
-
-    let html = `
-        <div class="eigenesmenu-liste" id="menu-options-list">
-            <div class="scroll-wrapper">`;
-
-    // Löschen Button
-    if (aktuelleHalleInBox !== "" && aktuelleHalleInBox !== "---") {
-        html += `
-            <div class="hallen-option-wrapper" 
-                 style="display: flex; height: 50px; margin-bottom: 15px; background: #332222; border: 1px solid #553333; border-radius: 8px; cursor: pointer; align-items: center; justify-content: center; color: #ffaaaa;"
-                 onclick="applyHalleSelection('', '${time}', '${slot}', '${klasse}', this, '')">
-                <span class="material-symbols-outlined" style="margin-right: 10px;">delete</span>
-                RESERVIERUNG LÖSCHEN
-            </div>`;
-    }
-
-    const hallen = window.hallenConfig ? Object.keys(window.hallenConfig) : [];
-    
-    hallen.forEach(h => {
-        // Option aufbrechen, um Einzelteile zu vergleichen
-        const optionTeile = h.trim().toLowerCase().split('+').map(part => part.trim());
-        
-        // Prüfen, ob irgendein Teil dieser Option in den besetzten Hallen vorkommt
-        const istGesperrt = optionTeile.some(teil => besetzteEinzelHallen.includes(teil));
-        
-        const istAktiv = (h.trim() === aktuelleHalleInBox);
-        const wrapperClass = `hallen-option-wrapper ${istGesperrt ? 'disabled' : ''} ${istAktiv ? 'selected' : ''}`;
-
-        if (istGesperrt) {
-            html += `
-                <div class="${wrapperClass}" style="opacity: 0.5; pointer-events: none;">
-                    <div class="opt-locker" style="display: flex; align-items: center; padding-left: 15px; color: #fff;">
-                        <span class="material-symbols-outlined" style="margin-right:12px;">${window.hallenConfig[h]?.icon || "meeting_room"}</span>${h}
-                    </div>
-                </div>`;
-        } else {
-            html += `
-                <div class="${wrapperClass}">
-                    <div class="opt-locker ${istAktiv ? 'active' : ''}" 
-                         onclick="applyHalleSelection('${h}', '${time}', '${slot}', '${klasse}', this, '')">
-                        <span class="material-symbols-outlined" style="margin-right: 12px;">${window.hallenConfig[h]?.icon || "meeting_room"}</span> <span>${h}</span>
-                    </div>
-                    <div class="opt-fix ${istAktiv ? 'active' : ''}" 
-                         onclick="applyHalleSelection('${h}', '${time}', '${slot}', '${klasse}', this, 'fix')">
-                        <span class="material-symbols-outlined">lock</span>
-                    </div>
-                </div>`;
-        }
-    });
-
-    html += `</div></div>`;
-
-    html += renderFooter([
-        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')` },
-        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
-    ]);
-
-    const header = modalContainer.querySelector('.eigenesmenu-header');
-    modalContainer.innerHTML = '';
-    modalContainer.appendChild(header);
-    modalContainer.insertAdjacentHTML('beforeend', html);
-}
-    
-// --- GLOBALE VARIABLEN UND FUNKTIONEN ---
-window.currentSaveController = null;
-    
-window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, typ) {
-    if (!btn) return;
-    
-    if (btn) {
-        btn.style.pointerEvents = "none";
-        btn.style.opacity = "0.6";
-    }
-
-    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
-    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
-    const now = new Date().toISOString();
-    const userKuerzel = window.userKuerzel || "";
-
-    const onCompleteVisuals = () => {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-
-        // Lokalen Cache aktualisieren
-        if (window.lastPlanData && window.lastPlanData[slotNum]) {
-            window.lastPlanData[slotNum].halle = neueHalle;
-            window.lastPlanData[slotNum].typ = typ || "";
-        }
-
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
-        if (box) {
-            // Label und Farbe/Ausfall-Mode setzen
-            const label = box.querySelector('.halle-label');
-            if (label) label.innerText = neueHalle;
-            
-            box.classList.remove('ausfall-mode');
-            if (neueHalle === "Ausfall") {
-                box.classList.add('ausfall-mode');
-                box.style.backgroundColor = "";
-            } else {
-                const farbe = (neueHalle !== "" && window.hallenConfig && window.hallenConfig[neueHalle]) 
-                            ? window.hallenConfig[neueHalle].color 
-                            : "";
-                box.style.backgroundColor = farbe;
-            }
-
-            // Icon-Logik (fix/lock)
-            let lockIcon = box.querySelector('.lock-icon-container');
-            if (!lockIcon) {
-                lockIcon = document.createElement('div');
-                lockIcon.className = 'lock-icon-container';
-                Object.assign(lockIcon.style, {
-                    position: 'absolute', right: '-3px', bottom: '5px',
-                    display: 'flex', alignItems: 'center'
-                });
-                box.appendChild(lockIcon);
-            }
-            lockIcon.innerHTML = (typ === "fix") 
-                ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' 
-                : '';
-        }
-        closeEditor();
-    };
-
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('date', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            date: targetDate,
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: neueHalle,
-            material: currentSlotData.material || "",
-            kommentar: currentSlotData.kommentar || "",
-            details: currentSlotData.details || currentSlotData.materialDetail || "",
-            timestamp: now,
-            typ: typ || "",
-            verfasser: userKuerzel
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
-                .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
-
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
-
-            if (insertError) throw insertError;
-        }
-
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-        console.error("Hallen-Auswahl fehlgeschlagen (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
-    }
-};
-
-
-
-    
     
 window.handleNotizUI = function(time, slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
@@ -7467,6 +7390,340 @@ function showNotizDetailPopup(klasse, notizText) {
     `;
     document.body.appendChild(overlay);
 }
+
+
+    /* ============================================================
+   10.4. LEKTION VERSCHIEBEN
+   ============================================================ */
+
+function createMoveOverlay() {
+    // 1. Overlay (für die Verdunkelung)
+    if (!document.getElementById('move-overlay')) {
+        const overlay = document.createElement('div');
+        overlay.className = 'move-mode-overlay';
+        overlay.id = 'move-overlay';
+        document.body.appendChild(overlay);
+    }
+    
+    // 2. Panel
+    if (!document.getElementById('move-panel-ui')) {
+        const panel = document.createElement('div');
+        panel.id = 'move-panel-ui';
+        panel.className = 'move-panel';
+        panel.innerHTML = `
+            <span>Wähle ein freies Feld, um die gewählte Lektion zu verschieben...</span>
+            <button onclick="cancelMoveMode()" class="btn-cancel">Abbrechen</button>
+        `;
+        document.body.appendChild(panel);
+    }
+}
+
+window.cancelMoveMode = function() {
+    console.log("Starte radikalen Abbruch...");
+    
+    // 1. Modus zurücksetzen
+    window.moveMode = null;
+    window.currentInteractionMode = null; // Sperre aufheben
+    
+    // 2. UI-Elemente entfernen (Overlay & Panel)
+    const overlay = document.getElementById('move-overlay');
+    if (overlay) overlay.remove();
+    const panel = document.getElementById('move-panel-ui');
+    if (panel) panel.remove();
+    
+    // 3. Klassen entfernen
+    document.querySelectorAll('.move-mode-active').forEach(el => el.classList.remove('move-mode-active'));
+    document.body.classList.remove('move-mode-active');
+    
+    // 4. Boxen zurücksetzen
+    const boxes = document.querySelectorAll('.box');
+    boxes.forEach(box => {
+        box.style.pointerEvents = ''; 
+        box.classList.remove('is-selectable', 'is-being-moved', 'move-mode-highlight');
+        const slot = box.getAttribute('data-slot');
+        const klasse = box.querySelector('.klasse-label')?.innerText || "";
+        const isMine = box.classList.contains('is-mine');
+        if (box.classList.contains('empty')) {
+            box.onclick = null;
+        } else {
+            setBoxClick(box, klasse, slot, isMine);
+        }
+    });
+
+    // --- DER FIX: Daten neu laden ---
+    console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
+    if (typeof window.syncPlan === 'function') {
+        window.syncPlan(); 
+    }
+};
+
+window.highlightFreeSlots = function() {
+    const boxes = document.querySelectorAll('.box');
+
+    // 1. ABBRUCH-LOGIK (Reset)
+    if (!window.moveMode) {
+        window.currentInteractionMode = null; // Sync wieder erlauben
+        const existingOverlay = document.getElementById('move-overlay');
+        if (existingOverlay) existingOverlay.remove();
+        
+        document.body.classList.remove('move-mode-active');
+        
+        boxes.forEach(box => {
+            box.classList.remove('is-selectable', 'is-being-moved', 'move-mode-highlight');
+            const slot = box.getAttribute('data-slot');
+            const klasse = box.querySelector('.klasse-label')?.innerText || "";
+            const isMine = box.classList.contains('is-mine');
+            
+            if (box.classList.contains('empty')) {
+                box.onclick = null;
+            } else {
+                setBoxClick(box, klasse, slot, isMine);
+            }
+        });
+        return;
+    }
+
+    // 2. AKTIVIERUNGS-LOGIK
+    window.currentInteractionMode = 'VERSCHIEBEN'; // Sync für die Dauer des Verschiebens blockieren
+    document.body.classList.add('move-mode-active');
+    createMoveOverlay(); 
+    const sourceSlot = window.moveMode.sourceSlot;
+
+    boxes.forEach(box => {
+        const isHeaderOrDivider = box.classList.contains('header-row') || 
+                                  box.classList.contains('divider-thin') || 
+                                  box.classList.contains('divider-thick');
+        
+        if (box.getAttribute('data-slot') == sourceSlot) {
+            box.classList.add('is-being-moved', 'move-mode-highlight');
+            box.onclick = null;
+        } 
+        else if (box.classList.contains('empty') && !isHeaderOrDivider) {
+            box.classList.add('is-selectable', 'move-mode-highlight');
+            box.onclick = function() {
+                handleMoveConfirm(box.getAttribute('data-slot'));
+            };
+        }
+        else {
+            box.classList.remove('move-mode-highlight');
+            box.onclick = null; 
+        }
+    });
+};
+
+window.handleMoveConfirm = async function(targetSlot) {
+    if (!window.moveMode) return;
+
+    const tempMoveMode = window.moveMode;
+    
+    const panel = document.getElementById('move-panel-ui');
+    const overlay = document.getElementById('move-overlay');
+    if (panel) panel.remove();
+    if (overlay) overlay.remove();
+    
+    document.getElementById('plan-container')?.classList.remove('move-mode-active');
+
+    if (typeof showLoading === 'function') showLoading('saving');
+
+    try {
+        const dp = document.getElementById('datePicker');
+        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
+        const sourceSlot = tempMoveMode.sourceSlot;
+        const bookingData = tempMoveMode.bookingData || tempMoveMode;
+
+        // 1. Quell-Slot in Supabase leeren (auf buchungen_db umgestellt)
+        const { error: errorSource } = await supabaseClient
+            .from('buchungen_db')
+            .upsert({
+                date: dateVal,
+                slot: parseInt(sourceSlot),
+                klasse: "",
+                halle: "",
+                material: "",
+                kommentar: "",
+                details: "",
+                typ: "buchung",
+                verfasser: ""
+            }, { onConflict: 'date,slot' });
+
+        if (errorSource) throw errorSource;
+
+        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (auf buchungen_db umgestellt)
+        const { error: errorTarget } = await supabaseClient
+            .from('buchungen_db')
+            .upsert({
+                date: dateVal,
+                slot: parseInt(targetSlot),
+                klasse: bookingData.klasse || "",
+                halle: bookingData.halle || "",
+                material: bookingData.material || "",
+                kommentar: bookingData.kommentar || "",
+                details: bookingData.details || bookingData.materialDetail || "",
+                typ: bookingData.typ || "buchung",
+                verfasser: userKuerzel || ""
+            }, { onConflict: 'date,slot' });
+
+        if (errorTarget) throw errorTarget;
+
+        console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlot} verschoben.`);
+
+        // 3. Plan neu laden
+        if (typeof loadPlan === 'function') {
+            await loadPlan(); 
+        }
+
+        if (typeof initEventListeners === 'function') {
+            initEventListeners();
+        }
+
+        // Cleanup
+        window.moveMode = null;
+        window.currentInteractionMode = null;
+        
+        if (typeof cancelMoveMode === 'function') {
+            cancelMoveMode();
+        }
+
+    } catch (err) {
+        console.error("Verschiebe-Fehler (Supabase):", err);
+        alert("Fehler beim Verschieben der Lektion.");
+    } finally {
+        if (typeof hideLoading === 'function') hideLoading();
+        window.currentInteractionMode = null;
+        document.getElementById('move-panel-ui')?.remove();
+        document.getElementById('move-overlay')?.remove();
+        document.getElementById('plan-container')?.classList.remove('move-mode-active');
+    }
+};
+
+/* ============================================================
+   14. MENÜ-STEUERUNG & WEICHENSTELLUNG (SUPABASE VERSION)
+   ============================================================ */
+
+/**
+ * Schließt das Menü und bereinigt den Status
+ */
+function closeEditor() {
+    const modal = document.getElementById('eigenesmenu-modal');
+    if (modal) {
+        modal.remove();
+    }
+    // Wichtig: Auswahl-Array für Materialien leeren, wenn das Menü schließt
+    if (typeof selectedMaterials !== 'undefined') {
+        selectedMaterials = [];
+    }
+}
+
+
+
+
+
+
+    
+
+window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
+    const zielHalle = (mode === 'LOESCHEN') ? "" : "Ausfall";
+    
+    // 1. UI-LOADER (Optisch am Button)
+    if (btn) {
+        btn.style.pointerEvents = "none";
+        btn.style.opacity = "0.6";
+    }
+
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot);
+    const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+    const now = new Date().toISOString();
+    const userKuerzel = window.userKuerzel || "";
+
+    const onCompleteVisuals = () => {
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
+        }
+        
+        // Lokalen Datenspeicher synchron halten
+        if (window.lastPlanData && window.lastPlanData[slotNum]) {
+            window.lastPlanData[slotNum].halle = zielHalle;
+        }
+
+        // UI für den spezifischen Slot aktualisieren
+        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        if (box) {
+            const label = box.querySelector('.halle-label');
+            if (label) label.innerText = zielHalle;
+            
+            // Logik für Ausfall vs. normale Halle
+            if (zielHalle === "Ausfall") {
+                box.classList.add('ausfall-mode');
+                box.style.backgroundColor = ""; 
+            } else {
+                box.classList.remove('ausfall-mode');
+                if (typeof hallenConfig !== 'undefined' && hallenConfig[zielHalle]) {
+                    box.style.backgroundColor = hallenConfig[zielHalle].color;
+                } else {
+                    box.style.backgroundColor = "";
+                }
+            }
+        }
+        closeEditor();
+    };
+
+    // 2. SUPABASE SPEICHERUNG
+    try {
+        const { data: existingData, error: fetchError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('id')
+            .eq('date', targetDate)
+            .eq('slot', slotNum)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        const bookingData = {
+            date: targetDate,
+            slot: slotNum,
+            klasse: klasse || currentSlotData.klasse || "",
+            halle: zielHalle,
+            material: currentSlotData.material || "",
+            kommentar: currentSlotData.kommentar || "",
+            details: currentSlotData.details || currentSlotData.materialDetail || "",
+            timestamp: now,
+            typ: currentSlotData.typ || "buchung",
+            verfasser: userKuerzel
+        };
+
+        if (existingData && existingData.id) {
+            const { error: updateError } = await window.supabaseClient
+                .from('buchungen_db')
+                .update(bookingData)
+                .eq('id', existingData.id);
+
+            if (updateError) throw updateError;
+        } else {
+            const { error: insertError } = await window.supabaseClient
+                .from('buchungen_db')
+                .insert([bookingData]);
+
+            if (insertError) throw insertError;
+        }
+
+        onCompleteVisuals();
+        if (typeof syncPlan === 'function') syncPlan();
+
+    } catch (e) {
+        if (btn) {
+            btn.style.pointerEvents = "auto";
+            btn.style.opacity = "1";
+        }
+        console.error("Fehler bei Ausfall-Click (Supabase):", e);
+        alert("Speichern fehlgeschlagen: " + e.message);
+    }
+};
+
+
+
+
     
 
 /**
@@ -7768,209 +8025,7 @@ function executePayloads(payloadArray, onCompleteVisuals) {
 }
 
 
-/* ============================================================
-   15. Lektion verschieben
-   ============================================================ */
 
-function createMoveOverlay() {
-    // 1. Overlay (für die Verdunkelung)
-    if (!document.getElementById('move-overlay')) {
-        const overlay = document.createElement('div');
-        overlay.className = 'move-mode-overlay';
-        overlay.id = 'move-overlay';
-        document.body.appendChild(overlay);
-    }
-    
-    // 2. Panel
-    if (!document.getElementById('move-panel-ui')) {
-        const panel = document.createElement('div');
-        panel.id = 'move-panel-ui';
-        panel.className = 'move-panel';
-        panel.innerHTML = `
-            <span>Wähle ein freies Feld, um die gewählte Lektion zu verschieben...</span>
-            <button onclick="cancelMoveMode()" class="btn-cancel">Abbrechen</button>
-        `;
-        document.body.appendChild(panel);
-    }
-}
-
-window.cancelMoveMode = function() {
-    console.log("Starte radikalen Abbruch...");
-    
-    // 1. Modus zurücksetzen
-    window.moveMode = null;
-    window.currentInteractionMode = null; // Sperre aufheben
-    
-    // 2. UI-Elemente entfernen (Overlay & Panel)
-    const overlay = document.getElementById('move-overlay');
-    if (overlay) overlay.remove();
-    const panel = document.getElementById('move-panel-ui');
-    if (panel) panel.remove();
-    
-    // 3. Klassen entfernen
-    document.querySelectorAll('.move-mode-active').forEach(el => el.classList.remove('move-mode-active'));
-    document.body.classList.remove('move-mode-active');
-    
-    // 4. Boxen zurücksetzen
-    const boxes = document.querySelectorAll('.box');
-    boxes.forEach(box => {
-        box.style.pointerEvents = ''; 
-        box.classList.remove('is-selectable', 'is-being-moved', 'move-mode-highlight');
-        const slot = box.getAttribute('data-slot');
-        const klasse = box.querySelector('.klasse-label')?.innerText || "";
-        const isMine = box.classList.contains('is-mine');
-        if (box.classList.contains('empty')) {
-            box.onclick = null;
-        } else {
-            setBoxClick(box, klasse, slot, isMine);
-        }
-    });
-
-    // --- DER FIX: Daten neu laden ---
-    console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
-    if (typeof window.syncPlan === 'function') {
-        window.syncPlan(); 
-    }
-};
-
-window.highlightFreeSlots = function() {
-    const boxes = document.querySelectorAll('.box');
-
-    // 1. ABBRUCH-LOGIK (Reset)
-    if (!window.moveMode) {
-        window.currentInteractionMode = null; // Sync wieder erlauben
-        const existingOverlay = document.getElementById('move-overlay');
-        if (existingOverlay) existingOverlay.remove();
-        
-        document.body.classList.remove('move-mode-active');
-        
-        boxes.forEach(box => {
-            box.classList.remove('is-selectable', 'is-being-moved', 'move-mode-highlight');
-            const slot = box.getAttribute('data-slot');
-            const klasse = box.querySelector('.klasse-label')?.innerText || "";
-            const isMine = box.classList.contains('is-mine');
-            
-            if (box.classList.contains('empty')) {
-                box.onclick = null;
-            } else {
-                setBoxClick(box, klasse, slot, isMine);
-            }
-        });
-        return;
-    }
-
-    // 2. AKTIVIERUNGS-LOGIK
-    window.currentInteractionMode = 'VERSCHIEBEN'; // Sync für die Dauer des Verschiebens blockieren
-    document.body.classList.add('move-mode-active');
-    createMoveOverlay(); 
-    const sourceSlot = window.moveMode.sourceSlot;
-
-    boxes.forEach(box => {
-        const isHeaderOrDivider = box.classList.contains('header-row') || 
-                                  box.classList.contains('divider-thin') || 
-                                  box.classList.contains('divider-thick');
-        
-        if (box.getAttribute('data-slot') == sourceSlot) {
-            box.classList.add('is-being-moved', 'move-mode-highlight');
-            box.onclick = null;
-        } 
-        else if (box.classList.contains('empty') && !isHeaderOrDivider) {
-            box.classList.add('is-selectable', 'move-mode-highlight');
-            box.onclick = function() {
-                handleMoveConfirm(box.getAttribute('data-slot'));
-            };
-        }
-        else {
-            box.classList.remove('move-mode-highlight');
-            box.onclick = null; 
-        }
-    });
-};
-
-window.handleMoveConfirm = async function(targetSlot) {
-    if (!window.moveMode) return;
-
-    const tempMoveMode = window.moveMode;
-    
-    const panel = document.getElementById('move-panel-ui');
-    const overlay = document.getElementById('move-overlay');
-    if (panel) panel.remove();
-    if (overlay) overlay.remove();
-    
-    document.getElementById('plan-container')?.classList.remove('move-mode-active');
-
-    if (typeof showLoading === 'function') showLoading('saving');
-
-    try {
-        const dp = document.getElementById('datePicker');
-        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const sourceSlot = tempMoveMode.sourceSlot;
-        const bookingData = tempMoveMode.bookingData || tempMoveMode;
-
-        // 1. Quell-Slot in Supabase leeren (auf buchungen_db umgestellt)
-        const { error: errorSource } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                date: dateVal,
-                slot: parseInt(sourceSlot),
-                klasse: "",
-                halle: "",
-                material: "",
-                kommentar: "",
-                details: "",
-                typ: "buchung",
-                verfasser: ""
-            }, { onConflict: 'date,slot' });
-
-        if (errorSource) throw errorSource;
-
-        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (auf buchungen_db umgestellt)
-        const { error: errorTarget } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                date: dateVal,
-                slot: parseInt(targetSlot),
-                klasse: bookingData.klasse || "",
-                halle: bookingData.halle || "",
-                material: bookingData.material || "",
-                kommentar: bookingData.kommentar || "",
-                details: bookingData.details || bookingData.materialDetail || "",
-                typ: bookingData.typ || "buchung",
-                verfasser: userKuerzel || ""
-            }, { onConflict: 'date,slot' });
-
-        if (errorTarget) throw errorTarget;
-
-        console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlot} verschoben.`);
-
-        // 3. Plan neu laden
-        if (typeof loadPlan === 'function') {
-            await loadPlan(); 
-        }
-
-        if (typeof initEventListeners === 'function') {
-            initEventListeners();
-        }
-
-        // Cleanup
-        window.moveMode = null;
-        window.currentInteractionMode = null;
-        
-        if (typeof cancelMoveMode === 'function') {
-            cancelMoveMode();
-        }
-
-    } catch (err) {
-        console.error("Verschiebe-Fehler (Supabase):", err);
-        alert("Fehler beim Verschieben der Lektion.");
-    } finally {
-        if (typeof hideLoading === 'function') hideLoading();
-        window.currentInteractionMode = null;
-        document.getElementById('move-panel-ui')?.remove();
-        document.getElementById('move-overlay')?.remove();
-        document.getElementById('plan-container')?.classList.remove('move-mode-active');
-    }
-};
 
 /* ============================================================
    14. Zusatz-Menu mit dezentem Backdrop (Variante B)
