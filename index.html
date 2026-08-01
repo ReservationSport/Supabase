@@ -4926,9 +4926,11 @@ window.loadPlan = async function() {
                     String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
                 );
                 
-                const safeUserKuerzel = window.userKuerzel ? String(window.userKuerzel).toLowerCase() : "";
-                const isMyBooking = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+                 // Prüft, ob das Kürzel global oder im window existiert
+                const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || ""));
+                const safeUserKuerzel = String(aktuellesKuerzel).trim().toLowerCase();
                 
+                const isMyBooking = (safeUserKuerzel !== "" && verfasser.trim().toLowerCase() === safeUserKuerzel);               
                 const canEdit = isMyClass || isMyBooking;
 
                 const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
