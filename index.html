@@ -4267,11 +4267,13 @@ input.stellvertretung-input {
     window.syncPauseTimer = null; // Timer für die "Ruhephase" nach Aktionen
     window.lockedSlots = {}; // Speichert: { "slotID": true }
     window.currentInteractionMode = null;
+
     
 /* ============================================================
    2. INITIALISIERUNG
    ============================================================ */
-document.addEventListener('DOMContentLoaded', () => {
+
+    document.addEventListener('DOMContentLoaded', () => {
     // 1. Lokales Datum korrekt berechnen
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -4288,27 +4290,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+
+
+/* ============================================================
+   3. LOGIN
+   ============================================================ */
     
-
-async function checkGlobalSync() {
-    try {
-        // --- QUEUE-VETO: WENN GERADE GESPEICHERT WIRD, NICHT STÖREN ---
-        if (window.actionQueue && (window.actionQueue.length > 0 || window.isProcessingQueue)) {
-            return; 
-        }
-
-        // Wenn eine Funktion zum Neuladen des Plans existiert, führen wir sie leise im Hintergrund aus
-        if (typeof window.loadPlan === 'function' && document.visibilityState === 'visible') {
-            if (typeof initNewsSystem === 'function') {
-                await initNewsSystem();
-            }
-        }
-    } catch (err) {
-        // Netzwerkfehler stumm abfangen
-        console.error("Sync-Fehler:", err);
-    }
-}
-
 
 async function handleLogin() {
     const btn = document.getElementById('loginBtn');
@@ -4425,6 +4412,68 @@ async function handleLogin() {
     }
 }
 
+
+/* ============================================================
+   4. REALTIME SYNCHRONISATION - in Supabase eingebaut
+   ============================================================ */
+
+    
+let planRealtimeChannel = null;
+
+function setupRealtimeSync() {
+    // Falls bereits eine Subscription läuft, erst alten Channel entfernen
+    if (planRealtimeChannel) {
+        supabaseClient.removeChannel(planRealtimeChannel);
+    }
+
+    planRealtimeChannel = supabaseClient
+        .channel('public:global_realtime_changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'buchungen_db' },
+            (payload) => {
+                console.log('⚡ Echtzeit-Update: buchungen_db geändert', payload);
+                if (typeof window.syncPlan === 'function' && document.visibilityState === 'visible') {
+                    window.syncPlan();
+                }
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'master_db' },
+            (payload) => {
+                console.log('⚡ Echtzeit-Update: master_db geändert', payload);
+                if (typeof window.syncPlan === 'function' && document.visibilityState === 'visible') {
+                    window.syncPlan();
+                }
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'news_db' },
+            (payload) => {
+                console.log('⚡ Echtzeit-Update: news_db geändert', payload);
+                // Da es sich um News handelt, rufen wir hier das News-System auf
+                if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
+                    initNewsSystem();
+                }
+            }
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('⚡ Realtime-Synchronisation erfolgreich gestartet!');
+            }
+        });
+}
+
+// Starten beim Laden der Seite
+document.addEventListener('DOMContentLoaded', () => {
+    setupRealtimeSync();
+});
+
+    
+
+    
 
 /* ============================================================
    ZENTRALE EVENT-DELEGATION (Einmalig im Skript)
