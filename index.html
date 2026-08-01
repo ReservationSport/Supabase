@@ -4904,24 +4904,31 @@ window.loadPlan = async function() {
             for(let i = 1; i <= 5; i++) {
                 const absoluteSlot = (rowIndex * 5) + i; 
                 const slotData = plan[absoluteSlot] || {};
-                const klasse = slotData.klasse || "";
+                
+                // SICHERHEIT: Alles explizit in Strings umwandeln
+                const klasse = (slotData.klasse !== undefined && slotData.klasse !== null) ? String(slotData.klasse) : "";
+                const halle = (slotData.halle !== undefined && slotData.halle !== null) ? String(slotData.halle) : "";
+                const typ = (slotData.typ !== undefined && slotData.typ !== null) ? String(slotData.typ) : "";
+                const verfasser = (slotData.verfasser !== undefined && slotData.verfasser !== null) ? String(slotData.verfasser) : "";
+                const lehrerDaten = (slotData.lehrer !== undefined && slotData.lehrer !== null) ? String(slotData.lehrer) : "";
                 
                 if (klasse.trim().toLowerCase() === "verschoben") {
                     html += `<div class="box empty" data-slot="${absoluteSlot}" data-time="${zeitStr}"></div>`;
                     continue; 
                 }
 
-                const halle = slotData.halle || "";
-                const typ = slotData.typ || ""; 
                 const isAusfall = (halle === "Ausfall");
-                const isKlasseLeer = klasse.trim() === "";
+                const isKlasseLeer = (klasse.trim() === "");
                 
-                const verfasser = slotData.verfasser || "";
-                const lehrerDaten = slotData.lehrer || "";
                 const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
                 
-                const isMyClass = !isKlasseLeer && window.myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
-                const isMyBooking = (verfasser.trim().toLowerCase() === (window.userKuerzel || "").toLowerCase());
+                const isMyClass = !isKlasseLeer && window.myClasses.some(c => 
+                    String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
+                );
+                
+                const safeUserKuerzel = window.userKuerzel ? String(window.userKuerzel).toLowerCase() : "";
+                const isMyBooking = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+                
                 const canEdit = isMyClass || isMyBooking;
 
                 const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
