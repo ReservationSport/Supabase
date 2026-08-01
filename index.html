@@ -5134,8 +5134,12 @@ window.syncPlan = async function() {
             
             const lehrer = (verfasser !== "") ? verfasser : ((slotData.lehrer !== "") ? slotData.lehrer : (allClassTeachers[klasse] || ""));
             const isMyClass = !isKlasseLeer && myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
-            const userKuerzel = window.userKuerzel || "";
-            const isMyBooking = (verfasser.trim().toLowerCase() === userKuerzel.toLowerCase());
+            
+            // Abgesicherte Variablen-Prüfung für Verfasser / Kürzel
+            const safeVerfasser = (verfasser !== null && verfasser !== undefined) ? verfasser.toString() : "";
+            const safeUserKuerzel = (window.userKuerzel !== null && window.userKuerzel !== undefined) ? window.userKuerzel.toString() : "";
+            const isMyBooking = (safeVerfasser.trim().toLowerCase() === safeUserKuerzel.trim().toLowerCase());
+            
             const canEdit = isMyClass || isMyBooking;
             
             box.className = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
@@ -5289,14 +5293,18 @@ window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial
 };
 
 /* ============================================================
-   9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL / SUPABASE)
+    9. KLASSE ABKLEBEN (IDENTISCHES UI-DESIGN - FINAL / SUPABASE)
    ============================================================ */
 
 window.starteAbklebenWorkflow = function(time, slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
     if (!modalContainer) return;
 
-    const currentSlot = parseInt(slot);
+    const currentSlot = parseInt(slot, 10);
+    const safeKlasse = (klasse !== null && klasse !== undefined) ? klasse.toString() : "";
+    const safeTime = (time !== null && time !== undefined) ? time.toString() : "";
+    const safeSlot = (slot !== null && slot !== undefined) ? slot.toString() : "";
+
     const aktuelleHalle = (window.lastPlanData && window.lastPlanData[currentSlot]?.halle) || "";
     
     // Partner-Suche (NUR nach Klasse prüfen, unabhängig von der Halle!)
@@ -5305,14 +5313,20 @@ window.starteAbklebenWorkflow = function(time, slot, klasse) {
     const nextSlotData = (window.lastPlanData && window.lastPlanData[nextSlot]) || {};
     const prevSlotData = (window.lastPlanData && window.lastPlanData[prevSlot]) || {};
 
+    const nextKlasse = nextSlotData.klasse ? nextSlotData.klasse.toString() : "";
+    const prevKlasse = prevSlotData.klasse ? prevSlotData.klasse.toString() : "";
+
     let partnerSlot = null;
-    if (nextSlotData.klasse && nextSlotData.klasse.trim().toLowerCase() === klasse.trim().toLowerCase()) partnerSlot = nextSlot;
-    else if (prevSlotData.klasse && prevSlotData.klasse.trim().toLowerCase() === klasse.trim().toLowerCase()) partnerSlot = prevSlot;
+    if (nextKlasse && nextKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
+        partnerSlot = nextSlot;
+    } else if (prevKlasse && prevKlasse.trim().toLowerCase() === safeKlasse.trim().toLowerCase()) {
+        partnerSlot = prevSlot;
+    }
 
     // 1. Direkt zum Security Check, wenn keine Doppellektion
     if (!partnerSlot) {
         window.slotsToClear = [currentSlot];
-        window.zeigePasswortFuerAbkleben(klasse, time, slot, false);
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, false);
         return;
     }
 
@@ -5340,8 +5354,9 @@ window.starteAbklebenWorkflow = function(time, slot, klasse) {
     `;
 
     // 4. Standard Footer
+    const backCall = `window.openEditor(window.currentEditBox, '${safeTime}', '${safeSlot}', '${safeKlasse}')`;
     html += renderFooter([
-        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: `window.openEditor(window.currentEditBox, '${time}', '${slot}', '${klasse}')` },
+        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backCall },
         { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
     ]);
 
@@ -5350,15 +5365,14 @@ window.starteAbklebenWorkflow = function(time, slot, klasse) {
     // 5. Events
     document.getElementById('btn-doppel-beide')?.addEventListener('click', () => {
         window.slotsToClear = [currentSlot, partnerSlot];
-        window.zeigePasswortFuerAbkleben(klasse, time, slot, true);
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
     });
     
     document.getElementById('btn-doppel-einzel')?.addEventListener('click', () => {
         window.slotsToClear = [currentSlot];
-        window.zeigePasswortFuerAbkleben(klasse, time, slot, true);
+        window.zeigePasswortFuerAbkleben(safeKlasse, safeTime, safeSlot, true);
     });
 };
-
 
 
 window.zeigePasswortFuerAbkleben = function(klasse, time, slot, isDoppel) {
@@ -5570,47 +5584,54 @@ window.showNews = function() {
     const sidebar = document.getElementById('newsSidebar');
     const newsContainer = document.getElementById('newsContent');
     const backdrop = document.getElementById('newsSidebarBackdrop');
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : "";
     const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
 
     if (sidebar) sidebar.style.display = 'flex';
     if (backdrop) backdrop.style.display = 'block';
     if (newsContainer) newsContainer.innerHTML = "";
     
-    const aktiveNews = meineRelevanteNews.filter(n => {
+    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];
+    const aktiveNews = sichereNewsListe.filter(n => {
+        if (!n) return false;
         const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
         return !geloeschtVon.includes(aktuellerUser);
     });
 
     aktiveNews.forEach(news => {
+        if (!news) return;
+
         const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim());
         const istGelesen = gelesenListe.includes(aktuellerUser);
-        const rowIndex = Math.floor((parseInt(news.slot) - 1) / 5);
+        const slotNummer = parseInt(news.slot, 10);
+        const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0;
         const uhrzeit = zeiten[rowIndex] || "";
 
-        let formatiertesDatum = news.datum || '';
+        let formatiertesDatum = news.datum ? news.datum.toString() : '';
         if (formatiertesDatum.includes('-')) {
             const parts = formatiertesDatum.split('-');
             if (parts.length === 3) formatiertesDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
         }
 
-        const displayVerfasser = (news.verfasser || '').toLowerCase();
-        const newsTextLower = (news.text || "").toLowerCase();
-        const hallenTypLower = (news.halle || "").toLowerCase();
-        const verf = news.verfasser || 'Jemand';
-        const kl = news.klasse || 'unbekannt';
+        const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : '';
+        const displayVerfasser = safeVerfasserInput.toLowerCase();
+        const newsTextLower = (news.text !== null && news.text !== undefined) ? news.text.toString().toLowerCase() : "";
+        const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase() : "";
+        const verf = safeVerfasserInput !== '' ? safeVerfasserInput : 'Jemand';
+        const kl = (news.klasse !== null && news.klasse !== undefined) ? news.klasse.toString() : 'unbekannt';
         
         let displayHeader = "";
         let displayMain = "";
         
         const istStvCard = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
+        const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
 
         if (hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:")) {
             displayHeader = "Neue Idee:";
-            let saubererText = news.text.replace(/^NEUE IDEE:\s*/i, '').replace(/^Neue Idee:\s*/i, '').trim();
+            let saubererText = safeNewsText.replace(/^NEUE IDEE:\s*/i, '').replace(/^Neue Idee:\s*/i, '').trim();
             const matchKat = saubererText.match(/^\[(.*?)\]\s*(.*)$/);
             
-            if (matchKat) {
+            if (matchKat && matchKat[1] && matchKat[2]) {
                 displayHeader = `IDEE FÜR "${matchKat[1].toUpperCase()}"`;
                 displayMain = matchKat[2];
             } else {
@@ -5619,32 +5640,32 @@ window.showNews = function() {
         } 
         else if (newsTextLower.includes("defekt behoben:")) {
             displayHeader = "DEFEKT BEHOBEN";
-            displayMain = news.text.replace(/Defekt behoben: /i, '').replace(/NEUER DEFEKT: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
+            displayMain = safeNewsText.replace(/Defekt behoben: /i, '').replace(/NEUER DEFEKT: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
         } else if (newsTextLower.includes("defekt")) {
             displayHeader = "DEFEKT";
-            displayMain = news.text.replace(/NEUER DEFEKT: /i, '').replace(/Defekt behoben: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
+            displayMain = safeNewsText.replace(/NEUER DEFEKT: /i, '').replace(/Defekt behoben: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
         } 
         else if (hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch")) {
             if (newsTextLower.includes("erledigt")) {
                 displayHeader = "MATERIALWUNSCH ERLEDIGT";
-                displayMain = news.text.replace(/Materialwunsch erledigt: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/NEUER MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
+                displayMain = safeNewsText.replace(/Materialwunsch erledigt: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/NEUER MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
             } else {
                 displayHeader = "MATERIALWUNSCH";
-                displayMain = news.text.replace(/NEUER MATERIALWUNSCH: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
+                displayMain = safeNewsText.replace(/NEUER MATERIALWUNSCH: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
             }
         }
         else if (hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken-bedarf")) {
             displayHeader = "APOTHEKEN-BESTELLUNG";
-            displayMain = news.text.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim();
+            displayMain = safeNewsText.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim();
         }
         else if (hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde")) {
             displayHeader = "TEAMKASSE";
-            displayMain = news.text;
+            displayMain = safeNewsText;
         }
         else if (istStvCard) {
             displayHeader = "STELLVERTRETUNG GESUCHT";
-            const matchLek = news.text.match(/\((\d+\s*Lektionen)\)/i);
-            displayMain = matchLek ? matchLek[1] : news.text;
+            const matchLek = safeNewsText.match(/\((\d+\s*Lektionen)\)/i);
+            displayMain = (matchLek && matchLek[1]) ? matchLek[1] : safeNewsText;
         }
         else if (hallenTypLower.includes("badi") || newsTextLower.includes("badi")) {
             displayHeader = "Halle frei!";
@@ -5657,17 +5678,19 @@ window.showNews = function() {
             displayMain = `${verf} hat für die ${kl} einen Ausfall eingetragen!`;
         } else {
             displayHeader = "Info:";
-            displayMain = news.text || '';
+            displayMain = safeNewsText;
         }
         
         const card = document.createElement('div');
         card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`;
+        const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : '';
+
         card.innerHTML = `
             <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span class="status-icon" style="font-size: 0.7rem; font-weight:bold;">${istGelesen ? 'GELESEN' : 'NEU'}</span>
                 <span class="material-symbols-outlined" 
                       style="color: #ff9800; cursor: pointer; font-size: 20px;" 
-                      onclick="event.stopPropagation(); deleteNews('${news.id}')" 
+                      onclick="event.stopPropagation(); deleteNews('${safeNewsId}')" 
                       title="Nachricht löschen">delete</span>
             </div>
             <div class="news-text" style="margin: 8px 0;">
@@ -5684,10 +5707,10 @@ window.showNews = function() {
             if (istStvCard) {
                 e.stopPropagation();
                 
-                const newsInListe = meineRelevanteNews.find(n => n.id === news.id);
+                const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);
                 if (newsInListe) {
                     if (!newsInListe.gelesen) newsInListe.gelesen = "";
-                    if (!newsInListe.gelesen.includes(aktuellerUser)) {
+                    if (!newsInListe.gelesen.toUpperCase().includes(aktuellerUser)) {
                         newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser;
                     }
                 }
@@ -5704,7 +5727,7 @@ window.showNews = function() {
                 try {
                     await window.supabaseClient
                         .from('news_db')
-                        .update({ gelesen: newsInListe.gelesen })
+                        .update({ gelesen: newsInListe ? newsInListe.gelesen : aktuellerUser })
                         .eq('id', news.id);
                 } catch (err) {
                     console.error("Fehler beim Markieren:", err);
@@ -5815,9 +5838,14 @@ window.blinkTimer = window.blinkTimer || {};
 
 
 async function markAsReadAndJump(news, event) {
-    const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
-    const newsTextLower = (news.text || "").toLowerCase();
-    const hallenTypLower = (news.halle || "").toLowerCase();
+    if (!news) return;
+
+    const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : "";
+    const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
+    const safeHalle = (news.halle !== null && news.halle !== undefined) ? news.halle.toString() : "";
+    
+    const newsTextLower = safeNewsText.toLowerCase();
+    const hallenTypLower = safeHalle.toLowerCase();
     
     const istZahlungsrunde = hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde");
     const istDefekt = hallenTypLower.includes("defekt_meldung") || newsTextLower.includes("defekt");
@@ -5825,10 +5853,12 @@ async function markAsReadAndJump(news, event) {
     const istMaterial = hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch");
     const istStv = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
     
-    const newsInListe = meineRelevanteNews.find(n => n.id === news.id);
+    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];
+    const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);
+    
     if (newsInListe) {
         if (!newsInListe.gelesen) newsInListe.gelesen = "";
-        if (!newsInListe.gelesen.includes(user)) {
+        if (!newsInListe.gelesen.toUpperCase().includes(user)) {
             newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${user}` : user;
         }
     }
@@ -5843,18 +5873,23 @@ async function markAsReadAndJump(news, event) {
         }
     }
 
-    updateNewsDot(); 
+    if (typeof updateNewsDot === 'function') {
+        updateNewsDot();
+    }
 
+    const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : "";
     try {
         await window.supabaseClient
             .from('news_db')
             .update({ gelesen: newsInListe ? newsInListe.gelesen : user })
-            .eq('id', news.id);
+            .eq('id', safeNewsId);
     } catch (e) {
         console.error("Fehler beim Markieren:", e);
     }
 
-    window.closeNews();
+    if (typeof window.closeNews === 'function') {
+        window.closeNews();
+    }
 
     if (istStv) {
         const overlay = document.getElementById('stellvertretung-overlay');
@@ -5888,18 +5923,25 @@ async function markAsReadAndJump(news, event) {
     }
 
     if (news.datum) {
-        const pickerValue = document.getElementById('datePicker').value;
-        if (pickerValue !== news.datum) {
-            await changeDayAndLoad(news.datum, 'day');
+        const datePickerEl = document.getElementById('datePicker');
+        const pickerValue = datePickerEl ? datePickerEl.value : "";
+        const safeNewsDatum = news.datum.toString();
+
+        if (pickerValue !== safeNewsDatum) {
+            if (typeof changeDayAndLoad === 'function') {
+                await changeDayAndLoad(safeNewsDatum, 'day');
+            }
         }
 
-        setTimeout(() => {
-            const box = document.querySelector(`[data-slot="${news.slot}"]`); 
+        setTimeout(async () => {
+            const safeSlot = (news.slot !== null && news.slot !== undefined) ? news.slot.toString() : "";
+            const box = document.querySelector(`[data-slot="${safeSlot}"]`); 
             if (box) {
                 box.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 
-                const blinkId = 'blink-' + news.slot;
+                const blinkId = 'blink-' + safeSlot;
                 
+                if (!window.blinkTimer) window.blinkTimer = {};
                 if (window.blinkTimer[blinkId]) clearTimeout(window.blinkTimer[blinkId]);
                 
                 box.classList.remove('is-blinking');
@@ -5907,7 +5949,7 @@ async function markAsReadAndJump(news, event) {
                 box.classList.add('is-blinking');
                 
                 window.blinkTimer[blinkId] = setTimeout(() => {
-                    const currentBox = document.querySelector(`[data-slot="${news.slot}"]`);
+                    const currentBox = document.querySelector(`[data-slot="${safeSlot}"]`);
                     if (currentBox) {
                         currentBox.classList.remove('is-blinking');
                     }
@@ -5937,7 +5979,15 @@ window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
     if (typeof triggerNews !== "function") return;
     
     try {
-        const aktionLower = aktion.toLowerCase();
+        const safeAktion = (aktion !== null && aktion !== undefined) ? aktion.toString() : "";
+        const aktionLower = safeAktion.toLowerCase();
+        
+        const parsedSlot = parseInt(slot, 10);
+        const safeSlot = !isNaN(parsedSlot) ? parsedSlot : 0;
+        
+        const safeKlasse = (klasse !== null && klasse !== undefined) ? klasse.toString() : "";
+        const safeKuerzel = (kuerzel !== null && kuerzel !== undefined) ? kuerzel.toString() : "";
+
         let newsTyp = "";
 
         if (aktionLower.includes("outdoor")) {
@@ -5946,11 +5996,11 @@ window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
             newsTyp = "badi";
         } else if (aktionLower === "beendet" || aktionLower === "abgeklebt") {
             newsTyp = "beendet";
-       } else if (aktionLower === "defekt") {
+        } else if (aktionLower === "defekt") {
             newsTyp = "defekt";
         }
 
-        await triggerNews(newsTyp, parseInt(slot), klasse, kuerzel);
+        await triggerNews(newsTyp, safeSlot, safeKlasse, safeKuerzel);
     } catch (error) { 
         console.error("Fehler im News-Ablauf:", error); 
     }
