@@ -4832,7 +4832,7 @@ window.loadPlan = async function() {
 
         if (masterError) throw masterError;
 
-        // 2. Tagesaktuelle Buchungen für das gewählte Datum laden (Spalte 'datum' statt 'date')
+        // 2. Tagesaktuelle Buchungen für das gewählte Datum laden
         const { data: buchungenData, error: buchungenError } = await supabaseClient
             .from('buchungen_db')
             .select('*')
@@ -4859,14 +4859,13 @@ window.loadPlan = async function() {
             });
         }
 
-        // 5. Tagesbuchungen (Änderungen, Verschiebungen, Ausfälle) darüberlegen
+        // 5. Tagesbuchungen darüberlegen
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
                 if (plan[slot]) {
                     const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
 
-                    // Wenn "verschoben", wird der Slot komplett geleert
                     if (klasseAusDB.toLowerCase() === "verschoben") {
                         plan[slot].klasse = "";
                         plan[slot].lehrer = "";
@@ -4905,7 +4904,6 @@ window.loadPlan = async function() {
                 const absoluteSlot = (rowIndex * 5) + i; 
                 const slotData = plan[absoluteSlot] || {};
                 
-                // SICHERHEIT: Alles explizit in Strings umwandeln
                 const klasse = (slotData.klasse !== undefined && slotData.klasse !== null) ? String(slotData.klasse) : "";
                 const halle = (slotData.halle !== undefined && slotData.halle !== null) ? String(slotData.halle) : "";
                 const typ = (slotData.typ !== undefined && slotData.typ !== null) ? String(slotData.typ) : "";
@@ -4926,10 +4924,16 @@ window.loadPlan = async function() {
                     String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
                 );
                 
-                 // Prüft, ob das Kürzel global oder im window existiert
-                const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || ""));
-                const safeUserKuerzel = String(aktuellesKuerzel).trim().toLowerCase();
-                
+                // 🛠️ FIX KUERZEL-ZUGRIFF: Prüft explizit ob es ein Text oder ein HTML-Input ist!
+                let rawUserKuerzel = "";
+                if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+                    rawUserKuerzel = userKuerzel;
+                } else {
+                    const el = document.getElementById('userKuerzel');
+                    rawUserKuerzel = el ? (el.value || "") : "";
+                }
+
+                const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
                 const isMyBooking = (safeUserKuerzel !== "" && verfasser.trim().toLowerCase() === safeUserKuerzel);               
                 const canEdit = isMyClass || isMyBooking;
 
