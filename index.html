@@ -4820,6 +4820,15 @@ window.loadPlan = async function() {
     }
 
     try {
+        // 💡 NEU: Lädt automatisch alle Hallen, Farben & Icons aus "konfiguration", falls noch nicht geschehen
+        if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
+            if (typeof window.initHallenConfig === 'function') {
+                await window.initHallenConfig();
+            } else if (typeof initHallenConfig === 'function') {
+                await initHallenConfig();
+            }
+        }
+
         // --- DATEN AUS SUPABASE LADEN ---
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
         const aktuellerWochentag = wtArr[dateObj.getDay()];
@@ -4935,14 +4944,17 @@ window.loadPlan = async function() {
 
                 const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
                 
-                // 🛠️ ANPASSUNG: Prüft Verfasser ODER Lehrer aus den Master-Daten!
+                // Prüft Verfasser ODER Lehrer aus den Master-Daten
                 const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
                 const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
                 const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
                 
                 const canEdit = isMyClass || isMyBooking;
 
-                const bgFarbe = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
+                // 🛠️ Holt die Farbe direkt aus window.hallenConfig (unterstützt color & farbe)
+                const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
+                const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
+                
                 const classList = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
                 
                 html += `
@@ -6239,21 +6251,35 @@ window.handleMenuChoice = function(action, time, slot, klasse) {
    ============================================================ */
 
 
-// Beispiel für den App-Start:
-async function initHallenConfig() {
-    const { data } = await supabaseClient.from('konfiguration').select('raum, farbe, icon');
-    if (data) {
+window.initHallenConfig = async function() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('konfiguration')
+            .select('*'); // Lädt raum, farbe, icon etc.
+
+        if (error) throw error;
+
         window.hallenConfig = {};
-        data.forEach(item => {
-            if (item.raum) {
-                window.hallenConfig[item.raum] = {
-                    color: item.farbe || '#333',
-                    icon: item.icon || 'meeting_room'
-                };
-            }
-        });
+        
+        if (data) {
+            data.forEach(item => {
+                if (item.raum) {
+                    window.hallenConfig[item.raum] = {
+                        color: item.farbe || '#333333',
+                        icon: item.icon || 'meeting_room',
+                        // Speichert auch alle anderen Felder aus der DB (z.B. für Taskmanager)
+                        ...item 
+                    };
+                }
+            });
+        }
+        console.log("Hallen-Konfiguration erfolgreich geladen:", window.hallenConfig);
+        return window.hallenConfig;
+    } catch (err) {
+        console.error("Fehler beim Laden der Konfiguration:", err);
+        return {};
     }
-}
+};
     
 
 function handleReservationUI(time, slot, klasse) {
