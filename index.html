@@ -5409,9 +5409,10 @@ window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial
 
 
 /* ============================================================
-   10. NEWS-ZENTRALE & AUTOMATISCHE NOTIFIKATIONEN (SUPABASE)
+   9. NEWS-ZENTRALE
    ============================================================ */
 
+   
 let meineRelevanteNews = []; 
 
 /**
@@ -5488,6 +5489,180 @@ function updateNewsDot() {
     dot.style.display = hatUngelesene ? 'block' : 'none';
 }
 
+
+/* ============================================================
+   9.1. NEWS AUSLÖSEN
+   ============================================================ */
+
+
+/**
+ * Erstellt oder aktualisiert einen News-Eintrag direkt im Frontend und speichert ihn in Supabase.
+ * @param {Object} payload - Die Aktionsdaten
+ * @param {Array} [currentMasterData] - Optional: Die aktuellen Masterdaten für die Empfänger-Berechnung im selben Block
+ */
+window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
+    if (!supabaseClient) {
+        console.error("❌ Supabase Client fehlt für News-Speicherung.");
+        return;
+    }
+
+    const rawHalle = (payload.halle || "").toString().toLowerCase().trim();
+    const isZahlungsrunde = (rawHalle === "zahlungsrunde");
+    const isApotheke = (rawHalle === "apotheke_bestellung");
+    const isDefekt = (rawHalle === "defekt_meldung");
+    const isMaterial = (rawHalle === "material_wunsch");
+    const isIdee = (rawHalle === "ideenbrett");
+    const isApothekeMeldung = (rawHalle === "apotheke_meldung");
+    const isStv = (rawHalle === "stellvertretung");
+    const isAusfall = (rawHalle === "" || rawHalle === "ausfall");
+    const isAbkleben = (rawHalle === "beendet" || rawHalle === "abgeklebt");
+    
+    const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
+
+    // 1. Identifikation der handelnden Lehrperson
+    let handelndeLP = "";
+    if (isZahlungsrunde) {
+        handelndeLP = "System";
+    } else if (isApotheke) {
+        handelndeLP = (payload.user || payload.kuerzel || payload.kürzel || "Unbekannt").toString().trim();
+    } else if (isApothekeMeldung) {
+        handelndeLP = "System";
+    } else {
+        handelndeLP = (payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
+    }
+    
+    const stvDatum = payload.date || payload.datum || new Date().toISOString().split('T')[0];
+
+    // 2. ID-Logik (entspricht deiner Spalte 'id')
+    let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
+    if (isStv) {
+        newsId = "STV_" + stvDatum + "_" + handelndeLP;
+    } else if (isSpecial || isAusfall || isAbkleben || rawHalle.includes("outdoor") || rawHalle.includes("badi")) {
+        newsId += "_" + Date.now(); // Verhindert Überschreibung, damit jede Aktion als eigene News ankommt
+    }
+
+    // Wochentag & Tag-Index ermitteln
+    let zielTag = payload.wochentag;
+    const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    if (!zielTag && stvDatum) {
+        zielTag = wochentage[new Date(stvDatum).getDay()];
+    }
+    const tagIndex = wochentage.indexOf(zielTag);
+
+    // 3. Empfänger-Berechnung (Jetzt absolut fehlerfrei ohne Abbruch)
+    let empfaenger = "";
+    let gefundeneLehrer = [];
+
+    if (isZahlungsrunde) {
+        empfaenger = payload.kuerzel || ""; 
+    } else if (isApotheke) {
+        empfaenger = "chef"; 
+    } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
+        empfaenger = "alle";
+    } else {
+        const currentSlot = parseInt(payload.slot, 10);
+        if (!isNaN(currentSlot) && currentSlot > 0) {
+            const rowIndex = Math.floor((currentSlot - 1) / 5);
+            const rowStartSlot = (rowIndex * 5) + 1;
+            const targetSlots = [];
+            for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
+                targetSlots.push(s.toString());
+            }
+
+            if (currentMasterData && Array.isArray(currentMasterData)) {
+                currentMasterData.forEach(row => {
+                    let sheetTag = row.wochentag ? row.wochentag.toString().trim().toLowerCase() : "";
+                    let sheetSlot = row.slot ? row.slot.toString().trim() : "";
+                    let lehrerKuerzel = row.verfasser || row.lehrer ? (row.verfasser || row.lehrer).toString().trim() : "";
+
+                    if (sheetTag === (zielTag || "").toLowerCase() && targetSlots.includes(sheetSlot) && lehrerKuerzel !== "") {
+                        if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel)) {
+                            gefundeneLehrer.push(lehrerKuerzel);
+                        }
+                    }
+                });
+            }
+        }
+
+        // FALLBACK: Wenn keine anderen Lehrer im Block gefunden wurden, geht die Info an "alle" 
+        // statt den Prozess abubrechen zu lassen!
+        if (gefundeneLehrer.length === 0) {
+            empfaenger = "alle";
+        } else {
+            empfaenger = gefundeneLehrer.join(",");
+        }
+    }
+    
+    // 4. DYNAMISCHE TEXT-LOGIK
+    let newsText = "";
+    if (isAbkleben) {
+        newsText = `${handelndeLP} hat die Klasse ${payload.klasse} abgeklebt!`;
+    } else if (rawHalle.includes("outdoor")) {
+        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} "outdoor"!`;
+    } else if (rawHalle.includes("badi")) {
+        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} in der "Badi"!`;
+    } else if (isDefekt) {
+        newsText = `NEUER DEFEKT: ${payload.text} (Gemeldet von: ${handelndeLP})`;
+    } else if (isMaterial) {
+        newsText = `MATERIALWUNSCH: ${payload.text} (Von: ${handelndeLP})`;
+    } else if (isApotheke) {
+        newsText = `APOTHEKEN-BEDARF: ${payload.text} (Bestellt von: ${handelndeLP})`;
+    } else if (isApothekeMeldung) {
+        newsText = payload.text;
+    } else if (isStv) {
+        let anzahlLektionen = payload.anzahlLektionen || payload.count || payload.lektionen;
+        if (!anzahlLektionen && payload.slots && Array.isArray(payload.slots)) {
+            anzahlLektionen = payload.slots.length;
+        } else if (!anzahlLektionen && payload.items && Array.isArray(payload.items)) {
+            anzahlLektionen = payload.items.length;
+        }
+        if (!anzahlLektionen || anzahlLektionen === 0) {
+            anzahlLektionen = "Mehrere";
+        }
+        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${stvDatum} (${anzahlLektionen} Lektionen).`;
+    } else if (isZahlungsrunde) {
+        newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
+    } else if (isIdee) {
+        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
+        newsText = `NEUE IDEE: [${kat}] ${payload.text}`;
+    } else if (isAusfall) {
+        newsText = `${handelndeLP} hat einen Ausfall für die Klasse ${payload.klasse} eingetragen!`;
+    } else {
+        newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
+    }
+
+    // 5. Supabase Upsert
+    try {
+        const { error } = await supabaseClient
+            .from('news_db')
+            .upsert({
+                id: newsId,
+                datum_event: stvDatum,
+                slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
+                tag_index: tagIndex !== -1 ? tagIndex : null,
+                klasse: payload.klasse || "",
+                verfasser: handelndeLP,
+                empfaenger: empfaenger,
+                text: newsText,
+                zeitstempel: new Date().toISOString(),
+                gelesen: "",
+                geloescht: "" 
+            }, { onConflict: 'id' });
+
+        if (error) throw error;
+        console.log("🎯 News erfolgreich in Supabase gespeichert:", newsId);
+
+    } catch (err) {
+        console.error("❌ Fehler beim Speichern der News in Supabase:", err);
+    }
+};
+
+    
+/* ============================================================
+   9.2. NEWS ANZEIGEN
+   ============================================================ */
+
+    
 
 window.showNews = function() {
     const sidebar = document.getElementById('newsSidebar');
@@ -5883,40 +6058,6 @@ window.closeNews = () => {
 };
 
 
-window.triggerNewsWrapper = async function(aktion, slot, klasse, kuerzel) {
-    if (typeof triggerNews !== "function") return;
-    
-    try {
-        const safeAktion = (aktion !== null && aktion !== undefined) ? aktion.toString() : "";
-        const aktionLower = safeAktion.toLowerCase();
-        
-        const parsedSlot = parseInt(slot, 10);
-        const safeSlot = !isNaN(parsedSlot) ? parsedSlot : 0;
-        
-        const safeKlasse = (klasse !== null && klasse !== undefined) ? klasse.toString() : "";
-        const safeKuerzel = (kuerzel !== null && kuerzel !== undefined) ? kuerzel.toString() : "";
-
-        let newsTyp = "";
-
-        if (aktionLower.includes("outdoor")) {
-            newsTyp = "outdoor";
-        } else if (aktionLower.includes("badi")) {
-            newsTyp = "badi";
-        } else if (aktionLower.includes("ausfall")) {
-            newsTyp = "ausfall";
-        } else if (aktionLower === "beendet" || aktionLower === "abgeklebt") {
-            newsTyp = "beendet";
-        } else if (aktionLower === "defekt") {
-            newsTyp = "defekt";
-        }
-
-        await triggerNews(newsTyp, safeSlot, safeKlasse, safeKuerzel);
-    } catch (error) { 
-        console.error("Fehler im News-Ablauf:", error); 
-    }
-};
-
-
     
 
 /* ============================================================
@@ -6298,7 +6439,7 @@ function getDoppellektionPartnerSlot(currentSlot) {
 
 
 /**
- * Der "Postbote": Sendet Daten direkt an Supabase
+ * Der "Postbote": Sendet Daten direkt an Supabase und generiert automatisch News-Einträge
  */
 window.saveImmediately = async function(payload, options = {}) {
     // 1. Validierung
@@ -6316,6 +6457,7 @@ window.saveImmediately = async function(payload, options = {}) {
         const dp = document.getElementById('datePicker');
         const dateVal = payload.datum || (dp ? dp.value : new Date().toISOString().split('T')[0]);
         const slotNum = parseInt(payload.slot, 10);
+        const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : (payload.kuerzel || payload.verfasser || "")).toString().trim();
 
         const bookingData = {
             datum: dateVal,
@@ -6326,7 +6468,7 @@ window.saveImmediately = async function(payload, options = {}) {
             kommentar: payload.kommentar || "",
             details: payload.details || payload.materialDetail || "",
             typ: payload.typ || "buchung",
-            verfasser: userKuerzel || ""
+            verfasser: aktuellesKuerzel
         };
 
         // 2. Prüfen, ob für dieses Datum & diesen Slot bereits ein Eintrag existiert
@@ -6372,6 +6514,18 @@ window.saveImmediately = async function(payload, options = {}) {
 
         console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
         
+        // 3. ✨ AUTOMATISCHER NEWS-TRIGGER ✨
+        // Sendet die Aktion direkt an das News-System (für Badi, Outdoor, Ausfall, Abkleben etc.)
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                halle: bookingData.halle,       // Erkennt z.B. "", "badi", "outdoor", "beendet"
+                slot: slotNum,                  // Betroffener Slot
+                klasse: bookingData.klasse,     // Betroffene Klasse
+                kuerzel: aktuellesKuerzel,      // Wer hats gemacht?
+                datum: dateVal                  // An welchem Tag?
+            }, window.lastPlanData);            // Übergibt optional Masterdaten für die Empfänger-Matrix
+        }
+
         return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
 
     } catch (e) {
@@ -8210,9 +8364,16 @@ window.fuehreAbklebenAus = async function(klasse) {
                 console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
             }
 
-            // 3. News-System triggern
-            if (typeof window.triggerNewsWrapper === 'function') {
-                await window.triggerNewsWrapper("Abkleben", slotNum, klasse);
+            // 3. News-System direkt triggern (an Stelle des alten Wrappers)
+            if (typeof window.saveNewsToDBFrontend === 'function') {
+                const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toString().trim();
+                await window.saveNewsToDBFrontend({
+                    halle: "beendet", // Signalisiert der News-Logik das Abkleben
+                    slot: slotNum,
+                    klasse: klasse,
+                    kuerzel: aktuellesKuerzel,
+                    datum: targetDate
+                }, window.lastPlanData);
             }
         }
 
@@ -8245,9 +8406,6 @@ window.fuehreAbklebenAus = async function(klasse) {
         gridContainer.style.pointerEvents = "auto";
     }
 };
-
-
-
 
 
 
@@ -11141,253 +11299,8 @@ function getWeekNumber(d) {
 
 
 
-    /**
- * Erstellt oder aktualisiert einen News-Eintrag direkt im Frontend und speichert ihn in Supabase.
- * @param {Object} payload - Die Aktionsdaten
- * @param {Array} [currentMasterData] - Optional: Die aktuellen Masterdaten für die Empfänger-Berechnung im selben Block
- */
-window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
-    if (!supabaseClient) {
-        console.error("❌ Supabase Client fehlt für News-Speicherung.");
-        return;
-    }
 
-    const halle = (payload.halle || "").toString().toLowerCase();
-    const isZahlungsrunde = (halle === "zahlungsrunde");
-    const isApotheke = (halle === "apotheke_bestellung");
-    const isDefekt = (halle === "defekt_meldung");
-    const isMaterial = (halle === "material_wunsch");
-    const isIdee = (halle === "ideenbrett");
-    const isApothekeMeldung = (halle === "apotheke_meldung");
-    const isStv = (halle === "stellvertretung");
     
-    const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
-
-    // 1. Identifikation der handelnden Lehrperson
-    let handelndeLP = "";
-    if (isZahlungsrunde) {
-        handelndeLP = "System";
-    } else if (isApotheke) {
-        handelndeLP = (payload.user || payload.kuerzel || payload.kürzel || "Unbekannt").toString().trim();
-    } else if (isApothekeMeldung) {
-        handelndeLP = "System";
-    } else {
-        handelndeLP = (payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
-    }
-    
-    const stvDatum = payload.date || payload.datum || new Date().toISOString().split('T')[0];
-
-    // 2. ID-Logik (entspricht deiner Spalte 'id')
-    let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
-    if (isStv) {
-        newsId = "STV_" + stvDatum + "_" + handelndeLP;
-    } else if (isSpecial) {
-        newsId += "_" + Date.now();
-    }
-
-    // Wochentag & Tag-Index ermitteln (falls vorhanden im Payload oder per Datum)
-    let zielTag = payload.wochentag;
-    const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-    if (!zielTag && stvDatum) {
-        zielTag = wochentage[new Date(stvDatum).getDay()];
-    }
-    const tagIndex = wochentage.indexOf(zielTag);
-
-    // 3. Empfänger-Berechnung
-    let empfaenger = "";
-    let gefundeneLehrer = [];
-
-    if (isZahlungsrunde) {
-        empfaenger = payload.kuerzel || ""; 
-    } else if (isApotheke) {
-        empfaenger = "chef"; 
-    } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
-        empfaenger = "alle";
-    } else {
-        const currentSlot = parseInt(payload.slot);
-        const rowIndex = Math.floor((currentSlot - 1) / 5);
-        const rowStartSlot = (rowIndex * 5) + 1;
-        const targetSlots = [];
-        for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
-            targetSlots.push(s.toString());
-        }
-
-        if (currentMasterData && Array.isArray(currentMasterData)) {
-            currentMasterData.forEach(row => {
-                let sheetTag = row.wochentag ? row.wochentag.toString().trim().toLowerCase() : "";
-                let sheetSlot = row.slot ? row.slot.toString().trim() : "";
-                let lehrerKuerzel = row.verfasser || row.lehrer ? (row.verfasser || row.lehrer).toString().trim() : "";
-
-                if (sheetTag === (zielTag || "").toLowerCase() && targetSlots.includes(sheetSlot) && lehrerKuerzel !== "") {
-                    if (lehrerKuerzel !== handelndeLP && !gefundeneLehrer.includes(lehrerKuerzel)) {
-                        gefundeneLehrer.push(lehrerKuerzel);
-                    }
-                }
-            });
-        }
-        if (gefundeneLehrer.length === 0 && !isSpecial) {
-            return;
-        }
-        empfaenger = gefundeneLehrer.join(",");
-    }
-    
-    // 4. DYNAMISCHE TEXT-LOGIK
-    let newsText = "";
-    if (halle === "beendet") {
-        newsText = `${handelndeLP} hat die Klasse ${payload.klasse} abgeklebt!`;
-    } else if (halle.includes("outdoor")) {
-        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} "outdoor"!`;
-    } else if (halle.includes("badi")) {
-        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} in der "Badi"!`;
-    } else if (isDefekt) {
-        newsText = `NEUER DEFEKT: ${payload.text} (Gemeldet von: ${handelndeLP})`;
-    } else if (isMaterial) {
-        newsText = `MATERIALWUNSCH: ${payload.text} (Von: ${handelndeLP})`;
-    } else if (isApotheke) {
-        newsText = `APOTHEKEN-BEDARF: ${payload.text} (Bestellt von: ${handelndeLP})`;
-    } else if (isApothekeMeldung) {
-        newsText = payload.text;
-    } else if (isStv) {
-        let anzahlLektionen = payload.anzahlLektionen || payload.count || payload.lektionen;
-        if (!anzahlLektionen && payload.slots && Array.isArray(payload.slots)) {
-            anzahlLektionen = payload.slots.length;
-        } else if (!anzahlLektionen && payload.items && Array.isArray(payload.items)) {
-            anzahlLektionen = payload.items.length;
-        }
-        if (!anzahlLektionen || anzahlLektionen === 0) {
-            anzahlLektionen = "Mehrere";
-        }
-        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${stvDatum} (${anzahlLektionen} Lektionen).`;
-    } else if (isZahlungsrunde) {
-        newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
-    } else if (isIdee) {
-        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
-        newsText = `NEUE IDEE: [${kat}] ${payload.text}`;
-    } else if (halle === "") {
-        newsText = `${handelndeLP} hat einen Ausfall für die Klasse ${payload.klasse} eingetragen!`;
-    } else {
-        newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
-    }
-
-    // 5. Supabase Upsert mit deinen echten Spaltennamen
-    try {
-        const { error } = await supabaseClient
-            .from('news_db')
-            .upsert({
-                id: newsId,
-                datum_event: stvDatum,
-                slot_index: payload.slot ? parseInt(payload.slot) : null,
-                tag_index: tagIndex !== -1 ? tagIndex : null,
-                klasse: payload.klasse || "",
-                verfasser: handelndeLP,
-                empfaenger: empfaenger,
-                text: newsText,
-                zeitstempel: new Date().toISOString(),
-                gelesen: "",
-                geloescht: "" // Zurücksetzen, damit die News bei Aktualisierung wieder sichtbar wird
-            }, { onConflict: 'id' });
-
-        if (error) throw error;
-        console.log("🎯 News erfolgreich in Supabase gespeichert:", newsId);
-
-    } catch (err) {
-        console.error("❌ Fehler beim Speichern der News in Supabase:", err);
-    }
-};
-    
-
-
-    window.getWochentagName = function(dateString) {
-    if (!dateString) return "";
-    const d = new Date(dateString);
-    const weekdays = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-    return weekdays[d.getDay()];
-};
-
-
-
-
-/**
- * Löscht Material-Reservierungen einer Klasse direkt über Supabase.
- * @param {string} klasse - Die Bezeichnung der Klasse (z. B. "3a")
- */
-window.loescheMaterialReservierungFuerKlasseFrontend = async function(klasse) {
-    if (!supabaseClient) {
-        console.error("❌ Supabase Client fehlt.");
-        return;
-    }
-
-    const zielKlasse = (klasse || "").trim();
-    if (!zielKlasse) return;
-
-    try {
-        console.log(`🧹 Lösche Material-Reservierungen für Klasse: ${zielKlasse}`);
-
-        // In Supabase suchen wir nach Datensätzen, bei denen im Kommentar oder in der Klasse die Zielklasse vorkommt.
-        // Je nach Aufbau deiner Material-Tabelle (z. B. 'material_db') passt du den Spaltennamen an.
-        // Hier als Beispiel mit .ilike() für eine Teilstring-Suche (entspricht .includes() im JS):
-        const { error } = await supabaseClient
-            .from('material_db') // Ersetze das durch den echten Namen deiner Material-Tabelle in Supabase
-            .delete()
-            .ilike('kommentar', `%${zielKlasse}%`); // Sucht in der Spalte 'kommentar' nach der Klasse
-
-        if (error) throw error;
-
-        console.log(`✅ Material-Reservierungen für ${zielKlasse} erfolgreich gelöscht.`);
-    } catch (err) {
-        console.error("❌ Fehler beim Löschen der Material-Reservierungen in Supabase:", err);
-    }
-};
-
-
-
-/**
- * Löscht eine Klasse komplett aus der Supabase-Datenbank (Leert die Felder für diese Klasse).
- * @param {string} klasse - Die Bezeichnung der zu löschenden Klasse (z. B. "9a")
- */
-window.loescheKlasseKomplettAusDB = async function(klasse) {
-    if (!supabaseClient) {
-        console.error("❌ Supabase Client fehlt.");
-        return;
-    }
-
-    const zielKlasse = (klasse || "").trim();
-    if (!zielKlasse) return;
-
-    try {
-        console.log(`🧹 Lösche Einträge für Klasse ${zielKlasse} komplett aus Supabase...`);
-
-        // Wir aktualisieren alle Datensätze in 'buchungen_db', bei denen die Klasse übereinstimmt,
-        // und setzen die Buchungsfelder auf leer zurück.
-        const { error } = await supabaseClient
-            .from('buchungen_db')
-            .update({
-                klasse: "",
-                halle: "",
-                material: "",
-                kommentar: "",
-                details: "",
-                typ: "buchung",
-                verfasser: ""
-            })
-            .eq('klasse', zielKlasse);
-
-        if (error) throw error;
-
-        console.log(`✅ Klasse ${zielKlasse} wurde erfolgreich aus allen Slots entfernt.`);
-
-        // Plan neu laden, damit das UI aktualisiert wird
-        if (typeof window.syncPlan === 'function') {
-            window.syncPlan();
-        }
-
-    } catch (err) {
-        console.error("❌ Fehler beim Löschen der Klasse in Supabase:", err);
-        alert("Fehler beim Löschen der Klasse.");
-    }
-};
-
-
 
 
 
