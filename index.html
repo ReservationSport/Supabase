@@ -6825,7 +6825,6 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
 
-    // 💡 Kürzel direkt inline prüfen (nur verarbeiten, wenn es wirklich ein Text ist)
     const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
@@ -6889,7 +6888,6 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
             if (insertError) throw insertError;
         }
 
-        // News via Wrapper auslösen falls vorhanden
         if (typeof window.triggerNewsWrapper === 'function') {
             await window.triggerNewsWrapper("Material", slotNum, klasse, finalVerfasser);
         }
@@ -6919,7 +6917,6 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
 
-    // 💡 Kürzel direkt inline prüfen (nur verarbeiten, wenn es wirklich ein Text ist)
     const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
@@ -6934,6 +6931,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
                 ...window.lastPlanData[slotNum],
                 material: "",
                 materialDetail: "",
+                weitergabe: null,
                 verfasser: finalVerfasser
             };
         }
@@ -6962,6 +6960,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
             material: "",
             kommentar: currentSlotData.kommentar || "",
             details: "",
+            weitergabe: null,
             timestamp: now,
             typ: currentSlotData.typ || "buchung",
             verfasser: finalVerfasser
@@ -7011,7 +7010,8 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
     const slotData = (window.lastPlanData && slot) ? window.lastPlanData[slot] : {};
     const detail = slotData.details || slotData.materialDetail || slotData.materialKommentar || rawDetailInput || "";
 
-    const isAbzugeben = detail.includes("[weitergabe:true]");
+    // Prüfung auf die neue Spalte "weitergabe", Fallback auf alten String
+    const isAbzugeben = slotData.weitergabe === "ja" || String(detail).includes("[weitergabe:true]");
 
     const badge = document.createElement('div');
     badge.className = 'material-indicator';
@@ -7065,7 +7065,6 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
 
     const slotData = (window.lastPlanData && slotId) ? window.lastPlanData[slotId] : {};
     
-    // 💡 1. Alle möglichen Quellen für die Details in logischer Priorität abfragen
     const rawDetail = detail 
         || slotData.details 
         || slotData.detail 
@@ -7074,7 +7073,8 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
         || slotData.kommentar 
         || "";
 
-    const isAbzugeben = String(rawDetail).includes("[weitergabe:true]");
+    // Prüfen, ob weitergabe in der DB "ja" ist
+    const isAbzugeben = slotData.weitergabe === "ja" || String(rawDetail).includes("[weitergabe:true]");
     let cleanDetail = String(rawDetail).replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
 
     let isMyBox = false;
@@ -7091,7 +7091,7 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
 
     let actionButtonHtml = "";
     if (isMyBox && slotId) {
-        const buttonText = isAbzugeben ? 'Übernahme annullieren' : 'Übernahme anbieten';
+        const buttonText = isAbzugeben ? 'Übergabe annullieren' : 'Übergabe anbieten';
         const buttonIcon = isAbzugeben ? 'block' : 'partner_exchange';
 
         actionButtonHtml = `
@@ -7155,11 +7155,11 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
     const currentMaterial = slotData.material || "";
     let currentDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || slotData.kommentar || "";
 
+    // Steuerungs-Tags entfernen, um ein sauberes Details-Feld zu behalten
     currentDetail = currentDetail.replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
 
-    if (activate) {
-        currentDetail = currentDetail ? `${currentDetail} [weitergabe:true]` : "[weitergabe:true]";
-    }
+    // Zustand für "weitergabe" bestimmen: "ja" oder null
+    const weitergabeValue = activate ? "ja" : null;
 
     let currentDatum = slotData.datum || slotData.date || slotData.datumFormatted || window.currentDate || window.selectedDate || "";
     
@@ -7177,15 +7177,16 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
         currentDatum = new Date().toISOString().split('T')[0];
     }
 
+    // Lokalen Zustand aktualisieren
     slotData.details = currentDetail;
     slotData.materialDetail = currentDetail;
     slotData.materialKommentar = currentDetail;
+    slotData.weitergabe = weitergabeValue;
 
     markBoxWithMaterialIcon(box, currentMaterial, currentDetail);
 
     const slotNum = parseInt(slotId);
 
-    // Kürzel sicher ermitteln (ohne DOM-Kollision & Fallback auf bestehenden Verfasser)
     const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || slotData.verfasser || "";
 
@@ -7193,19 +7194,20 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
-            .eq('datum', currentDatum) // ✅ 'datum' statt 'date'
+            .eq('datum', currentDatum)
             .eq('slot', slotNum)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
 
         const bookingData = {
-            datum: currentDatum, // ✅ 'datum' statt 'date'
+            datum: currentDatum,
             slot: slotNum,
             klasse: slotData.klasse || "",
             halle: slotData.halle || "",
             material: currentMaterial,
             details: currentDetail,
+            weitergabe: weitergabeValue,
             kommentar: slotData.kommentar || "",
             timestamp: new Date().toISOString(),
             typ: slotData.typ || "buchung",
