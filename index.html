@@ -5495,11 +5495,6 @@ function updateNewsDot() {
    ============================================================ */
 
 
-/**
- * Erstellt oder aktualisiert einen News-Eintrag direkt im Frontend und speichert ihn in Supabase.
- * @param {Object} payload - Die Aktionsdaten
- * @param {Array} [currentMasterData] - Optional: Die aktuellen Masterdaten für die Empfänger-Berechnung im selben Block
- */
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     if (!supabaseClient) {
         console.error("❌ Supabase Client fehlt für News-Speicherung.");
@@ -5585,7 +5580,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
 
         // FALLBACK: Wenn keine anderen Lehrer im Block gefunden wurden, geht die Info an "alle" 
-        // statt den Prozess abubrechen zu lassen!
         if (gefundeneLehrer.length === 0) {
             empfaenger = "alle";
         } else {
@@ -5631,23 +5625,43 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
     }
 
-    // 5. Supabase Upsert
+    // 5. Sicherer Speichervorgang (Ohne Abhängigkeit von Supabase-Constraints)
     try {
-        const { error } = await supabaseClient
+        const newsData = {
+            id: newsId,
+            datum_event: stvDatum,
+            slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
+            tag_index: tagIndex !== -1 ? tagIndex : null,
+            klasse: payload.klasse || "",
+            verfasser: handelndeLP,
+            empfaenger: empfaenger,
+            text: newsText,
+            zeitstempel: new Date().toISOString(),
+            gelesen: "",
+            geloescht: "" 
+        };
+
+        const { data: existingNews, error: fetchError } = await supabaseClient
             .from('news_db')
-            .upsert({
-                id: newsId,
-                datum_event: stvDatum,
-                slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
-                tag_index: tagIndex !== -1 ? tagIndex : null,
-                klasse: payload.klasse || "",
-                verfasser: handelndeLP,
-                empfaenger: empfaenger,
-                text: newsText,
-                zeitstempel: new Date().toISOString(),
-                gelesen: "",
-                geloescht: "" 
-            }, { onConflict: 'id' });
+            .select('id')
+            .eq('id', newsId)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        let error;
+        if (existingNews && existingNews.id) {
+            const res = await supabaseClient
+                .from('news_db')
+                .update(newsData)
+                .eq('id', newsId);
+            error = res.error;
+        } else {
+            const res = await supabaseClient
+                .from('news_db')
+                .insert([newsData]);
+            error = res.error;
+        }
 
         if (error) throw error;
         console.log("🎯 News erfolgreich in Supabase gespeichert:", newsId);
