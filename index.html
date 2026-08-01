@@ -4820,7 +4820,7 @@ window.loadPlan = async function() {
     }
 
     try {
-        // 💡 Lädt automatisch Hallen- und Material-Konfigurationen parallel aus Supabase
+        // 💡 Lädt automatisch Hallen-និង Material-Konfigurationen parallel aus Supabase
         const configPromises = [];
 
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
@@ -4857,12 +4857,12 @@ window.loadPlan = async function() {
 
         if (buchungenError) throw buchungenError;
 
-        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe und details
         const plan = {};
         for (let i = 1; i <= 60; i++) {
             plan[i] = { 
                 klasse: "", lehrer: "", halle: "", 
-                typ: "", verfasser: "", kommentar: "", material: "", weitergabe: null 
+                typ: "", verfasser: "", kommentar: "", material: "", details: "", weitergabe: null 
             };
         }
 
@@ -4876,7 +4876,7 @@ window.loadPlan = async function() {
             });
         }
 
-        // 5. Tagesbuchungen darüberlegen (inklusive weitergabe)
+        // 5. Tagesbuchungen darüberlegen (inklusive details & weitergabe)
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
@@ -4891,12 +4891,14 @@ window.loadPlan = async function() {
                         plan[slot].verfasser = "";
                         plan[slot].kommentar = "";
                         plan[slot].material = "";
+                        plan[slot].details = "";
                         plan[slot].weitergabe = null;
                     } else {
                         if (klasseAusDB !== "") plan[slot].klasse = klasseAusDB;
                         if (row.halle) plan[slot].halle = row.halle.toString();
                         if (row.material) plan[slot].material = row.material.toString();
                         if (row.kommentar) plan[slot].kommentar = row.kommentar.toString();
+                        if (row.details) plan[slot].details = row.details.toString();
                         if (row.typ) plan[slot].typ = row.typ.toString();
                         if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
                         if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString();
@@ -4999,7 +5001,7 @@ window.loadPlan = async function() {
             }
 
             if (slotData.material && slotData.material.trim() !== "") {
-                if (typeof markBoxWithMaterialIcon === "function") markBoxWithMaterialIcon(box, slotData.material, slotData.kommentar || "");
+                if (typeof markBoxWithMaterialIcon === "function") markBoxWithMaterialIcon(box, slotData.material, slotData.details || slotData.kommentar || "");
             }
         });
     } catch(e) { 
@@ -5103,12 +5105,12 @@ window.syncPlan = async function() {
 
         if (buchungenError) return;
 
-        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe und details
         const newPlan = {};
         for (let i = 1; i <= 60; i++) {
             newPlan[i] = { 
                 klasse: "", lehrer: "", halle: "", 
-                typ: "", verfasser: "", kommentar: "", material: "", weitergabe: null 
+                typ: "", verfasser: "", kommentar: "", material: "", details: "", weitergabe: null 
             };
         }
 
@@ -5120,7 +5122,7 @@ window.syncPlan = async function() {
             }
         });
 
-        // 5. Tagesbuchungen darüberlegen (inklusive weitergabe)
+        // 5. Tagesbuchungen darüberlegen (inklusive details & weitergabe)
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
@@ -5135,12 +5137,14 @@ window.syncPlan = async function() {
                         newPlan[slot].verfasser = "";
                         newPlan[slot].kommentar = "";
                         newPlan[slot].material = "";
+                        newPlan[slot].details = "";
                         newPlan[slot].weitergabe = null;
                     } else {
                         if (klasseAusDB !== "") newPlan[slot].klasse = klasseAusDB;
                         if (row.halle) newPlan[slot].halle = row.halle.toString();
                         if (row.material) newPlan[slot].material = row.material.toString();
                         if (row.kommentar) newPlan[slot].kommentar = row.kommentar.toString();
+                        if (row.details) newPlan[slot].details = row.details.toString();
                         if (row.typ) newPlan[slot].typ = row.typ.toString();
                         if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
                         if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString();
@@ -5246,7 +5250,7 @@ window.syncPlan = async function() {
             }
 
             if (slotData.material && slotData.material.trim() !== "") {
-                let matDetail = slotData.materialKommentar || slotData.materialDetail || slotData.details || "";
+                let matDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || "";
                 if (typeof markBoxWithMaterialIcon === "function") {
                     markBoxWithMaterialIcon(box, slotData.material, matDetail);
                 }
@@ -6845,7 +6849,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
             window.lastPlanData[slotNum] = {
                 ...window.lastPlanData[slotNum],
                 material: materialVal,
-                materialDetail: detailVal,
+                details: detailVal,
                 verfasser: finalVerfasser
             };
         }
@@ -6910,7 +6914,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
         }
     }
 }
-
+    
 
 async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     if (btn) {
