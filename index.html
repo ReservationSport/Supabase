@@ -8156,23 +8156,13 @@ window.fuehreAbklebenAus = async function(klasse) {
     gridContainer.style.pointerEvents = "none";
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const now = new Date().toISOString();
 
     try {
+        // Schleife läuft über alle Slots der Doppellektion (oder den Einzelslot)
         for (const slot of window.slotsToClear) {
             const slotNum = parseInt(slot, 10);
-            const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
 
-            let userKuerzel = "";
-            if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
-                userKuerzel = window.userKuerzel;
-            } else if (currentSlotData.verfasser && typeof currentSlotData.verfasser === "string") {
-                userKuerzel = currentSlotData.verfasser;
-            } else if (currentSlotData.lehrperson && typeof currentSlotData.lehrperson === "string") {
-                userKuerzel = currentSlotData.lehrperson;
-            }
-
-            // 1. Aus master_db löschen (Hat kein Datum, Filter erfolgt nur über den Slot)
+            // 1. Aus master_db löschen (Struktureller Eintrag / Grundstunde)
             const { error: masterError } = await window.supabaseClient
                 .from('master_db')
                 .delete()
@@ -8182,46 +8172,24 @@ window.fuehreAbklebenAus = async function(klasse) {
                 console.error("Fehler beim Löschen aus master_db:", masterError);
             }
 
-            // 2. Buchung via prozessiereAktion zurücksetzen/löschen, falls Pipeline vorhanden
-            const payload = {
-                origin: 'fuehreAbklebenAus',
-                datum: targetDate,
-                slot: slotNum.toString(),
-                time: currentSlotData.time || "",
-                klasse: "",
-                halle: "",
-                material: "",
-                kommentar: "",
-                details: "",
-                timestamp: now,
-                typ: "loeschung",
-                verfasser: userKuerzel
-            };
+            // 2. Aus buchungen_db löschen (Tageseinträge/Überschreibungen)
+            const { error: buchungenError } = await window.supabaseClient
+                .from('buchungen_db')
+                .delete()
+                .eq('datum', targetDate)
+                .eq('slot', slotNum);
 
-            if (typeof window.prozessiereAktion === 'function') {
-                await new Promise((resolve) => {
-                    window.prozessiereAktion(payload, () => resolve());
-                });
-            } else {
-                // Direkt-Fallback für buchungen_db
-                const { error: buchungenError } = await window.supabaseClient
-                    .from('buchungen_db')
-                    .delete()
-                    .eq('datum', targetDate)
-                    .eq('slot', slotNum);
-
-                if (buchungenError) {
-                    console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
-                }
+            if (buchungenError) {
+                console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
             }
 
-            // 3. News-System weiterhin triggern
+            // 3. News-System triggern
             if (typeof window.triggerNewsWrapper === 'function') {
                 await window.triggerNewsWrapper("Abkleben", slotNum, klasse);
             }
         }
 
-        // Sofort-Fix UI: Boxen komplett leeren (inkl. box-is-mine und Farben entfernen)
+        // Sofort-Fix UI: Alle betroffenen Boxen komplett leeren
         window.slotsToClear.forEach(slot => {
             const slotNum = parseInt(slot, 10);
             const box = document.querySelector(`.box[data-slot="${slotNum}"]`) || document.querySelector(`[data-slot="${slotNum}"]`);
