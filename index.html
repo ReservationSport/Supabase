@@ -7381,6 +7381,7 @@ window.handleNotizUI = function(time, slot, klasse) {
     setTimeout(() => { textFeld.focus(); }, 50);
 };
 
+    
 window.loescheNotizVomModal = function(slot, klasse) {
     const textFeld = document.getElementById('notiz-text-feld');
     if (textFeld) textFeld.value = ""; 
@@ -7414,8 +7415,15 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
     const neuerKommentar = textFeld.value.trim();
     const now = new Date().toISOString();
     
-    // Verfasser absichern: Wenn kein neues Kürzel da ist, das bestehende aus den Slot-Daten behalten!
-    const userKuerzel = window.userKuerzel || currentSlotData.verfasser || currentSlotData.lehrperson || "";
+    // SICHERE EXTRAKTION: Nur Strings zulassen, keine Objekte!
+    let userKuerzel = "";
+    if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
+        userKuerzel = window.userKuerzel;
+    } else if (currentSlotData.verfasser && typeof currentSlotData.verfasser === "string") {
+        userKuerzel = currentSlotData.verfasser;
+    } else if (currentSlotData.lehrperson && typeof currentSlotData.lehrperson === "string") {
+        userKuerzel = currentSlotData.lehrperson;
+    }
 
     const onCompleteVisuals = () => {
         window.isSavingNotiz = false;
