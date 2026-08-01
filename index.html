@@ -4827,11 +4827,11 @@ window.loadPlan = async function() {
 
         if (masterError) throw masterError;
 
-        // 2. Tagesaktuelle Buchungen für das gewählte Datum laden
+        // 2. Tagesaktuelle Buchungen für das gewählte Datum laden (Spalte 'datum' statt 'date')
         const { data: buchungenData, error: buchungenError } = await supabaseClient
             .from('buchungen_db')
             .select('*')
-            .eq('date', dateVal);
+            .eq('datum', dateVal);
 
         if (buchungenError) throw buchungenError;
 
@@ -4924,13 +4924,13 @@ window.loadPlan = async function() {
                 
                 html += `
                 <div class="${classList}" data-slot="${absoluteSlot}" data-time="${zeitStr}" 
-                       style="background-color: ${bgFarbe}; cursor: ${canEdit ? 'pointer' : 'default'}; position: relative;">
-                       <div class="klasse-label">${klasse}</div>
-                       <div class="lehrer-info">${lehrer}</div>
-                       <div class="halle-label">${halle}</div>
-                       <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
-                         ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
-                       </div>
+                     style="background-color: ${bgFarbe}; cursor: ${canEdit ? 'pointer' : 'default'}; position: relative;">
+                     <div class="klasse-label">${klasse}</div>
+                     <div class="lehrer-info">${lehrer}</div>
+                     <div class="halle-label">${halle}</div>
+                     <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
+                       ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
+                     </div>
                 </div>`;
             }
         });
@@ -5049,11 +5049,11 @@ window.syncPlan = async function() {
 
         if (masterError || !masterData) return;
 
-        // 2. Tagesaktuelle Buchungen aus Supabase laden
+        // 2. Tagesaktuelle Buchungen aus Supabase laden (Spalte 'datum' statt 'date')
         const { data: buchungenData, error: buchungenError } = await supabaseClient
             .from('buchungen_db')
             .select('*')
-            .eq('date', dateVal);
+            .eq('datum', dateVal);
 
         if (buchungenError) return;
 
