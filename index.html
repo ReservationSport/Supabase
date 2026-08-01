@@ -4820,7 +4820,7 @@ window.loadPlan = async function() {
     }
 
     try {
-        // 💡 NEU: Lädt automatisch Hallen- und Material-Konfigurationen parallel aus Supabase
+        // 💡 Lädt automatisch Hallen- und Material-Konfigurationen parallel aus Supabase
         const configPromises = [];
 
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
@@ -4857,12 +4857,12 @@ window.loadPlan = async function() {
 
         if (buchungenError) throw buchungenError;
 
-        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe
         const plan = {};
         for (let i = 1; i <= 60; i++) {
             plan[i] = { 
                 klasse: "", lehrer: "", halle: "", 
-                typ: "", verfasser: "", kommentar: "", material: "" 
+                typ: "", verfasser: "", kommentar: "", material: "", weitergabe: null 
             };
         }
 
@@ -4876,7 +4876,7 @@ window.loadPlan = async function() {
             });
         }
 
-        // 5. Tagesbuchungen darüberlegen
+        // 5. Tagesbuchungen darüberlegen (inklusive weitergabe)
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
@@ -4891,6 +4891,7 @@ window.loadPlan = async function() {
                         plan[slot].verfasser = "";
                         plan[slot].kommentar = "";
                         plan[slot].material = "";
+                        plan[slot].weitergabe = null;
                     } else {
                         if (klasseAusDB !== "") plan[slot].klasse = klasseAusDB;
                         if (row.halle) plan[slot].halle = row.halle.toString();
@@ -4898,6 +4899,7 @@ window.loadPlan = async function() {
                         if (row.kommentar) plan[slot].kommentar = row.kommentar.toString();
                         if (row.typ) plan[slot].typ = row.typ.toString();
                         if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
+                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString();
                     }
                 }
             });
@@ -5101,12 +5103,12 @@ window.syncPlan = async function() {
 
         if (buchungenError) return;
 
-        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60) inklusive weitergabe
         const newPlan = {};
         for (let i = 1; i <= 60; i++) {
             newPlan[i] = { 
                 klasse: "", lehrer: "", halle: "", 
-                typ: "", verfasser: "", kommentar: "", material: "" 
+                typ: "", verfasser: "", kommentar: "", material: "", weitergabe: null 
             };
         }
 
@@ -5118,7 +5120,7 @@ window.syncPlan = async function() {
             }
         });
 
-        // 5. Tagesbuchungen darüberlegen
+        // 5. Tagesbuchungen darüberlegen (inklusive weitergabe)
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
@@ -5133,6 +5135,7 @@ window.syncPlan = async function() {
                         newPlan[slot].verfasser = "";
                         newPlan[slot].kommentar = "";
                         newPlan[slot].material = "";
+                        newPlan[slot].weitergabe = null;
                     } else {
                         if (klasseAusDB !== "") newPlan[slot].klasse = klasseAusDB;
                         if (row.halle) newPlan[slot].halle = row.halle.toString();
@@ -5140,6 +5143,7 @@ window.syncPlan = async function() {
                         if (row.kommentar) newPlan[slot].kommentar = row.kommentar.toString();
                         if (row.typ) newPlan[slot].typ = row.typ.toString();
                         if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
+                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString();
                     }
                 }
             });
@@ -5253,6 +5257,8 @@ window.syncPlan = async function() {
     }
 };
 
+
+    
 /* ============================================================
    ZENTRALER LADE-WRAPPER (OPTIMIERT)
    ============================================================ */
