@@ -6113,7 +6113,182 @@ function closeEditor() {
         selectedMaterials = [];
     }
 }
-  
+
+
+
+
+
+window.prozessiereAktion = function(payload, onCompleteVisuals) {
+    // 0. WACHHUND PAUSIEREN
+    if (typeof window.pauseSync === 'function') window.pauseSync();
+
+    // JS-OBJECT SPERRE
+    if (!window.lockedSlots) window.lockedSlots = {};
+    window.lockedSlots[payload.slot] = true;
+
+    const partnerSlot = getDoppellektionPartnerSlot(payload.slot);
+    const modalContainer = document.querySelector('.eigenesmenu-container');
+    const subtitle = document.getElementById('dynamic-header-subtitle');
+
+    // 1. Wenn kein Partner-Slot existiert oder Modal fehlt
+    if (!partnerSlot || !modalContainer) {
+        // SCHUTZ-MARKER setzen, bevor die Queue übernimmt
+        const box = document.querySelector(`[data-slot="${payload.slot}"]`);
+        if (box) box.dataset.lastManualUpdate = Date.now();
+
+        addToQueue(payload, () => {
+            if (typeof onCompleteVisuals === "function") onCompleteVisuals(payload);
+            delete window.lockedSlots[payload.slot];
+        });
+        if (typeof closeEditor === "function") closeEditor();
+        if (typeof processQueue === "function") processQueue();
+        return;
+    }
+
+    // 2. Konflikt-Logik (NUR bei aktiven Hallen-Buchungen, NICHT beim Abkleben/Beenden oder bei Notizen!)
+    let partnerKonfliktKlasse = null;
+    
+    // WICHTIG: Wenn abgeklebt wird (halle === "beendet") oder keine Halle da ist (z.B. reine Notiz), gibt es keinen Konflikt!
+    const istAbklebenOderLoeschen = !payload.halle || payload.halle.trim() === "" || payload.halle === "beendet";
+
+    if (!istAbklebenOderLoeschen && payload.halle && payload.halle.trim() !== "") {
+        const rowIndex = Math.floor((partnerSlot - 1) / 5);
+        const startSlot = (rowIndex * 5) + 1;
+        const endSlot = startSlot + 4;
+
+        for (let s = startSlot; s <= endSlot; s++) {
+            if (s === partnerSlot) continue;
+            const data = window.lastPlanData ? window.lastPlanData[s] : null;
+            if (data && data.halle && data.halle.trim() !== "") {
+                const belegte = data.halle.toLowerCase();
+                const wunsch = payload.halle.toLowerCase();
+                if (wunsch !== "" && (belegte.includes(wunsch) || wunsch.includes(belegte))) {
+                    partnerKonfliktKlasse = data.klasse || "andere Belegung";
+                    break;
+                }
+            }
+        }
+    }
+
+    // 3. Untertitel & UI
+    if (subtitle) subtitle.innerHTML = `Willst du die Aktion für die <b>gesamte Doppellektion</b> durchführen?`;
+    
+    const header = modalContainer.querySelector('.eigenesmenu-header');
+    modalContainer.innerHTML = '';
+    modalContainer.appendChild(header);
+
+    let html = `
+        <div class="eigenesmenu-liste" id="menu-options-list">
+            <div class="doppel-abfrage-container">
+                ${partnerKonfliktKlasse ? `
+                    <div class="doppel-konflikt-box">
+                        <span class="material-symbols-outlined">exclamation</span>
+                        <div><strong>Auswahl für Doppellektion nicht möglich!</strong></div>
+                    </div>
+                ` : `
+                    <button id="btn-doppel-beide" class="doppel-btn">
+                        <span class="material-symbols-outlined">group</span> Für beide Lektionen
+                    </button>
+                `}
+                <button id="btn-doppel-einzel" class="doppel-btn">
+                    <span class="material-symbols-outlined">person</span> Nur für eine Lektion
+                </button>
+            </div>
+        </div>
+    `;
+
+    // 4. Universeller "ZURÜCK"-Link je nach Herkunft (Editor, Reservierung oder Notiz-UI)
+    let backFn = `window.openEditor(window.currentEditBox, '${payload.time}', '${payload.slot}', '${payload.klasse}')`;
+    if (payload.origin === 'handleReservationUI') {
+        backFn = `window.handleReservationUI('${payload.time}', '${payload.slot}', '${payload.klasse}')`;
+    } else if (payload.origin === 'handleNotizUI') {
+        backFn = `window.handleNotizUI('${payload.time}', '${payload.slot}', '${payload.klasse}')`;
+    }
+
+    html += renderFooter([
+        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backFn },
+        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
+    ]);
+
+    modalContainer.insertAdjacentHTML('beforeend', html);
+
+    // 5. Angepasster Wrapper: Markiert JEDEN betroffenen Slot als "manuell aktualisiert"
+    const executeMitQueue = (payloads) => {
+        payloads.forEach(p => { 
+            // SCHUTZ-MARKER: Damit der syncPlan diesen Slot für 5s ignoriert
+            const box = document.querySelector(`[data-slot="${p.slot}"]`);
+            if (box) box.dataset.lastManualUpdate = Date.now();
+
+            // UI-Update lokal (Farbe, Icons, Text werden hier gesetzt)
+            if (onCompleteVisuals) onCompleteVisuals(p); 
+
+            // Aktionen in die Queue. Callback entfernt die JS-Sperre
+            addToQueue(p, () => {
+                delete window.lockedSlots[p.slot];
+            });
+        });
+
+        if (typeof closeEditor === "function") closeEditor();
+        if (typeof processQueue === "function") processQueue();
+    };
+
+    // 6. Event Listener
+    const btnBeide = document.getElementById('btn-doppel-beide');
+    if (btnBeide) btnBeide.onclick = () => executeMitQueue([payload, { ...payload, slot: partnerSlot.toString() }]);
+    
+    const btnEinzel = document.getElementById('btn-doppel-einzel');
+    if (btnEinzel) btnEinzel.onclick = () => executeMitQueue([payload]);
+};
+
+
+
+// Hilfsfunktion: Erkennt, ob der Partner-Slot dieselbe Klasse hat (JETZT ALS ECHTE ZAHLEN)
+function getDoppellektionPartnerSlot(currentSlot) {
+    const slot = parseInt(currentSlot, 10);
+    if (isNaN(slot) || !window.lastPlanData) {
+        console.warn("❌ Doppellektion-Abbruch: lastPlanData fehlt oder Slot ist NaN");
+        return null;
+    }
+    
+    const aktuellerDatenSatz = window.lastPlanData[slot] || window.lastPlanData[slot.toString()];
+    if (!aktuellerDatenSatz) {
+        console.warn(`❌ Doppellektion-Abbruch: Keine Daten für Slot ${slot} in lastPlanData gefunden.`);
+        return null;
+    }
+    
+    const aktuelleKlasse = aktuellerDatenSatz.klasse ? aktuellerDatenSatz.klasse.toString().trim() : "";
+    
+    // NEU: Wenn leer, "---" oder "verschoben", direkt abbrechen!
+    if (aktuelleKlasse === "" || aktuelleKlasse === "---" || aktuelleKlasse.toLowerCase() === "verschoben") {
+        return null;
+    }
+
+    const slotDanach = slot + 5;
+    const slotDavor = slot - 5;
+
+    const datenDanach = window.lastPlanData[slotDanach] || window.lastPlanData[slotDanach.toString()];
+    const datenDavor = window.lastPlanData[slotDavor] || window.lastPlanData[slotDavor.toString()];
+
+    const klasseDanach = (datenDanach && datenDanach.klasse) ? datenDanach.klasse.toString().trim() : "";
+    const klasseDavor = (datenDavor && datenDavor.klasse) ? datenDavor.klasse.toString().trim() : "";
+
+    console.group(`📊 Doppellektions-Analyse für Slot ${slot} (${aktuelleKlasse})`);
+    console.log(`Prüfe Slot danach (+5 = ${slotDanach}): Gefundene Klasse: "${klasseDanach}"`);
+    console.log(`Prüfe Slot davor (-5 = ${slotDavor}): Gefundene Klasse: "${klasseDavor}"`);
+    console.groupEnd();
+
+    if (klasseDanach.toLowerCase() === aktuelleKlasse.toLowerCase()) {
+        console.log(`🎯 MATCH! Slot ${slotDanach} ist der Partner (Stunde danach).`);
+        return slotDanach;
+    }
+    if (klasseDavor.toLowerCase() === aktuelleKlasse.toLowerCase()) {
+        console.log(`🎯 MATCH! Slot ${slotDavor} ist der Partner (Stunde davor).`);
+        return slotDavor;
+    }
+
+    return null;
+}
+    
 
 /* ============================================================
    10.1. HALLE RESERVIEREN
@@ -6273,7 +6448,7 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
     btn.style.opacity = "0.6";
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
+    const slotNum = parseInt(slot, 10);
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
     const now = new Date().toISOString();
 
@@ -6289,32 +6464,37 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
     }
     const safeUserKuerzel = String(rawUserKuerzel).trim();
 
-    const onCompleteVisuals = () => {
+    // Visueller Callback (wird von prozessiereAktion aufgerufen)
+    const onCompleteVisuals = (payloadData) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
 
+        const currentSlotId = parseInt(payloadData.slot, 10);
+        const zugewieseneHalle = payloadData.halle;
+        const zugewiesenerTyp = payloadData.typ;
+
         // Lokalen Cache aktualisieren
-        if (window.lastPlanData && window.lastPlanData[slotNum]) {
-            window.lastPlanData[slotNum].halle = neueHalle;
-            window.lastPlanData[slotNum].typ = typ || "";
-            if (safeUserKuerzel) window.lastPlanData[slotNum].verfasser = safeUserKuerzel;
+        if (window.lastPlanData && window.lastPlanData[currentSlotId]) {
+            window.lastPlanData[currentSlotId].halle = zugewieseneHalle;
+            window.lastPlanData[currentSlotId].typ = zugewiesenerTyp || "";
+            if (safeUserKuerzel) window.lastPlanData[currentSlotId].verfasser = safeUserKuerzel;
         }
 
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
         if (box) {
             // Label und Farbe/Ausfall-Mode setzen
             const label = box.querySelector('.halle-label');
-            if (label) label.innerText = neueHalle;
+            if (label) label.innerText = zugewieseneHalle;
             
             box.classList.remove('ausfall-mode');
-            if (neueHalle === "Ausfall") {
+            if (zugewieseneHalle === "Ausfall") {
                 box.classList.add('ausfall-mode');
                 box.style.backgroundColor = "";
             } else {
-                const farbe = (neueHalle !== "" && window.hallenConfig && window.hallenConfig[neueHalle]) 
-                            ? window.hallenConfig[neueHalle].color 
+                const farbe = (zugewieseneHalle !== "" && window.hallenConfig && window.hallenConfig[zugewieseneHalle]) 
+                            ? window.hallenConfig[zugewieseneHalle].color 
                             : "";
                 box.style.backgroundColor = farbe;
             }
@@ -6330,62 +6510,36 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
                 });
                 box.appendChild(lockIcon);
             }
-            lockIcon.innerHTML = (typ === "fix") 
+            lockIcon.innerHTML = (zugewiesenerTyp === "fix") 
                 ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' 
                 : '';
         }
-        if (typeof closeEditor === 'function') closeEditor();
     };
 
-    try {
-        // 🛠️ FIX: Spalte heißt 'datum' inSupabase (nicht 'date')
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('datum', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
+    // Payload für die Pipeline zusammenstellen
+    const payload = {
+        origin: 'handleReservationUI',
+        datum: targetDate,
+        slot: slotNum.toString(),
+        time: time,
+        klasse: klasse || currentSlotData.klasse || "",
+        halle: neueHalle,
+        material: currentSlotData.material || "",
+        kommentar: currentSlotData.kommentar || "",
+        details: currentSlotData.details || currentSlotData.materialDetail || "",
+        timestamp: now,
+        typ: typ || "",
+        verfasser: safeUserKuerzel
+    };
 
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            datum: targetDate, // 🛠️ FIX: 'datum' statt 'date'
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: neueHalle,
-            material: currentSlotData.material || "",
-            kommentar: currentSlotData.kommentar || "",
-            details: currentSlotData.details || currentSlotData.materialDetail || "",
-            timestamp: now,
-            typ: typ || "",
-            verfasser: safeUserKuerzel
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
-                .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
-
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
-
-            if (insertError) throw insertError;
+    // Übergabe an prozessiereAktion (Regelt Doppellektion, Konfliktprüfung & Queue)
+    if (typeof window.prozessiereAktion === 'function') {
+        window.prozessiereAktion(payload, onCompleteVisuals);
+    } else {
+        console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Ausführung aus.");
+        if (typeof addToQueue === 'function') {
+            addToQueue(payload, () => onCompleteVisuals(payload));
         }
-
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-        console.error("Hallen-Auswahl fehlgeschlagen (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
 
@@ -6426,8 +6580,7 @@ window.initMaterialConfig = async function() {
         return {};
     }
 };
-
-
+    
     
 function handleMaterialUI(time, slot, klasse, modalElement) {
     const root = modalElement || document.getElementById('eigenesmenu-modal');
@@ -6638,8 +6791,8 @@ function openMaterialDetail(materialString, time, slot, klasse) {
     let html = `
         <div style="padding: 15px; display: flex; flex-direction: column; gap: 15px; flex-grow: 1;">
             <textarea id="material-detail-input" 
-                      style="width: 100%; height: 140px; padding: 12px; border-radius: 12px; border: 1px solid #444; background: #222; color: white; resize: none; box-sizing: border-box; font-size: 14px;" 
-                      placeholder="Details..."></textarea>
+                    style="width: 100%; height: 140px; padding: 12px; border-radius: 12px; border: 1px solid #444; background: #222; color: white; resize: none; box-sizing: border-box; font-size: 14px;" 
+                    placeholder="Details..."></textarea>
             
             <button class="menu-action-btn save-details" 
                     onclick="saveMaterialSelection('${materialString}', document.getElementById('material-detail-input').value, '${time}', '${slot}', '${klasse}', this)">
@@ -6666,85 +6819,111 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
 
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : {};
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
+    const slotNum = parseInt(slot, 10);
     const now = new Date().toISOString();
 
-    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
-    const finalVerfasser = activeUser || currentSlotData.verfasser || "";
+    // Kürzel verlässlich ermitteln
+    let rawUserKuerzel = "";
+    if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+        rawUserKuerzel = userKuerzel;
+    } else if (typeof window.userKuerzel === 'string' && window.userKuerzel.trim() !== "") {
+        rawUserKuerzel = window.userKuerzel;
+    } else {
+        const el = document.getElementById('userKuerzel');
+        rawUserKuerzel = el ? (el.value || "") : "";
+    }
+    const safeUserKuerzel = String(rawUserKuerzel).trim() || currentSlotData.verfasser || "";
 
-    const onCompleteVisuals = (materialVal, detailVal) => {
+    // Visueller Callback nach erfolgreicher Verarbeitung durch prozessiereAktion
+    const onCompleteVisuals = (payloadData) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
 
+        const currentSlotId = parseInt(payloadData.slot, 10);
+        const materialVal = payloadData.material;
+        const detailVal = payloadData.details;
+
         if (window.lastPlanData) {
-            if (!window.lastPlanData[slotNum]) window.lastPlanData[slotNum] = {};
-            window.lastPlanData[slotNum] = {
-                ...window.lastPlanData[slotNum],
+            if (!window.lastPlanData[currentSlotId]) window.lastPlanData[currentSlotId] = {};
+            window.lastPlanData[currentSlotId] = {
+                ...window.lastPlanData[currentSlotId],
                 material: materialVal,
                 details: detailVal,
-                verfasser: finalVerfasser
+                verfasser: safeUserKuerzel
             };
         }
 
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
         if (box) markBoxWithMaterialIcon(box, materialVal, detailVal);
         
         closeEditor();
     };
 
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('datum', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
+    // Payload für die zentrale Pipeline erstellen
+    const payload = {
+        origin: 'saveMaterialSelection',
+        datum: targetDate,
+        slot: slotNum.toString(),
+        time: time,
+        klasse: klasse || currentSlotData.klasse || "",
+        halle: currentSlotData.halle || "",
+        material: mat,
+        kommentar: currentSlotData.kommentar || "",
+        details: detail || "",
+        timestamp: now,
+        typ: currentSlotData.typ || "buchung",
+        verfasser: safeUserKuerzel
+    };
 
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            datum: targetDate,
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: currentSlotData.halle || "",
-            material: mat,
-            kommentar: currentSlotData.kommentar || "",
-            details: detail || "",
-            timestamp: now,
-            typ: currentSlotData.typ || "buchung",
-            verfasser: finalVerfasser
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
+    // Übergabe an prozessiereAktion (regelt Doppellektionen, Queue und Events)
+    if (typeof window.prozessiereAktion === 'function') {
+        window.prozessiereAktion(payload, (data) => {
+            if (typeof window.triggerNewsWrapper === 'function') {
+                window.triggerNewsWrapper("Material", slotNum, klasse, safeUserKuerzel);
+            }
+            onCompleteVisuals(data);
+        });
+    } else {
+        console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Fallback aus.");
+        try {
+            const { data: existingData, error: fetchError } = await window.supabaseClient
                 .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
+                .select('id')
+                .eq('datum', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
+            if (fetchError) throw fetchError;
 
-            if (insertError) throw insertError;
-        }
+            if (existingData && existingData.id) {
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(payload)
+                    .eq('id', existingData.id);
+                if (updateError) throw updateError;
+            } else {
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([payload]);
+                if (insertError) throw insertError;
+            }
 
-        if (typeof window.triggerNewsWrapper === 'function') {
-            await window.triggerNewsWrapper("Material", slotNum, klasse, finalVerfasser);
-        }
+            if (typeof window.triggerNewsWrapper === 'function') {
+                await window.triggerNewsWrapper("Material", slotNum, klasse, safeUserKuerzel);
+            }
 
-        onCompleteVisuals(mat, detail);
-        if (typeof syncPlan === 'function') syncPlan();
+            onCompleteVisuals(payload);
+            if (typeof syncPlan === 'function') syncPlan();
 
-    } catch (e) {
-        console.error("Fehler bei Material-Speicherung (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
+        } catch (e) {
+            console.error("Fehler bei Material-Speicherung (Supabase):", e);
+            alert("Speichern fehlgeschlagen: " + e.message);
+            if (btn) {
+                btn.style.pointerEvents = "auto";
+                btn.style.opacity = "1";
+            }
         }
     }
 }
@@ -6758,82 +6937,100 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
 
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slot]) ? window.lastPlanData[slot] : {};
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
+    const slotNum = parseInt(slot, 10);
     const now = new Date().toISOString();
 
-    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
-    const finalVerfasser = activeUser || currentSlotData.verfasser || "";
+    let rawUserKuerzel = "";
+    if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+        rawUserKuerzel = userKuerzel;
+    } else if (typeof window.userKuerzel === 'string' && window.userKuerzel.trim() !== "") {
+        rawUserKuerzel = window.userKuerzel;
+    } else {
+        const el = document.getElementById('userKuerzel');
+        rawUserKuerzel = el ? (el.value || "") : "";
+    }
+    const safeUserKuerzel = String(rawUserKuerzel).trim() || currentSlotData.verfasser || "";
 
-    const onCompleteVisuals = () => {
+    const onCompleteVisuals = (payloadData) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
 
-        if (window.lastPlanData?.[slotNum]) {
-            window.lastPlanData[slotNum] = {
-                ...window.lastPlanData[slotNum],
+        const currentSlotId = parseInt(payloadData.slot, 10);
+        if (window.lastPlanData?.[currentSlotId]) {
+            window.lastPlanData[currentSlotId] = {
+                ...window.lastPlanData[currentSlotId],
                 material: "",
                 materialDetail: "",
+                details: "",
                 weitergabe: null,
-                verfasser: finalVerfasser
+                verfasser: safeUserKuerzel
             };
         }
         
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
         if (box) markBoxWithMaterialIcon(box, "", "");
         
         closeEditor();
     };
 
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('datum', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
+    // Payload für das Löschen (Material leer setzen)
+    const payload = {
+        origin: 'applyMaterialDelete',
+        datum: targetDate,
+        slot: slotNum.toString(),
+        time: time,
+        klasse: klasse || currentSlotData.klasse || "",
+        halle: currentSlotData.halle || "",
+        material: "",
+        kommentar: currentSlotData.kommentar || "",
+        details: "",
+        weitergabe: null,
+        timestamp: now,
+        typ: currentSlotData.typ || "buchung",
+        verfasser: safeUserKuerzel
+    };
 
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            datum: targetDate,
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: currentSlotData.halle || "",
-            material: "",
-            kommentar: currentSlotData.kommentar || "",
-            details: "",
-            weitergabe: null,
-            timestamp: now,
-            typ: currentSlotData.typ || "buchung",
-            verfasser: finalVerfasser
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
+    if (typeof window.prozessiereAktion === 'function') {
+        window.prozessiereAktion(payload, (data) => {
+            onCompleteVisuals(data);
+        });
+    } else {
+        console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Fallback aus.");
+        try {
+            const { data: existingData, error: fetchError } = await window.supabaseClient
                 .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
+                .select('id')
+                .eq('datum', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
+            if (fetchError) throw fetchError;
 
-            if (insertError) throw insertError;
-        }
+            if (existingData && existingData.id) {
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(payload)
+                    .eq('id', existingData.id);
+                if (updateError) throw updateError;
+            } else {
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([payload]);
+                if (insertError) throw insertError;
+            }
 
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
+            onCompleteVisuals(payload);
+            if (typeof syncPlan === 'function') syncPlan();
 
-    } catch (e) {
-        console.error("Fehler beim Löschen des Materials (Supabase):", e);
-        alert("Löschen fehlgeschlagen: " + e.message);
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
+        } catch (e) {
+            console.error("Fehler beim Löschen des Materials (Supabase):", e);
+            alert("Löschen fehlgeschlagen: " + e.message);
+            if (btn) {
+                btn.style.pointerEvents = "auto";
+                btn.style.opacity = "1";
+            }
         }
     }
 }
@@ -6954,6 +7151,7 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
             <span style="font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                 Materialbuchung für <span style="color: #ff9800;">${klasse}</span>
             </span>
+
         </div>
         
         <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #444; text-align: left;">
@@ -7029,7 +7227,7 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
 
     markBoxWithMaterialIcon(box, currentMaterial, currentDetail);
 
-    const slotNum = parseInt(slotId);
+    const slotNum = parseInt(slotId, 10);
 
     const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
     const finalVerfasser = activeUser || slotData.verfasser || "";
@@ -7088,7 +7286,6 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
    10.3. NOTIZ ERFASSEN
    ============================================================ */
 
-    
 window.handleNotizUI = function(time, slot, klasse) {
     const modalContainer = document.querySelector('.eigenesmenu-container');
     const header = modalContainer ? modalContainer.querySelector('.eigenesmenu-header') : null;
@@ -7125,7 +7322,7 @@ window.handleNotizUI = function(time, slot, klasse) {
                 <div id="save-btn-container" style="display: none; width: 100%;">
                     <div id="btn-save-notiz" class="notiz-save-btn" 
                          style="${btnCommon} border-color: #444; background: #1a1a1a; color: #666; font-weight: bold;"
-                         onclick="window.speichereNotizVomModal('${slot}', '${klasse}')"
+                         onclick="window.speichereNotizVomModal('${slot}', '${klasse}', '${time}')"
                          onmouseover="this.style.transform='scale(1.02)'; this.style.borderColor='#e67e22'; this.style.color='#e67e22'; this.style.background='#222';"
                          onmouseout="this.style.transform='scale(1)'; this.style.borderColor='#444'; this.style.color='#666'; this.style.background='#1a1a1a';">
                         <span class="material-symbols-outlined" style="margin-right: 10px;">save</span> SPEICHERN
@@ -7137,7 +7334,7 @@ window.handleNotizUI = function(time, slot, klasse) {
         html += `
                 <div class="delete-btn" 
                      style="${btnCommon} border-color: #4a1c1c; background: #2a1a1a; color: #ffaaaa; font-weight: normal;" 
-                     onclick="window.loescheNotizVomModal('${slot}', '${klasse}')"
+                     onclick="window.loescheNotizVomModal('${slot}', '${klasse}', '${time}')"
                      onmouseover="this.style.transform='scale(1.02)'; this.style.borderColor='#7a2a2a';"
                      onmouseout="this.style.transform='scale(1)'; this.style.borderColor='#4a1c1c';">
                     <span class="material-symbols-outlined" style="margin-right: 10px;">delete</span> NOTIZ LÖSCHEN
@@ -7167,15 +7364,14 @@ window.handleNotizUI = function(time, slot, klasse) {
 };
 
     
-window.loescheNotizVomModal = function(slot, klasse) {
+window.loescheNotizVomModal = function(slot, klasse, time) {
     const textFeld = document.getElementById('notiz-text-feld');
     if (textFeld) textFeld.value = ""; 
-    window.speichereNotizVomModal(slot, klasse);
+    window.speichereNotizVomModal(slot, klasse, time);
 };
 
-
     
-window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverride) {
+window.speichereNotizVomModal = async function(slot, klasse, time) {
     if (window.isSavingNotiz) return;
     window.isSavingNotiz = true;
 
@@ -7195,7 +7391,7 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
     }
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
+    const slotNum = parseInt(slot, 10);
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
     const neuerKommentar = textFeld.value.trim();
     const now = new Date().toISOString();
@@ -7210,7 +7406,7 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
         userKuerzel = currentSlotData.lehrperson;
     }
 
-    const onCompleteVisuals = () => {
+    const onCompleteVisuals = (payloadData) => {
         window.isSavingNotiz = false;
         if (saveBtn) {
             saveBtn.style.pointerEvents = "auto";
@@ -7218,128 +7414,95 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
             saveBtn.innerHTML = originalBtnContent;
         }
 
+        const currentSlotId = parseInt(payloadData.slot, 10);
+        const commentVal = payloadData.kommentar;
+
         if (window.lastPlanData) {
-            if (!window.lastPlanData[slotNum]) window.lastPlanData[slotNum] = {};
-            window.lastPlanData[slotNum].kommentar = neuerKommentar;
-            window.lastPlanData[slotNum].verfasser = userKuerzel;
+            if (!window.lastPlanData[currentSlotId]) window.lastPlanData[currentSlotId] = {};
+            window.lastPlanData[currentSlotId].kommentar = commentVal;
+            window.lastPlanData[currentSlotId].verfasser = userKuerzel;
         }
 
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
         if (box) {
-            box.setAttribute('data-notiz', neuerKommentar);
+            box.setAttribute('data-notiz', commentVal);
             const altesIcon = box.querySelector('.box-notiz-icon');
             if (altesIcon) altesIcon.remove();
             
-            if (neuerKommentar !== "") {
+            if (commentVal !== "") {
                 const neuesNotizIcon = document.createElement('span');
                 neuesNotizIcon.className = 'box-notiz-icon';
                 neuesNotizIcon.innerHTML = '<span class="material-symbols-outlined" style="color: #ff9800; font-size: 22px; line-height: 1;">stylus_note</span>';
                 Object.assign(neuesNotizIcon.style, { position: 'absolute', top: '-2px', left: '4px', cursor: 'pointer', zIndex: '5' });
-                neuesNotizIcon.onclick = (e) => { e.stopPropagation(); showNotizDetailPopup(klasse, neuerKommentar); };
+                neuesNotizIcon.onclick = (e) => { e.stopPropagation(); showNotizDetailPopup(klasse, commentVal); };
                 box.appendChild(neuesNotizIcon);
             }
         }
         closeEditor();
     };
 
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('datum', targetDate)
-            .eq('slot', slotNum)
-            .maybeSingle();
+    const payload = {
+        origin: 'speichereNotizVomModal',
+        datum: targetDate,
+        slot: slotNum.toString(),
+        time: time || "",
+        klasse: klasse || currentSlotData.klasse || "",
+        halle: currentSlotData.halle || "",
+        material: currentSlotData.material || "",
+        kommentar: neuerKommentar,
+        details: currentSlotData.details || currentSlotData.materialDetail || "",
+        timestamp: now,
+        typ: currentSlotData.typ || "buchung",
+        verfasser: userKuerzel
+    };
 
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            datum: targetDate,
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: currentSlotData.halle || "",
-            material: currentSlotData.material || "",
-            kommentar: neuerKommentar,
-            details: currentSlotData.details || currentSlotData.materialDetail || "",
-            timestamp: now,
-            typ: currentSlotData.typ || "buchung",
-            verfasser: userKuerzel
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
+    if (typeof window.prozessiereAktion === 'function') {
+        window.prozessiereAktion(payload, (data) => {
+            onCompleteVisuals(data);
+        });
+    } else {
+        console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Fallback aus.");
+        try {
+            const { data: existingData, error: fetchError } = await window.supabaseClient
                 .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
+                .select('id')
+                .eq('datum', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
+            if (fetchError) throw fetchError;
 
-            if (insertError) throw insertError;
+            if (existingData && existingData.id) {
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(payload)
+                    .eq('id', existingData.id);
+
+                if (updateError) throw updateError;
+            } else {
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([payload]);
+
+                if (insertError) throw insertError;
+            }
+
+            onCompleteVisuals(payload);
+            if (typeof syncPlan === 'function') syncPlan();
+
+        } catch (e) {
+            window.isSavingNotiz = false;
+            if (saveBtn) {
+                saveBtn.style.pointerEvents = "auto";
+                saveBtn.style.opacity = "1";
+                saveBtn.innerHTML = originalBtnContent;
+            }
+            console.error("Fehler bei Notiz-Speicherung (Supabase):", e);
+            alert("Speichern fehlgeschlagen: " + e.message);
         }
-
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        window.isSavingNotiz = false;
-        if (saveBtn) {
-            saveBtn.style.pointerEvents = "auto";
-            saveBtn.style.opacity = "1";
-            saveBtn.innerHTML = originalBtnContent;
-        }
-        console.error("Fehler bei Notiz-Speicherung (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
     
-
-window.zeigeDoppellektionNotizAbfrage = function(slot, klasse) {
-    const modalContainer = document.querySelector('.eigenesmenu-container');
-    const header = modalContainer ? modalContainer.querySelector('.eigenesmenu-header') : null;
-    if (!modalContainer || !header) return;
-
-    const titleEl = modalContainer.querySelector('.eigenesmenu-title');
-    const subtitle = document.getElementById('menu-subtitle');
-    if (titleEl) { titleEl.innerText = "🔁 DOPPELLEKTION DETEKTIERT"; titleEl.style.color = "#e67e22"; }
-    if (subtitle) { subtitle.innerHTML = `Möchtest du die Notiz für beide Stunden übernehmen?`; }
-
-    let html = `
-        <div class="eigenesmenu-liste" id="menu-options-list">
-            <div class="scroll-wrapper" style="padding: 15px; display: flex; flex-direction: column; gap: 15px;">
-                <div class="doppel-btn" style="background: #e67e22; border: none; justify-content: center;" 
-                     onclick="window.speichereNotizVomModal('${slot}', '${klasse}', true)">
-                    <span class="material-symbols-outlined">double_arrow</span> Für beide Stunden übernehmen
-                </div>
-                
-                <div class="doppel-btn" style="background: #333; border: 1px solid #444; justify-content: center;" 
-                     onclick="window.speichereNotizVomModal('${slot}', '${klasse}', false)">
-                    <span class="material-symbols-outlined">arrow_right</span> Nur für diese Stunde
-                </div>
-            </div>
-        </div>`;
-
-    html += renderFooter([
-        { 
-            text: 'ZURÜCK', 
-            class: 'back', 
-            icon: 'arrow_back', 
-            onclick: `window.handleNotizUI(window.currentEditBox.getAttribute('data-time'), '${slot}', '${klasse}')` 
-        },
-        { 
-            text: 'ABBRECHEN', 
-            class: 'cancel', 
-            icon: 'close', 
-            onclick: 'closeEditor()' 
-        }
-    ]);
-
-    modalContainer.innerHTML = '';
-    modalContainer.appendChild(header);
-    modalContainer.insertAdjacentHTML('beforeend', html);
-};
 
 function showNotizDetailPopup(klasse, notizText) {
     const overlay = document.createElement('div');
@@ -7370,6 +7533,8 @@ function showNotizDetailPopup(klasse, notizText) {
     document.body.appendChild(overlay);
 }
 
+
+    
   /* ============================================================
     10.4. LEKTION VERSCHIEBEN
     ============================================================ */
@@ -7612,7 +7777,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
     }
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot);
+    const slotNum = parseInt(slot, 10);
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
     const now = new Date().toISOString();
     
@@ -7626,32 +7791,35 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
         userKuerzel = currentSlotData.lehrperson;
     }
 
-    const onCompleteVisuals = () => {
+    const onCompleteVisuals = (payloadData) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
         }
         
+        const currentSlotId = parseInt(payloadData.slot, 10);
+        const halleVal = payloadData.halle;
+        
         // Lokalen Datenspeicher synchron halten
-        if (window.lastPlanData && window.lastPlanData[slotNum]) {
-            window.lastPlanData[slotNum].halle = zielHalle;
-            window.lastPlanData[slotNum].verfasser = userKuerzel;
+        if (window.lastPlanData && window.lastPlanData[currentSlotId]) {
+            window.lastPlanData[currentSlotId].halle = halleVal;
+            window.lastPlanData[currentSlotId].verfasser = userKuerzel;
         }
 
         // UI für den spezifischen Slot aktualisieren
-        const box = document.querySelector(`[data-slot="${slotNum}"]`);
+        const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
         if (box) {
             const label = box.querySelector('.halle-label');
-            if (label) label.innerText = zielHalle;
+            if (label) label.innerText = halleVal;
             
             // Logik für Ausfall vs. normale Halle
-            if (zielHalle === "Ausfall") {
+            if (halleVal === "Ausfall") {
                 box.classList.add('ausfall-mode');
                 box.style.backgroundColor = ""; 
             } else {
                 box.classList.remove('ausfall-mode');
-                if (typeof hallenConfig !== 'undefined' && hallenConfig[zielHalle]) {
-                    box.style.backgroundColor = hallenConfig[zielHalle].color;
+                if (typeof hallenConfig !== 'undefined' && hallenConfig[halleVal]) {
+                    box.style.backgroundColor = hallenConfig[halleVal].color;
                 } else {
                     box.style.backgroundColor = "";
                 }
@@ -7660,59 +7828,68 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
         closeEditor();
     };
 
-    // 2. SUPABASE SPEICHERUNG
-    try {
-        const { data: existingData, error: fetchError } = await window.supabaseClient
-            .from('buchungen_db')
-            .select('id')
-            .eq('datum', targetDate) // Korrigiert von 'date' zu 'datum'
-            .eq('slot', slotNum)
-            .maybeSingle();
+    const payload = {
+        origin: 'handleAusfallClick',
+        datum: targetDate,
+        slot: slotNum.toString(),
+        time: time || "",
+        klasse: klasse || currentSlotData.klasse || "",
+        halle: zielHalle,
+        material: currentSlotData.material || "",
+        kommentar: currentSlotData.kommentar || "",
+        details: currentSlotData.details || currentSlotData.materialDetail || "",
+        timestamp: now,
+        typ: currentSlotData.typ || "buchung",
+        verfasser: userKuerzel
+    };
 
-        if (fetchError) throw fetchError;
-
-        const bookingData = {
-            datum: targetDate, // Korrigiert von 'date' zu 'datum'
-            slot: slotNum,
-            klasse: klasse || currentSlotData.klasse || "",
-            halle: zielHalle,
-            material: currentSlotData.material || "",
-            kommentar: currentSlotData.kommentar || "",
-            details: currentSlotData.details || currentSlotData.materialDetail || "",
-            timestamp: now,
-            typ: currentSlotData.typ || "buchung",
-            verfasser: userKuerzel
-        };
-
-        if (existingData && existingData.id) {
-            const { error: updateError } = await window.supabaseClient
+    if (typeof window.prozessiereAktion === 'function') {
+        window.prozessiereAktion(payload, (data) => {
+            onCompleteVisuals(data);
+        });
+    } else {
+        console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Fallback aus.");
+        try {
+            const { data: existingData, error: fetchError } = await window.supabaseClient
                 .from('buchungen_db')
-                .update(bookingData)
-                .eq('id', existingData.id);
+                .select('id')
+                .eq('datum', targetDate)
+                .eq('slot', slotNum)
+                .maybeSingle();
 
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await window.supabaseClient
-                .from('buchungen_db')
-                .insert([bookingData]);
+            if (fetchError) throw fetchError;
 
-            if (insertError) throw insertError;
+            if (existingData && existingData.id) {
+                const { error: updateError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .update(payload)
+                    .eq('id', existingData.id);
+
+                if (updateError) throw updateError;
+            } else {
+                const { error: insertError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .insert([payload]);
+
+                if (insertError) throw insertError;
+            }
+
+            onCompleteVisuals(payload);
+            if (typeof syncPlan === 'function') syncPlan();
+
+        } catch (e) {
+            if (btn) {
+                btn.style.pointerEvents = "auto";
+                btn.style.opacity = "1";
+            }
+            console.error("Fehler bei Ausfall-Click (Supabase):", e);
+            alert("Speichern fehlgeschlagen: " + e.message);
         }
-
-        onCompleteVisuals();
-        if (typeof syncPlan === 'function') syncPlan();
-
-    } catch (e) {
-        if (btn) {
-            btn.style.pointerEvents = "auto";
-            btn.style.opacity = "1";
-        }
-        console.error("Fehler bei Ausfall-Click (Supabase):", e);
-        alert("Speichern fehlgeschlagen: " + e.message);
     }
 };
 
 
+    
 /* ============================================================
     10.6 ABKLEBEN
     ============================================================ */
@@ -7872,10 +8049,21 @@ window.fuehreAbklebenAus = async function(klasse) {
     gridContainer.style.pointerEvents = "none";
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
 
     try {
         for (const slot of window.slotsToClear) {
-            const slotNum = parseInt(slot);
+            const slotNum = parseInt(slot, 10);
+            const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
+
+            let userKuerzel = "";
+            if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
+                userKuerzel = window.userKuerzel;
+            } else if (currentSlotData.verfasser && typeof currentSlotData.verfasser === "string") {
+                userKuerzel = currentSlotData.verfasser;
+            } else if (currentSlotData.lehrperson && typeof currentSlotData.lehrperson === "string") {
+                userKuerzel = currentSlotData.lehrperson;
+            }
 
             // 1. Aus master_db löschen (Hat kein Datum, Filter erfolgt nur über den Slot)
             const { error: masterError } = await window.supabaseClient
@@ -7887,34 +8075,57 @@ window.fuehreAbklebenAus = async function(klasse) {
                 console.error("Fehler beim Löschen aus master_db:", masterError);
             }
 
-            // 2. Vorhandene Buchungen aus buchungen_db löschen (Verwendet Spalte 'datum')
-            const { error: buchungenError } = await window.supabaseClient
-                .from('buchungen_db')
-                .delete()
-                .eq('datum', targetDate)
-                .eq('slot', slotNum);
+            // 2. Buchung via prozessiereAktion zurücksetzen/löschen, falls Pipeline vorhanden
+            const payload = {
+                origin: 'fuehreAbklebenAus',
+                datum: targetDate,
+                slot: slotNum.toString(),
+                time: currentSlotData.time || "",
+                klasse: "",
+                halle: "",
+                material: "",
+                kommentar: "",
+                details: "",
+                timestamp: now,
+                typ: "loeschung",
+                verfasser: userKuerzel
+            };
 
-            if (buchungenError) {
-                console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
+            if (typeof window.prozessiereAktion === 'function') {
+                await new Promise((resolve) => {
+                    window.prozessiereAktion(payload, () => resolve());
+                });
+            } else {
+                // Direkt-Fallback für buchungen_db
+                const { error: buchungenError } = await window.supabaseClient
+                    .from('buchungen_db')
+                    .delete()
+                    .eq('datum', targetDate)
+                    .eq('slot', slotNum);
+
+                if (buchungenError) {
+                    console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
+                }
             }
 
             // 3. News-System weiterhin triggern
             if (typeof window.triggerNewsWrapper === 'function') {
-                await window.triggerNewsWrapper("Abkleben", slot, klasse);
+                await window.triggerNewsWrapper("Abkleben", slotNum, klasse);
             }
         }
 
         // Sofort-Fix UI: Boxen komplett leeren (inkl. box-is-mine und Farben entfernen)
         window.slotsToClear.forEach(slot => {
-            const box = document.querySelector(`.box[data-slot="${slot}"]`) || document.querySelector(`[data-slot="${slot}"]`);
+            const slotNum = parseInt(slot, 10);
+            const box = document.querySelector(`.box[data-slot="${slotNum}"]`) || document.querySelector(`[data-slot="${slotNum}"]`);
             if (box) {
                 box.innerHTML = "";            
                 box.className = "box empty";    
                 box.style.backgroundColor = "";
                 box.removeAttribute('data-notiz');
             }
-            if (window.lastPlanData && window.lastPlanData[slot]) {
-                delete window.lastPlanData[slot];
+            if (window.lastPlanData && window.lastPlanData[slotNum]) {
+                delete window.lastPlanData[slotNum];
             }
         });
 
@@ -8009,6 +8220,10 @@ window.saveImmediately = async function(payload, options = {}) {
     }
 };
 
+
+
+
+    
 /**
  * Interne Hilfsfunktion: Hält die News-Logik sauber
  */
@@ -8034,172 +8249,20 @@ function runNewsTriggerLogic(payload) {
     }
 }
 
-// Hilfsfunktion: Erkennt, ob der Partner-Slot dieselbe Klasse hat (JETZT ALS ECHTE ZAHLEN)
-function getDoppellektionPartnerSlot(currentSlot) {
-    const slot = parseInt(currentSlot, 10);
-    if (isNaN(slot) || !window.lastPlanData) {
-        console.warn("❌ Doppellektion-Abbruch: lastPlanData fehlt oder Slot ist NaN");
-        return null;
-    }
+
+
+
+
+
     
-    const aktuellerDatenSatz = window.lastPlanData[slot] || window.lastPlanData[slot.toString()];
-    if (!aktuellerDatenSatz) {
-        console.warn(`❌ Doppellektion-Abbruch: Keine Daten für Slot ${slot} in lastPlanData gefunden.`);
-        return null;
-    }
+
+
     
-    const aktuelleKlasse = aktuellerDatenSatz.klasse ? aktuellerDatenSatz.klasse.toString().trim() : "";
-    if (aktuelleKlasse === "" || aktuelleKlasse === "---") return null;
-
-    const slotDanach = slot + 5;
-    const slotDavor = slot - 5;
-
-    const datenDanach = window.lastPlanData[slotDanach] || window.lastPlanData[slotDanach.toString()];
-    const datenDavor = window.lastPlanData[slotDavor] || window.lastPlanData[slotDavor.toString()];
-
-    const klasseDanach = (datenDanach && datenDanach.klasse) ? datenDanach.klasse.toString().trim() : "";
-    const klasseDavor = (datenDavor && datenDavor.klasse) ? datenDavor.klasse.toString().trim() : "";
-
-    console.group(`📊 Doppellektions-Analyse für Slot ${slot} (${aktuelleKlasse})`);
-    console.log(`Prüfe Slot danach (+5 = ${slotDanach}): Gefundene Klasse: "${klasseDanach}"`);
-    console.log(`Prüfe Slot davor (-5 = ${slotDavor}): Gefundene Klasse: "${klasseDavor}"`);
-    console.groupEnd();
-
-    if (klasseDanach === aktuelleKlasse) {
-        console.log(`🎯 MATCH! Slot ${slotDanach} ist der Partner (Stunde danach).`);
-        return slotDanach;
-    }
-    if (klasseDavor === aktuelleKlasse) {
-        console.log(`🎯 MATCH! Slot ${slotDavor} ist der Partner (Stunde davor).`);
-        return slotDavor;
-    }
-
-    return null;
-}
 
 
 
-/* ============================================================
-   11. DOPPELLEKTIONS-ABFRAGE (Optimiert für Echtzeit-UI-Update)
-   ============================================================ */
 
-window.prozessiereAktion = function(payload, onCompleteVisuals) {
-    // 0. WACHHUND PAUSIEREN
-    if (typeof window.pauseSync === 'function') window.pauseSync();
 
-    // JS-OBJECT SPERRE
-    if (!window.lockedSlots) window.lockedSlots = {};
-    window.lockedSlots[payload.slot] = true;
-
-    const partnerSlot = getDoppellektionPartnerSlot(payload.slot);
-    const modalContainer = document.querySelector('.eigenesmenu-container');
-    const subtitle = document.getElementById('dynamic-header-subtitle');
-
-    // 1. Wenn kein Partner-Slot existiert oder Modal fehlt
-    if (!partnerSlot || !modalContainer) {
-        // SCHUTZ-MARKER setzen, bevor die Queue übernimmt
-        const box = document.querySelector(`[data-slot="${payload.slot}"]`);
-        if (box) box.dataset.lastManualUpdate = Date.now();
-
-        addToQueue(payload, () => {
-            if (typeof onCompleteVisuals === "function") onCompleteVisuals(payload);
-            delete window.lockedSlots[payload.slot];
-        });
-        if (typeof closeEditor === "function") closeEditor();
-        if (typeof processQueue === "function") processQueue();
-        return;
-    }
-
-    // 2. Konflikt-Logik (NUR bei aktiven Hallen-Buchungen, NICHT beim Abkleben/Beenden!)
-    let partnerKonfliktKlasse = null;
-    
-    // WICHTIG: Wenn abgeklebt wird (halle === "beendet") oder keine Halle da ist, gibt es keinen Konflikt!
-    const istAbklebenOderLoeschen = !payload.halle || payload.halle.trim() === "" || payload.halle === "beendet";
-
-    if (!istAbklebenOderLoeschen && payload.halle && payload.halle.trim() !== "") {
-        const rowIndex = Math.floor((partnerSlot - 1) / 5);
-        const startSlot = (rowIndex * 5) + 1;
-        const endSlot = startSlot + 4;
-
-        for (let s = startSlot; s <= endSlot; s++) {
-            if (s === partnerSlot) continue;
-            const data = window.lastPlanData ? window.lastPlanData[s] : null;
-            if (data && data.halle && data.halle.trim() !== "") {
-                const belegte = data.halle.toLowerCase();
-                const wunsch = payload.halle.toLowerCase();
-                if (wunsch !== "" && (belegte.includes(wunsch) || wunsch.includes(belegte))) {
-                    partnerKonfliktKlasse = data.klasse || "andere Belegung";
-                    break;
-                }
-            }
-        }
-    }
-
-    // 3. Untertitel & UI
-    if (subtitle) subtitle.innerHTML = `Willst du die Aktion für die <b>gesamte Doppellektion</b> durchführen?`;
-    
-    const header = modalContainer.querySelector('.eigenesmenu-header');
-    modalContainer.innerHTML = '';
-    modalContainer.appendChild(header);
-
-    let html = `
-        <div class="eigenesmenu-liste" id="menu-options-list">
-            <div class="doppel-abfrage-container">
-                ${partnerKonfliktKlasse ? `
-                    <div class="doppel-konflikt-box">
-                        <span class="material-symbols-outlined">exclamation</span>
-                        <div><strong>Auswahl für Doppellektion nicht möglich!</strong></div>
-                    </div>
-                ` : `
-                    <button id="btn-doppel-beide" class="doppel-btn">
-                        <span class="material-symbols-outlined">group</span> Für beide Lektionen
-                    </button>
-                `}
-                <button id="btn-doppel-einzel" class="doppel-btn">
-                    <span class="material-symbols-outlined">person</span> Nur für eine Lektion
-                </button>
-            </div>
-        </div>
-    `;
-
-    const backFn = (payload.origin === 'handleReservationUI') 
-        ? `window.handleReservationUI('${payload.time}', '${payload.slot}', '${payload.klasse}')` 
-        : `window.openEditor(window.currentEditBox, '${payload.time}', '${payload.slot}', '${payload.klasse}')`;
-
-    html += renderFooter([
-        { text: 'ZURÜCK', class: 'back', icon: 'arrow_back', onclick: backFn },
-        { text: 'ABBRECHEN', class: 'cancel', icon: 'close', onclick: 'closeEditor()' }
-    ]);
-
-    modalContainer.insertAdjacentHTML('beforeend', html);
-
-    // 5. Angepasster Wrapper: Markiert JEDEN betroffenen Slot als "manuell aktualisiert"
-    const executeMitQueue = (payloads) => {
-        payloads.forEach(p => { 
-            // SCHUTZ-MARKER: Damit der syncPlan diesen Slot für 5s ignoriert
-            const box = document.querySelector(`[data-slot="${p.slot}"]`);
-            if (box) box.dataset.lastManualUpdate = Date.now();
-
-            // UI-Update lokal (Farbe, Icons, Text werden hier gesetzt)
-            if (onCompleteVisuals) onCompleteVisuals(p); 
-
-            // Aktionen in die Queue. Callback entfernt die JS-Sperre
-            addToQueue(p, () => {
-                delete window.lockedSlots[p.slot];
-            });
-        });
-
-        if (typeof closeEditor === "function") closeEditor();
-        if (typeof processQueue === "function") processQueue();
-    };
-
-    // 6. Event Listener
-    const btnBeide = document.getElementById('btn-doppel-beide');
-    if (btnBeide) btnBeide.onclick = () => executeMitQueue([payload, { ...payload, slot: partnerSlot.toString() }]);
-    
-    const btnEinzel = document.getElementById('btn-doppel-einzel');
-    if (btnEinzel) btnEinzel.onclick = () => executeMitQueue([payload]);
-};
     
     
 // Interne Hilfsfunktion, die die Payloads nacheinander an saveImmediately übergibt
