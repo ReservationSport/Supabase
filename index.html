@@ -6114,8 +6114,11 @@ function closeEditor() {
     }
 }
 
+    
 
-
+/* ============================================================
+   10.1. BUCHUNGEN SPEICHERN
+   ============================================================ */
 
 
 window.prozessiereAktion = function(payload, onCompleteVisuals) {
@@ -6288,10 +6291,80 @@ function getDoppellektionPartnerSlot(currentSlot) {
 
     return null;
 }
+
+
+
+/**
+ * Der "Postbote": Sendet Daten direkt an Supabase
+ * Inklusive lokaler Entwicklungs-Weiche für VS Code (localhost)
+ */
+window.saveImmediately = async function(payload, options = {}) {
+    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+
+    // 1. LOKALER MODUS (Simuliert den Erfolg ohne Server-Call)
+    if (isLocal) {
+        console.log("🎯 LOKALER MODUS: Speicherbefehl simuliert:", payload);
+        
+        // Führe News-Trigger lokal aus, damit das UI sofort reagiert
+        if (typeof runNewsTriggerLogic === 'function') {
+            runNewsTriggerLogic(payload);
+        }
+        
+        return { status: "success", msg: "Lokal erfolgreich simuliert" };
+    }
+
+    // 2. ONLINE-MODUS (Supabase-Anbindung)
+    if (!supabaseClient) {
+        console.error("❌ saveImmediately abgebrochen: 'supabaseClient' ist nicht definiert!");
+        return { status: "error", msg: "Supabase-Client fehlt" };
+    }
+
+    if (!payload) {
+        console.error("❌ saveImmediately abgebrochen: Kein Payload übergeben!");
+        return { status: "error", msg: "Keine Daten übergeben" };
+    }
+
+    try {
+        const dp = document.getElementById('datePicker');
+        const dateVal = payload.datum || (dp ? dp.value : new Date().toISOString().split('T')[0]);
+        const slotNum = parseInt(payload.slot, 10);
+
+        // Supabase Upsert auf die buchungen_db (Korrigiert von 'date' zu 'datum')
+        const { error } = await supabaseClient
+            .from('buchungen_db')
+            .upsert({
+                datum: dateVal,
+                slot: slotNum,
+                klasse: payload.klasse || "",
+                halle: payload.halle || "",
+                material: payload.material || "",
+                kommentar: payload.kommentar || "",
+                details: payload.details || payload.materialDetail || "",
+                typ: payload.typ || "buchung",
+                verfasser: userKuerzel || ""
+            }, { onConflict: 'datum,slot', signal: options.signal });
+
+        if (error) throw error;
+
+        console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
+        
+        if (typeof runNewsTriggerLogic === 'function') {
+            runNewsTriggerLogic(payload);
+        }
+        
+        return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
+
+    } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        console.error("❌ Kritischer Fehler beim Supabase-Speichern:", e);
+        return { status: "error", msg: e.toString() };
+    }
+};
+
     
 
 /* ============================================================
-   10.1. HALLE RESERVIEREN
+   10.2. HALLE RESERVIEREN
    ============================================================ */
 
 
@@ -6546,7 +6619,7 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
 
     
 /* ============================================================
-   10.2. MATERIAL BUCHEN
+   10.3. MATERIAL BUCHEN
    ============================================================ */
 
 window.initMaterialConfig = async function() {
@@ -7283,7 +7356,7 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
 
 
     /* ============================================================
-   10.3. NOTIZ ERFASSEN
+   10.4. NOTIZ ERFASSEN
    ============================================================ */
 
 window.handleNotizUI = function(time, slot, klasse) {
@@ -7536,7 +7609,7 @@ function showNotizDetailPopup(klasse, notizText) {
 
     
   /* ============================================================
-    10.4. LEKTION VERSCHIEBEN
+    10.5. LEKTION VERSCHIEBEN
     ============================================================ */
 
 function createMoveOverlay() {
@@ -7764,7 +7837,7 @@ window.handleMoveConfirm = async function(targetSlot) {
 
     
 /* ============================================================
-    10.5. AUSFALL
+    10.6. AUSFALL
     ============================================================ */
 
 window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
@@ -7891,7 +7964,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
 
     
 /* ============================================================
-    10.6 ABKLEBEN
+    10.7. ABKLEBEN
     ============================================================ */
 
 window.starteAbklebenWorkflow = function(time, slot, klasse) {
@@ -8153,72 +8226,7 @@ window.fuehreAbklebenAus = async function(klasse) {
 
     
 
-/**
- * Der "Postbote": Sendet Daten direkt an Supabase
- * Inklusive lokaler Entwicklungs-Weiche für VS Code (localhost)
- */
-window.saveImmediately = async function(payload, options = {}) {
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 
-    // 1. LOKALER MODUS (Simuliert den Erfolg ohne Server-Call)
-    if (isLocal) {
-        console.log("🎯 LOKALER MODUS: Speicherbefehl simuliert:", payload);
-        
-        // Führe News-Trigger lokal aus, damit das UI sofort reagiert
-        if (typeof runNewsTriggerLogic === 'function') {
-            runNewsTriggerLogic(payload);
-        }
-        
-        return { status: "success", msg: "Lokal erfolgreich simuliert" };
-    }
-
-    // 2. ONLINE-MODUS (Supabase-Anbindung)
-    if (!supabaseClient) {
-        console.error("❌ saveImmediately abgebrochen: 'supabaseClient' ist nicht definiert!");
-        return { status: "error", msg: "Supabase-Client fehlt" };
-    }
-
-    if (!payload) {
-        console.error("❌ saveImmediately abgebrochen: Kein Payload übergeben!");
-        return { status: "error", msg: "Keine Daten übergeben" };
-    }
-
-    try {
-        const dp = document.getElementById('datePicker');
-        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-        const slotNum = parseInt(payload.slot);
-
-        // Supabase Upsert auf die buchungen_db
-        const { error } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                date: dateVal,
-                slot: slotNum,
-                klasse: payload.klasse || "",
-                halle: payload.halle || "",
-                material: payload.material || "",
-                kommentar: payload.kommentar || "",
-                details: payload.details || payload.materialDetail || "",
-                typ: payload.typ || "buchung",
-                verfasser: userKuerzel || ""
-            }, { onConflict: 'date,slot', signal: options.signal });
-
-        if (error) throw error;
-
-        console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
-        
-        if (typeof runNewsTriggerLogic === 'function') {
-            runNewsTriggerLogic(payload);
-        }
-        
-        return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
-
-    } catch (e) {
-        if (e.name === 'AbortError') throw e;
-        console.error("❌ Kritischer Fehler beim Supabase-Speichern:", e);
-        return { status: "error", msg: e.toString() };
-    }
-};
 
 
 
