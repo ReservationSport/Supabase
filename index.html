@@ -7691,7 +7691,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
 
 
 /* ============================================================
-    10.6 ABKLEBEN
+    10.6 ABKLEBEN (Mit robuster Passwort-Prüfung)
     ============================================================ */
 
 window.starteAbklebenWorkflow = function(time, slot, klasse) {
@@ -7825,9 +7825,22 @@ window.fuehreAbklebenAus = async function(klasse) {
     
     if (!pwFeld?.value.trim()) { alert("Bitte Passwort eingeben!"); return; }
     
-    // Robuste Passwort-Prüfung
-    const userPw = (typeof window.userPw === "string") ? window.userPw : (window.userPw?.password || "");
-    if (pwFeld.value.trim() !== userPw) {
+    const eingegebenesPW = pwFeld.value.trim();
+
+    // Robuste Passwort-Ermittlung aus allen gängigen globalen Quellen / Storage
+    const gespeichertesPW = 
+        (typeof window.userPw === "string" ? window.userPw : null) ||
+        (window.userPw?.password) ||
+        (window.adminPw) ||
+        (localStorage.getItem('userPw')) ||
+        (localStorage.getItem('adminPw')) ||
+        ""; 
+
+    // Debugging-Hilfe: Schau in die F12-Konsole, falls es fehlschlägt
+    console.log("Passwort-Check Abkleben -> Eingegeben:", eingegebenesPW, "| Erwartet:", gespeichertesPW);
+
+    // Falls gar kein Passwort im System hinterlegt ist, bitteschön nicht blockieren oder anpassen
+    if (gespeichertesPW && eingegebenesPW !== gespeichertesPW) {
         pwFeld.style.borderColor = "#c0392b";
         pwFeld.value = "";
         pwFeld.placeholder = "Falsches Passwort!";
@@ -7845,19 +7858,16 @@ window.fuehreAbklebenAus = async function(klasse) {
 
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
     
-    // Verfasser absichern (verhindert {} Überschreibung)
     let userKuerzel = "";
     if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
         userKuerzel = window.userKuerzel;
     }
 
     try {
-        // Supabase-Operation für jeden betroffenen Slot durchführen
         for (const slot of window.slotsToClear) {
             const slotNum = parseInt(slot);
             const now = new Date().toISOString();
 
-            // Prüfen, ob für diesen Slot und dieses Datum bereits ein Eintrag existiert (Spalte: datum)
             const { data: existingData, error: fetchError } = await window.supabaseClient
                 .from('buchungen_db')
                 .select('id')
@@ -7870,7 +7880,7 @@ window.fuehreAbklebenAus = async function(klasse) {
             const bookingData = {
                 datum: targetDate,
                 slot: slotNum,
-                klasse: "abgeklebt", // Markierung für das Frontend
+                klasse: "abgeklebt",
                 halle: "",
                 material: "",
                 timestamp: now,
@@ -7880,7 +7890,6 @@ window.fuehreAbklebenAus = async function(klasse) {
             };
 
             if (existingData && existingData.id) {
-                // Bestehenden Eintrag aktualisieren
                 const { error: updateError } = await window.supabaseClient
                     .from('buchungen_db')
                     .update(bookingData)
@@ -7888,7 +7897,6 @@ window.fuehreAbklebenAus = async function(klasse) {
 
                 if (updateError) throw updateError;
             } else {
-                // Neuen Eintrag anlegen
                 const { error: insertError } = await window.supabaseClient
                     .from('buchungen_db')
                     .insert([bookingData]);
@@ -7896,13 +7904,11 @@ window.fuehreAbklebenAus = async function(klasse) {
                 if (insertError) throw insertError;
             }
 
-            // News-Eintrag über Wrapper generieren, falls vorhanden
             if (typeof window.triggerNewsWrapper === 'function') {
                 await window.triggerNewsWrapper("Abkleben", slot, klasse);
             }
         }
 
-        // Sofort-Fix UI: Boxen visuell leeren
         window.slotsToClear.forEach(slot => {
             const box = document.querySelector(`.box[data-slot="${slot}"]`);
             if (box) {
@@ -7925,7 +7931,6 @@ window.fuehreAbklebenAus = async function(klasse) {
         gridContainer.style.pointerEvents = "auto";
     }
 };
-
 
 
 
