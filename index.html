@@ -5085,7 +5085,7 @@ window.syncPlan = async function() {
 
         if (masterError || !masterData) return;
 
-        // 2. Tagesaktuelle Buchungen aus Supabase laden (Spalte 'datum' statt 'date')
+        // 2. Tagesaktuelle Buchungen aus Supabase laden
         const { data: buchungenData, error: buchungenError } = await supabaseClient
             .from('buchungen_db')
             .select('*')
@@ -5102,7 +5102,7 @@ window.syncPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen (Sicher mit .toString())
+        // 4. Master-Daten eintragen
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
                 newPlan[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
@@ -5144,6 +5144,18 @@ window.syncPlan = async function() {
         const myClasses = window.myClasses || [];
         const allClassTeachers = window.allClassTeachers || {};
         
+        // 🛠️ Kürzel-Ermittlung analog zu loadPlan
+        let rawUserKuerzel = "";
+        if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+            rawUserKuerzel = userKuerzel;
+        } else if (typeof window.userKuerzel === 'string' && window.userKuerzel.trim() !== "") {
+            rawUserKuerzel = window.userKuerzel;
+        } else {
+            const el = document.getElementById('userKuerzel');
+            rawUserKuerzel = el ? (el.value || "") : "";
+        }
+        const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
+
         Object.keys(newPlan).forEach(slot => {
             const slotData = newPlan[slot] || {};
             const box = container.querySelector(`[data-slot="${slot}"]`);
@@ -5157,23 +5169,28 @@ window.syncPlan = async function() {
             // --- NORMALE UI-SYNCHRONISIERUNG ---
             const klasse = slotData.klasse || "";
             const verfasser = slotData.verfasser || "";
+            const lehrerDaten = slotData.lehrer || "";
             const halle = slotData.halle || "";
             const typ = slotData.typ || "";
             const isAusfall = (halle === "Ausfall");
             const isKlasseLeer = (klasse.trim() === "");
             
-            const lehrer = (verfasser !== "") ? verfasser : ((slotData.lehrer !== "") ? slotData.lehrer : (allClassTeachers[klasse] || ""));
-            const isMyClass = !isKlasseLeer && myClasses.some(c => klasse.trim().toLowerCase() === c.trim().toLowerCase());
+            const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
+            const isMyClass = !isKlasseLeer && myClasses.some(c => String(c).trim().toLowerCase() === klasse.trim().toLowerCase());
             
-            // Abgesicherte Variablen-Prüfung für Verfasser / Kürzel
-            const safeVerfasser = (verfasser !== null && verfasser !== undefined) ? verfasser.toString() : "";
-            const safeUserKuerzel = (window.userKuerzel !== null && window.userKuerzel !== undefined) ? window.userKuerzel.toString() : "";
-            const isMyBooking = (safeVerfasser.trim().toLowerCase() === safeUserKuerzel.trim().toLowerCase());
+            // 🛠️ Erweiterte Rechteprüfung analog zu loadPlan (Prüft Verfasser ODER Lehrer)
+            const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+            const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
+            const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
             
             const canEdit = isMyClass || isMyBooking;
             
+            // 🛠️ Hallen-Farbe flexibel auslesen (unterstützt color & farbe)
+            const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
+            const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
+
             box.className = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
-            box.style.backgroundColor = (window.hallenConfig && window.hallenConfig[halle] && !isAusfall) ? window.hallenConfig[halle].color : '';
+            box.style.backgroundColor = bgFarbe;
             box.style.cursor = canEdit ? 'pointer' : 'default';
 
             const klassenEl = box.querySelector('.klasse-label');
