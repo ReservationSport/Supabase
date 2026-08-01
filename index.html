@@ -7370,9 +7370,9 @@ function showNotizDetailPopup(klasse, notizText) {
     document.body.appendChild(overlay);
 }
 
-    /* ============================================================
-   10.4. LEKTION VERSCHIEBEN
-   ============================================================ */
+  /* ============================================================
+    10.4. LEKTION VERSCHIEBEN
+    ============================================================ */
 
 function createMoveOverlay() {
     // 1. Overlay (für die Verdunkelung)
@@ -7508,12 +7508,17 @@ window.handleMoveConfirm = async function(targetSlot) {
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
         const sourceSlot = tempMoveMode.sourceSlot;
         const bookingData = tempMoveMode.bookingData || tempMoveMode;
+        
+        let userKuerzel = "";
+        if (typeof window.userKuerzel === "string" && window.userKuerzel.trim() !== "") {
+            userKuerzel = window.userKuerzel;
+        }
 
-        // 1. Quell-Slot in Supabase leeren (auf buchungen_db umgestellt)
+        // 1. Quell-Slot in Supabase leeren (korrigiert von 'date' auf 'datum')
         const { error: errorSource } = await supabaseClient
             .from('buchungen_db')
             .upsert({
-                date: dateVal,
+                datum: dateVal,
                 slot: parseInt(sourceSlot),
                 klasse: "",
                 halle: "",
@@ -7522,15 +7527,15 @@ window.handleMoveConfirm = async function(targetSlot) {
                 details: "",
                 typ: "buchung",
                 verfasser: ""
-            }, { onConflict: 'date,slot' });
+            }, { onConflict: 'datum,slot' });
 
         if (errorSource) throw errorSource;
 
-        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (auf buchungen_db umgestellt)
+        // 2. Ziel-Slot in Supabase mit den Daten beschreiben (korrigiert von 'date' auf 'datum')
         const { error: errorTarget } = await supabaseClient
             .from('buchungen_db')
             .upsert({
-                date: dateVal,
+                datum: dateVal,
                 slot: parseInt(targetSlot),
                 klasse: bookingData.klasse || "",
                 halle: bookingData.halle || "",
@@ -7538,8 +7543,8 @@ window.handleMoveConfirm = async function(targetSlot) {
                 kommentar: bookingData.kommentar || "",
                 details: bookingData.details || bookingData.materialDetail || "",
                 typ: bookingData.typ || "buchung",
-                verfasser: userKuerzel || ""
-            }, { onConflict: 'date,slot' });
+                verfasser: userKuerzel
+            }, { onConflict: 'datum,slot' });
 
         if (errorTarget) throw errorTarget;
 
@@ -7573,7 +7578,6 @@ window.handleMoveConfirm = async function(targetSlot) {
         document.getElementById('plan-container')?.classList.remove('move-mode-active');
     }
 };
-
 
 /* ============================================================
     10.5. AUSFALL
