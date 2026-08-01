@@ -5672,187 +5672,190 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 };
 
     
-/* ============================================================
-   9.2. NEWS ANZEIGEN
-   ============================================================ */
+window.showNews = function() { 
+    const sidebar = document.getElementById('newsSidebar'); 
+    const newsContainer = document.getElementById('newsContent'); 
+    const backdrop = document.getElementById('newsSidebarBackdrop'); 
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : ""; 
 
+    const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
+"10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", 
+"13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", 
+"17:15 - 18:00"]; 
+
+    if (sidebar) sidebar.style.display = 'flex'; 
+    if (backdrop) backdrop.style.display = 'block'; 
+    if (newsContainer) newsContainer.innerHTML = ""; 
     
+    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : []; 
+    const aktiveNews = sichereNewsListe.filter(n => { 
+        if (!n) return false; 
+        const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim()); 
+        return !geloeschtVon.includes(aktuellerUser); 
+    }); 
 
-window.showNews = function() {
-    const sidebar = document.getElementById('newsSidebar');
-    const newsContainer = document.getElementById('newsContent');
-    const backdrop = document.getElementById('newsSidebarBackdrop');
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : "";
-    const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
+    aktiveNews.forEach(news => { 
+        if (!news) return; 
 
-    if (sidebar) sidebar.style.display = 'flex';
-    if (backdrop) backdrop.style.display = 'block';
-    if (newsContainer) newsContainer.innerHTML = "";
-    
-    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];
-    const aktiveNews = sichereNewsListe.filter(n => {
-        if (!n) return false;
-        const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
-        return !geloeschtVon.includes(aktuellerUser);
-    });
+        const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim()); 
+        const istGelesen = gelesenListe.includes(aktuellerUser); 
+        const slotNummer = parseInt(news.slot, 10); 
+        const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0; 
+        const uhrzeit = zeiten[rowIndex] || ""; 
 
-    aktiveNews.forEach(news => {
-        if (!news) return;
+        let formatiertesDatum = news.datum ? news.datum.toString() : ''; 
+        if (formatiertesDatum.includes('-')) { 
+            const parts = formatiertesDatum.split('-'); 
+            if (parts.length === 3) formatiertesDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
+        } 
 
-        const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim());
-        const istGelesen = gelesenListe.includes(aktuellerUser);
-        const slotNummer = parseInt(news.slot, 10);
-        const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0;
-        const uhrzeit = zeiten[rowIndex] || "";
+        const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : ''; 
+        const displayVerfasser = safeVerfasserInput.toLowerCase(); 
 
-        let formatiertesDatum = news.datum ? news.datum.toString() : '';
-        if (formatiertesDatum.includes('-')) {
-            const parts = formatiertesDatum.split('-');
-            if (parts.length === 3) formatiertesDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
-        }
-
-        const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : '';
-        const displayVerfasser = safeVerfasserInput.toLowerCase();
-        const newsTextLower = (news.text !== null && news.text !== undefined) ? news.text.toString().toLowerCase() : "";
-        const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase() : "";
-        const verf = safeVerfasserInput !== '' ? safeVerfasserInput : 'Jemand';
-        const kl = (news.klasse !== null && news.klasse !== undefined) ? news.klasse.toString() : 'unbekannt';
+        const newsTextLower = (news.text !== null && news.text !== undefined) ? news.text.toString().toLowerCase() : ""; 
+        const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase() : ""; 
+        const verf = safeVerfasserInput !== '' ? safeVerfasserInput : 'Jemand'; 
+        const kl = (news.klasse !== null && news.klasse !== undefined) ? news.klasse.toString() : 'unbekannt'; 
         
-        let displayHeader = "";
-        let displayMain = "";
-        
-        const istStvCard = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
-        const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
+        let displayHeader = ""; 
+        let displayMain = ""; 
 
-        if (hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:")) {
-            displayHeader = "Neue Idee:";
-            let saubererText = safeNewsText.replace(/^NEUE IDEE:\s*/i, '').replace(/^Neue Idee:\s*/i, '').trim();
-            const matchKat = saubererText.match(/^\[(.*?)\]\s*(.*)$/);
+        const istStvCard = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung"); 
+        const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : ""; 
+
+        if (hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:")) { 
+            displayHeader = "Neue Idee:"; 
+            let saubererText = safeNewsText.replace(/^NEUE IDEE:\s*/i, '').replace(/^Neue Idee:\s*/i, '').trim(); 
+            const matchKat = saubererText.match(/^\[(.*?)\]\s*(.*)$/); 
             
-            if (matchKat && matchKat[1] && matchKat[2]) {
-                displayHeader = `IDEE FÜR "${matchKat[1].toUpperCase()}"`;
-                displayMain = matchKat[2];
-            } else {
-                displayMain = saubererText;
-            }
+            if (matchKat && matchKat[1] && matchKat[2]) { 
+                displayHeader = `IDEE FÜR "${matchKat[1].toUpperCase()}"`; 
+                displayMain = matchKat[2]; 
+            } else { 
+                displayMain = saubererText; 
+            } 
         } 
-        else if (newsTextLower.includes("defekt behoben:")) {
-            displayHeader = "DEFEKT BEHOBEN";
-            displayMain = safeNewsText.replace(/Defekt behoben: /i, '').replace(/NEUER DEFEKT: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
-        } else if (newsTextLower.includes("defekt")) {
-            displayHeader = "DEFEKT";
-            displayMain = safeNewsText.replace(/NEUER DEFEKT: /i, '').replace(/Defekt behoben: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim();
+        else if (newsTextLower.includes("defekt behoben:")) { 
+            displayHeader = "DEFEKT BEHOBEN"; 
+            displayMain = safeNewsText.replace(/Defekt behoben: /i, '').replace(/NEUER DEFEKT: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim(); 
+        } else if (newsTextLower.includes("defekt")) { 
+            displayHeader = "DEFEKT"; 
+            displayMain = safeNewsText.replace(/NEUER DEFEKT: /i, '').replace(/Defekt behoben: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim(); 
         } 
-        else if (hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch")) {
-            if (newsTextLower.includes("erledigt")) {
-                displayHeader = "MATERIALWUNSCH ERLEDIGT";
-                displayMain = safeNewsText.replace(/Materialwunsch erledigt: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/NEUER MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
-            } else {
-                displayHeader = "MATERIALWUNSCH";
-                displayMain = safeNewsText.replace(/NEUER MATERIALWUNSCH: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim();
-            }
-        }
-        else if (hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken-bedarf")) {
-            displayHeader = "APOTHEKEN-BESTELLUNG";
-            displayMain = safeNewsText.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim();
-        }
-        else if (hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde")) {
-            displayHeader = "TEAMKASSE";
-            displayMain = safeNewsText;
-        }
-        else if (istStvCard) {
-            displayHeader = "STELLVERTRETUNG GESUCHT";
-            const matchLek = safeNewsText.match(/\((\d+\s*Lektionen)\)/i);
-            displayMain = (matchLek && matchLek[1]) ? matchLek[1] : safeNewsText;
-        }
-        else if (hallenTypLower.includes("badi") || newsTextLower.includes("badi")) {
-            displayHeader = "Halle frei!";
-            displayMain = `${verf} ist mit der ${kl} in der Badi!`;
-        } else if (hallenTypLower.includes("outdoor") || newsTextLower.includes("outdoor")) {
-            displayHeader = "Halle frei!";
-            displayMain = `${verf} ist mit der ${kl} draussen!`;
-        } else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall") || hallenTypLower.includes("beendet") || hallenTypLower.includes("abgeklebt")) {
-            displayHeader = "Halle frei!";
-            displayMain = `${verf} hat für die ${kl} einen Ausfall eingetragen!`;
-        } else {
-            displayHeader = "Info:";
-            displayMain = safeNewsText;
-        }
+        else if (hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch")) { 
+            if (newsTextLower.includes("erledigt")) { 
+                displayHeader = "MATERIALWUNSCH ERLEDIGT"; 
+                displayMain = safeNewsText.replace(/Materialwunsch erledigt: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/NEUER MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim(); 
+            } else { 
+                displayHeader = "MATERIALWUNSCH"; 
+                displayMain = safeNewsText.replace(/NEUER MATERIALWUNSCH: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim(); 
+            } 
+        } 
+        else if (hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken-bedarf")) { 
+            displayHeader = "APOTHEKEN-BESTELLUNG"; 
+            displayMain = safeNewsText.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim(); 
+        } 
+        else if (hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde")) { 
+            displayHeader = "TEAMKASSE"; 
+            displayMain = safeNewsText; 
+        } 
+        else if (istStvCard) { 
+            displayHeader = "STELLVERTRETUNG GESUCHT"; 
+            const matchLek = safeNewsText.match(/\((\d+\s*Lektionen)\)/i); 
+            displayMain = (matchLek && matchLek[1]) ? matchLek[1] : safeNewsText; 
+        } 
+        else if (hallenTypLower.includes("badi") || newsTextLower.includes("badi")) { 
+            displayHeader = "Halle frei!"; 
+            displayMain = `${verf} ist mit der ${kl} in der Badi!`; 
+        } 
+        else if (hallenTypLower.includes("outdoor") || newsTextLower.includes("outdoor")) { 
+            displayHeader = "Halle frei!"; 
+            displayMain = `${verf} ist mit der ${kl} draussen!`; 
+        } 
+        else if (hallenTypLower.includes("beendet") || hallenTypLower.includes("abgeklebt") || newsTextLower.includes("abgeklebt")) { 
+            displayHeader = "Halle frei!"; 
+            displayMain = `${verf} hat die Klasse ${kl} abgeklebt!`; 
+        } 
+        else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall")) { 
+            displayHeader = "Halle frei!"; 
+            displayMain = `${verf} hat für die ${kl} einen Ausfall eingetragen!`; 
+        } 
+        else { 
+            displayHeader = "Info:"; 
+            displayMain = safeNewsText; 
+        } 
         
-        const card = document.createElement('div');
-        card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`;
-        const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : '';
+        const card = document.createElement('div'); 
+        card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`; 
+        const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : ''; 
 
-        card.innerHTML = `
-            <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="status-icon" style="font-size: 0.7rem; font-weight:bold;">${istGelesen ? 'GELESEN' : 'NEU'}</span>
-                <span class="material-symbols-outlined" 
-                      style="color: #ff9800; cursor: pointer; font-size: 20px;" 
-                      onclick="event.stopPropagation(); deleteNews('${safeNewsId}')" 
-                      title="Nachricht löschen">delete</span>
-            </div>
-            <div class="news-text" style="margin: 8px 0;">
-                <div style="font-weight:bold; font-size: 0.9rem;">${displayHeader}</div>
-                <div style="font-style: italic;">${displayMain}</div>
-            </div>
-            <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;">
-                <span>${formatiertesDatum} ${uhrzeit}</span>
-                <span style="font-weight:bold;">${displayVerfasser}</span>
-            </div>
-        `;
+        card.innerHTML = ` 
+            <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;"> 
+                <span class="status-icon" style="font-size: 0.7rem; font-weight:bold;">${istGelesen ? 'GELESEN' : 'NEU'}</span> 
+                <span class="material-symbols-outlined" style="color: #ff9800; cursor: pointer; font-size: 20px;" onclick="event.stopPropagation(); deleteNews('${safeNewsId}')" title="Nachricht löschen">delete</span> 
+            </div> 
+            <div class="news-text" style="margin: 8px 0;"> 
+                <div style="font-weight:bold; font-size: 0.9rem;">${displayHeader}</div> 
+                <div style="font-style: italic;">${displayMain}</div> 
+            </div> 
+            <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;"> 
+                <span>${formatiertesDatum} ${uhrzeit}</span> 
+                <span style="font-weight:bold;">${displayVerfasser}</span> 
+            </div> 
+        `; 
         
-        card.onclick = async (e) => {
-            if (istStvCard) {
-                e.stopPropagation();
+        card.onclick = async (e) => { 
+            if (istStvCard) { 
+                e.stopPropagation(); 
                 
-                const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);
-                if (newsInListe) {
-                    if (!newsInListe.gelesen) newsInListe.gelesen = "";
-                    if (!newsInListe.gelesen.toUpperCase().includes(aktuellerUser)) {
-                        newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser;
-                    }
-                }
+                const newsInListe = sichereNewsListe.find(n => n && n.id === news.id); 
+                if (newsInListe) { 
+                    if (!newsInListe.gelesen) newsInListe.gelesen = ""; 
+                    if (!newsInListe.gelesen.toUpperCase().includes(aktuellerUser)) { 
+                        newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser; 
+                    } 
+                } 
                 
-                card.style.opacity = "0.4";
-                card.style.pointerEvents = "none";
-                const statusIconEl = card.querySelector('.status-icon');
-                if (statusIconEl) {
-                    statusIconEl.innerHTML = `<span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px; color: #27ae60;">mark_email_read</span> Gelesen`;
-                }
-                if (typeof updateNewsDot === 'function') updateNewsDot();
+                card.style.opacity = "0.4"; 
+                card.style.pointerEvents = "none"; 
+                const statusIconEl = card.querySelector('.status-icon'); 
+                if (statusIconEl) { 
+                    statusIconEl.innerHTML = `<span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px; color: #27ae60;">mark_email_read</span> Gelesen`; 
+                } 
+                if (typeof updateNewsDot === 'function') updateNewsDot(); 
 
-                try {
-                    await window.supabaseClient
-                        .from('news_db')
-                        .update({ gelesen: newsInListe ? newsInListe.gelesen : aktuellerUser })
-                        .eq('id', news.id);
-                } catch (err) {
-                    console.error("Fehler beim Markieren:", err);
-                }
+                try { 
+                    await window.supabaseClient 
+                        .from('news_db') 
+                        .update({ gelesen: newsInListe ? newsInListe.gelesen : aktuellerUser }) 
+                        .eq('id', news.id); 
+                } catch (err) { 
+                    console.error("Fehler beim Markieren:", err); 
+                } 
 
-                if (sidebar) sidebar.classList.remove('active');
-                if (backdrop) backdrop.style.display = 'none';
-                setTimeout(() => { if (sidebar) sidebar.style.display = 'none'; }, 300);
+                if (sidebar) sidebar.classList.remove('active'); 
+                if (backdrop) backdrop.style.display = 'none'; 
+                setTimeout(() => { if (sidebar) sidebar.style.display = 'none'; }, 300); 
 
-                const overlay = document.getElementById('stellvertretung-overlay');
-                if (overlay) {
-                    overlay.style.display = 'flex';
-                    if (typeof renderStellvertretung === 'function') {
+                const overlay = document.getElementById('stellvertretung-overlay'); 
+                if (overlay) { 
+                    overlay.style.display = 'flex'; 
+                    if (typeof renderStellvertretung === 'function') { 
                         renderStellvertretung(); 
-                    }
-                } else {
-                    console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!");
-                }
-            } else {
-                markAsReadAndJump(news, e);
-            }
-        };
+                    } 
+                } else { 
+                    console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!"); 
+                } 
+            } else { 
+                markAsReadAndJump(news, e); 
+            } 
+        }; 
 
-        if (newsContainer) newsContainer.appendChild(card);
-    });
+        if (newsContainer) newsContainer.appendChild(card); 
+    }); 
 
-    if (newsContainer) newsContainer.scrollTop = 0;
-    setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10);
+    if (newsContainer) newsContainer.scrollTop = 0; 
+    setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10); 
 };
 
 
