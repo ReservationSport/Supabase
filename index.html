@@ -7489,6 +7489,10 @@ window.highlightFreeSlots = function() {
     });
 };
 
+/* ============================================================
+    10.4. LEKTION VERSCHIEBEN (Aktualisiert)
+    ============================================================ */
+
 window.handleMoveConfirm = async function(targetSlot) {
     if (!window.moveMode) return;
 
@@ -7515,7 +7519,7 @@ window.handleMoveConfirm = async function(targetSlot) {
             userKuerzel = window.userKuerzel;
         }
 
-        // Hilfsfunktion: Speicher-Logik ohne onConflict (Verwendet ID-Check)
+        // Hilfsfunktion zum Speichern/Aktualisieren ohne onConflict
         const saveOrUpdateSlot = async (slotNum, dataPayload) => {
             const { data: existing, error: fetchErr } = await supabaseClient
                 .from('buchungen_db')
@@ -7540,18 +7544,19 @@ window.handleMoveConfirm = async function(targetSlot) {
             }
         };
 
-        // 1. Quell-Slot leeren
+        // 1. Quell-Slot leeren und als "verschoben" markieren (Box wird komplett leer & is-mine / Farben verschwinden)
         await saveOrUpdateSlot(sourceSlot, {
             klasse: "",
             halle: "",
             material: "",
             kommentar: "",
             details: "",
-            typ: "buchung",
+            typ: "verschoben",
             verfasser: ""
         });
 
-        // 2. Ziel-Slot beschreiben
+        // 2. Ziel-Slot beschreiben (inkl. Lehrername / Verfasser)
+        const lehrerName = bookingData.verfasser || userKuerzel || "";
         await saveOrUpdateSlot(targetSlotNum, {
             klasse: bookingData.klasse || "",
             halle: bookingData.halle || "",
@@ -7559,7 +7564,7 @@ window.handleMoveConfirm = async function(targetSlot) {
             kommentar: bookingData.kommentar || "",
             details: bookingData.details || bookingData.materialDetail || "",
             typ: bookingData.typ || "buchung",
-            verfasser: userKuerzel
+            verfasser: lehrerName
         });
 
         console.log(`🎯 Lektion erfolgreich von Slot ${sourceSlot} auf ${targetSlotNum} verschoben.`);
