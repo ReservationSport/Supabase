@@ -6813,7 +6813,7 @@ function openMaterialDetail(materialString, time, slot, klasse) {
 }
 
 
-async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
+async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userKuerzel) {
     if (btn) {
         btn.style.pointerEvents = "none";
         btn.style.opacity = "0.6";
@@ -6824,7 +6824,10 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
-    const userKuerzel = window.userKuerzel || "";
+
+    // 💡 1. Übergebenen User nutzen, sonst Fallback auf window.userKuerzel, sonst bisherigen Verfasser behalten
+    const activeUser = (userKuerzel || window.userKuerzel || "").trim();
+    const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
     const onCompleteVisuals = (materialVal, detailVal) => {
         if (btn) {
@@ -6837,7 +6840,8 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
             window.lastPlanData[slotNum] = {
                 ...window.lastPlanData[slotNum],
                 material: materialVal,
-                materialDetail: detailVal
+                materialDetail: detailVal,
+                verfasser: finalVerfasser // Auch lokal aktualisieren
             };
         }
 
@@ -6848,7 +6852,6 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
     };
 
     try {
-        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
@@ -6858,7 +6861,6 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
 
         if (fetchError) throw fetchError;
 
-        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const bookingData = {
             datum: targetDate,
             slot: slotNum,
@@ -6869,7 +6871,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
             details: detail || "",
             timestamp: now,
             typ: currentSlotData.typ || "buchung",
-            verfasser: userKuerzel
+            verfasser: finalVerfasser // ✅ Sicheres Kürzel verwenden
         };
 
         if (existingData && existingData.id) {
@@ -6889,7 +6891,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
 
         // News via Wrapper auslösen falls vorhanden
         if (typeof window.triggerNewsWrapper === 'function') {
-            await window.triggerNewsWrapper("Material", slotNum, klasse, userKuerzel);
+            await window.triggerNewsWrapper("Material", slotNum, klasse, finalVerfasser);
         }
 
         onCompleteVisuals(mat, detail);
@@ -6906,7 +6908,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn) {
 }
 
 
-async function applyMaterialDelete(time, slot, klasse, btn) {
+async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     if (btn) {
         btn.style.pointerEvents = "none";
         btn.style.opacity = "0.6";
@@ -6916,7 +6918,10 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
     const slotNum = parseInt(slot);
     const now = new Date().toISOString();
-    const userKuerzel = window.userKuerzel || "";
+
+    // 💡 1. Übergebenen User nutzen, sonst Fallback auf window.userKuerzel, sonst bisherigen Verfasser behalten
+    const activeUser = (userKuerzel || window.userKuerzel || "").trim();
+    const finalVerfasser = activeUser || currentSlotData.verfasser || "";
 
     const onCompleteVisuals = () => {
         if (btn) {
@@ -6928,7 +6933,8 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
             window.lastPlanData[slotNum] = {
                 ...window.lastPlanData[slotNum],
                 material: "",
-                materialDetail: ""
+                materialDetail: "",
+                verfasser: finalVerfasser // Auch lokal aktualisieren
             };
         }
         
@@ -6939,7 +6945,6 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
     };
 
     try {
-        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
@@ -6949,7 +6954,6 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
 
         if (fetchError) throw fetchError;
 
-        // ✅ GEOÄNDERT: 'datum' statt 'date'
         const bookingData = {
             datum: targetDate,
             slot: slotNum,
@@ -6960,7 +6964,7 @@ async function applyMaterialDelete(time, slot, klasse, btn) {
             details: "",
             timestamp: now,
             typ: currentSlotData.typ || "buchung",
-            verfasser: userKuerzel
+            verfasser: finalVerfasser // ✅ Sicheres Kürzel verwenden
         };
 
         if (existingData && existingData.id) {
