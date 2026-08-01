@@ -7448,14 +7448,14 @@ window.speichereNotizVomModal = async function(slot, klasse, doppellektionOverri
         const { data: existingData, error: fetchError } = await window.supabaseClient
             .from('buchungen_db')
             .select('id')
-            .eq('date', targetDate)
+            .eq('datum', targetDate)
             .eq('slot', slotNum)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
 
         const bookingData = {
-            date: targetDate,
+            datum: targetDate,
             slot: slotNum,
             klasse: klasse || currentSlotData.klasse || "",
             halle: currentSlotData.halle || "",
@@ -7570,7 +7570,6 @@ function showNotizDetailPopup(klasse, notizText) {
     `;
     document.body.appendChild(overlay);
 }
-
 
     /* ============================================================
    10.4. LEKTION VERSCHIEBEN
