@@ -8752,12 +8752,12 @@ window.cancelAddMode = function() {
     
 
 /* ============================================================
-   11.1. MELDUNGEN (DEFEKTE)
+   11.1. MELDUNGEN (DEFEKTE) - SUPABASE VERSION
    ============================================================ */
 
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
-    const text = input.value.trim();
+    const text = input ? input.value.trim() : '';
     
     // Suche den Primär-Button innerhalb des Modals
     const saveBtn = document.querySelector('#new-meldung-modal .btn-primary');
@@ -8767,16 +8767,17 @@ window.saveMeldung = async function() {
         return;
     }
 
-    // Button deaktivieren und Text ändern, um Mehrfach-Klicks zu verhindern
-    saveBtn.disabled = true;
-    saveBtn.innerText = "Wird gesendet...";
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Wird gesendet...";
+    }
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
         const meldungId = "M-" + Date.now();
-        const datumStr = new Date().toLocaleDateString();
+        const datumStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD für saubere Sortierung
 
-        // 1. In die zentrale service_db speichern
+        // 1. In die zentrale service_db speichern (typ: 'defekt')
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
@@ -8794,7 +8795,7 @@ window.saveMeldung = async function() {
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
-                date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+                date: datumStr,
                 slot: "0",
                 klasse: "Defekt",
                 halle: "defekt_meldung",
@@ -8805,8 +8806,10 @@ window.saveMeldung = async function() {
         if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
 
         // UI aufräumen
-        input.value = '';
-        closeModal('new-meldung-modal');
+        if (input) input.value = '';
+        if (typeof closeModal === 'function') {
+            closeModal('new-meldung-modal');
+        }
         
         if (typeof renderMeldungen === 'function') {
             renderMeldungen(); // Liste neu laden
@@ -8819,14 +8822,20 @@ window.saveMeldung = async function() {
         console.error("Fehler beim Senden:", e);
         alert("Fehler beim Speichern: " + (e.message || e));
     } finally {
-        // Button-Zustand immer zurücksetzen
-        saveBtn.disabled = false;
-        saveBtn.innerText = "Speichern";
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
     }
 };
 
 
-window.markResolved = async function(id) {
+// Funktion zum Erledigen (Kompatibel mit beiden Funktionsnamen)
+window.markAsResolved = async function(id, btnElement) {
+    if (btnElement) btnElement.classList.add('is-success');
+    
+    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
+
     try {
         // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
         const { data: record, error: fetchError } = await window.supabaseClient
@@ -8847,36 +8856,46 @@ window.markResolved = async function(id) {
         if (updateError) throw updateError;
 
         // 3. News-Eintrag für "Defekt behoben" erstellen
-        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "System";
-        await window.supabaseClient
+        const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
                 date: new Date().toISOString().split('T')[0],
                 slot: "0",
                 klasse: "Info",
                 halle: "defekt_meldung",
-                user: userKuerzelVal,
+                user: userVal,
                 text: `Defekt behoben: ${ursprungsText}`
             }]);
 
-        if (typeof renderMeldungen === 'function') {
-            renderMeldungen();
-        }
-        if (typeof updateG1 === 'function') {
-            updateG1();
-        }
+        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
+
+        setTimeout(() => {
+            if (typeof renderMeldungen === 'function') {
+                renderMeldungen();
+            }
+            if (typeof refreshNews === 'function') {
+                refreshNews(); 
+            }
+            if (typeof updateG1 === 'function') {
+                updateG1();
+            }
+        }, 300);
 
     } catch (e) {
-        console.error("Fehler beim Aktualisieren:", e);
-        alert("ID konnte nicht aktualisiert werden: " + (e.message || e));
+        console.error("Error beim Beheben:", e);
+        alert("Fehler beim Aktualisieren: " + (e.message || e));
+        if (btnElement) btnElement.classList.remove('is-success');
     }
 };
-    
-    
 
-// Lädt die Liste aus dem Sheet
-window.renderMeldungen = function() {
+// Alias damit eventuelle ältere Aufrufe von markResolved direkt greifen
+window.markResolved = window.markAsResolved;
+
+
+// Lädt die Liste direkt aus der service_db (nur typ 'defekt' und status 'offen')
+window.renderMeldungen = async function() {
     const container = document.getElementById('meldungen-container');
+    if (!container) return;
     
     // Lade-Zustand mit littlespinner
     container.innerHTML = `
@@ -8886,91 +8905,64 @@ window.renderMeldungen = function() {
         </div>
     `;
 
-    fetch(`${url}?action=getMeldungen&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(meldungen => {
-            if (!meldungen || meldungen.length === 0) {
-                container.innerHTML = "<p>Keine offenen Meldungen.</p>";
-                return;
-            }
-            
-            container.innerHTML = meldungen.map(m => {
-                // Datum formatieren: ISO zu "TT.MM.JJJJ"
-                const dateObj = new Date(m.datum);
-                const formattedDate = dateObj.toLocaleDateString('de-DE', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric'
-                });
+    try {
+        const { data: meldungen, error } = await window.supabaseClient
+            .from('service_db')
+            .select('*')
+            .eq('typ', 'defekt')
+            .eq('status', 'offen') // Nur offene anzeigen
+            .order('created_at', { ascending: false });
 
-                return `
-                    <div class="meldung-item">
-                        <div>
-                            <strong>${m.text}</strong>
-                            <span class="meldung-meta">${m.verfasser} | ${formattedDate}</span>
-                        </div>
-                        <button class="btn-erledigt" onclick="markAsResolved('${m.id}', this)" title="Erledigt">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            container.innerHTML = "Fehler beim Laden.";
-            console.error(e);
-        });
-};
-    
+        if (error) throw error;
 
-window.markAsResolved = function(id, btnElement) {
-    // 1. Button sofort grün färben für direktes Feedback
-    btnElement.classList.add('is-success');
-    
-    // User Kürzel für die neue News-Meldung abrufen
-    const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
-
-    fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({
-            action: 'markResolved', // Deine Backend-Logik für Meldungen_DB
-            id: id,
-            user: user,             // Übergeben, damit es in der News erscheint
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            // Kurze Verzögerung für visuelles Feedback
-            setTimeout(() => {
-                renderMeldungen(); // Aktualisiert die Defekt-Liste
-                
-                // Optional: Falls du die News-Sidebar offen hast, aktualisiere diese auch,
-                // damit die "Defekt behoben"-Nachricht sofort erscheint.
-                if (typeof refreshNews === 'function') {
-                    refreshNews(); 
-                }
-            }, 300); 
-        } else {
-            alert("Fehler: " + data.msg);
-            btnElement.classList.remove('is-success');
+        if (!meldungen || meldungen.length === 0) {
+            container.innerHTML = "<p>Keine offenen Meldungen.</p>";
+            return;
         }
-    })
-    .catch(e => {
-        console.error("Error:", e);
-        btnElement.classList.remove('is-success');
-    });
+        
+        container.innerHTML = meldungen.map(m => {
+            // Datum formatieren (unterstützt ISO-Strings und einfache Strings)
+            let formattedDate = m.datum || '';
+            if (m.datum && m.datum.includes('-')) {
+                const dateObj = new Date(m.datum);
+                if (!isNaN(dateObj)) {
+                    formattedDate = dateObj.toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+                }
+            }
+
+            return `
+                <div class="meldung-item">
+                    <div>
+                        <strong>${m.beschreibung}</strong>
+                        <span class="meldung-meta">${m.verfasser} | ${formattedDate}</span>
+                    </div>
+                    <button class="btn-erledigt" onclick="markAsResolved('${m.id}', this)" title="Erledigt">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = "<p>Fehler beim Laden.</p>";
+        console.error(e);
+    }
 };
 
-    
-// Registriert den Enter-Listener, sobald das Eingabefeld geladen ist
-document.getElementById('meldung-text').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        saveMeldung();
-    }
-});
 
+// Registriert den Enter-Listener sicher, falls das Eingabefeld existiert
+const meldungInputEl = document.getElementById('meldung-text');
+if (meldungInputEl) {
+    meldungInputEl.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            saveMeldung();
+        }
+    });
+}
 
 /* ============================================================
    17. Materialwünsche
