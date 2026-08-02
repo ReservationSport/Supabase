@@ -5696,28 +5696,42 @@ window.showNews = function() {
         return !geloeschtVon.includes(aktuellerUser); 
     }); 
 
+    // Sortierung primär nach Spalte 'zeitstempel' (neueste Meldung zuoberst)
+    aktiveNews.sort((a, b) => {
+        const timeA = new Date(a.zeitstempel || a.created_at || 0).getTime();
+        const timeB = new Date(b.zeitstempel || b.created_at || 0).getTime();
+        if (timeB - timeA !== 0) return timeB - timeA;
+        return (b.id || 0) - (a.id || 0);
+    });
+
     aktiveNews.forEach(news => { 
         if (!news) return; 
 
         const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim()); 
         const istGelesen = gelesenListe.includes(aktuellerUser); 
         
-        // Slot-Nummer über slot_index (Fallback auf slot falls nötig)
+        // Slot-Berechnung über slot_index (5 Slots pro Zeitfenster)
         const slotNummer = parseInt((news.slot_index !== undefined && news.slot_index !== null) ? news.slot_index : news.slot, 10); 
-        
-        // 5 Slots pro Zeitfenster
         const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0; 
         const uhrzeit = zeiten[rowIndex] || ""; 
 
-        // Datum aus datum_event auslesen und bereinigen (ISO-Zeitstempel entfernen)
-        let rawDatum = news.datum_event ? news.datum_event.toString() : (news.datum ? news.datum.toString() : ''); 
-        if (rawDatum.includes('T')) rawDatum = rawDatum.split('T')[0];
-
-        let formatiertesDatum = rawDatum; 
-        if (formatiertesDatum.includes('-')) { 
-            const parts = formatiertesDatum.split('-'); 
-            if (parts.length === 3) formatiertesDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
+        // 1. Event-Datum (für die Zeile direkt unter dem Titel)
+        let rawEventDatum = news.datum_event ? news.datum_event.toString() : (news.datum ? news.datum.toString() : ''); 
+        if (rawEventDatum.includes('T')) rawEventDatum = rawEventDatum.split('T')[0];
+        let formatiertesEventDatum = rawEventDatum; 
+        if (formatiertesEventDatum.includes('-')) { 
+            const parts = formatiertesEventDatum.split('-'); 
+            if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
         } 
+
+        // 2. Erstellungsdatum / Zeitstempel (für unten links)
+        let rawZeitstempel = news.zeitstempel ? news.zeitstempel.toString() : ''; 
+        if (rawZeitstempel.includes('T')) rawZeitstempel = rawZeitstempel.split('T')[0];
+        let formatiertesErstellungsDatum = rawZeitstempel; 
+        if (formatiertesErstellungsDatum.includes('-')) { 
+            const parts = formatiertesErstellungsDatum.split('-'); 
+            if (parts.length === 3) formatiertesErstellungsDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
+        }
 
         const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : ''; 
         const displayVerfasser = safeVerfasserInput.toLowerCase(); 
@@ -5799,7 +5813,7 @@ window.showNews = function() {
         const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : ''; 
 
         const formatierteUhrzeit = uhrzeit.replace(/\s*-\s*/g, '-');
-        const untenLinksText = uhrzeit ? `${formatiertesDatum} (${formatierteUhrzeit})` : formatiertesDatum;
+        const eventInfoZeile = uhrzeit ? `${formatiertesEventDatum} / ${formatierteUhrzeit}` : formatiertesEventDatum;
 
         card.innerHTML = ` 
             <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;"> 
@@ -5808,10 +5822,11 @@ window.showNews = function() {
             </div> 
             <div class="news-text" style="margin: 8px 0;"> 
                 <div style="font-weight:bold; font-size: 0.9rem;">${displayHeader}</div> 
-                <div style="font-style: italic;">${displayMain}</div> 
+                <div style="font-size: 0.8rem; color: #555; margin-top: 2px;">${eventInfoZeile}</div> 
+                <div style="font-style: italic; margin-top: 4px;">${displayMain}</div> 
             </div> 
             <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;"> 
-                <span>${untenLinksText}</span> 
+                <span>${formatiertesErstellungsDatum}</span> 
                 <span style="font-weight:bold;">${displayVerfasser}</span> 
             </div> 
         `; 
@@ -5870,6 +5885,7 @@ window.showNews = function() {
     setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10); 
 };
 
+    
 
 /**
  * Löscht eine Nachricht für den aktuellen User (fügt Kürzel zur 'geloescht'-Spalte hinzu).
