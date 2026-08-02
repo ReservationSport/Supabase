@@ -10966,9 +10966,25 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 
     currentDetailData.allSelected = allAreChecked;
 
-    const dateObj = new Date(datum.replace(/-/g, "/"));
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const formattedDate = dateObj.toLocaleDateString('de-DE', options);
+    // Robustes Parsen des Datums (unterstützt YYYY-MM-DD und DD.MM.YYYY)
+    let formattedDate = datum;
+    try {
+        let dObj;
+        if (datum && datum.includes('.')) {
+            const parts = datum.split('.');
+            if (parts.length === 3) {
+                dObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            }
+        } else if (datum) {
+            dObj = new Date(datum.replace(/-/g, "/"));
+        }
+        
+        if (dObj && !isNaN(dObj.getTime())) {
+            formattedDate = dObj.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+    } catch (err) {
+        console.warn("Konnte Datum nicht parsen:", datum);
+    }
 
     if (titleEl) {
         titleEl.innerText = "Stellvertretung übernehmen";
@@ -10994,6 +11010,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
     renderStvDetailLektionenList();
     modal.style.display = 'flex';
 };
+    
     
 /**
  * Rendert die 12 Lektionen im Detail-Modal über den zeitslot
