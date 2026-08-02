@@ -10553,6 +10553,9 @@ window.proceedToStvLessons = function() {
 /**
  * Schritt 2: Stundenplan direkt über window.supabaseClient abfragen
  */
+/**
+ * Lädt den Stundenplan für das gewählte Datum über master_db und buchungen_db
+ */
 async function loadStvStundenplanFromSupabase(dateString) {
     const container = document.getElementById('stv-tagesplan-container');
     container.innerHTML = `
@@ -10564,26 +10567,75 @@ async function loadStvStundenplanFromSupabase(dateString) {
 
     try {
         const kuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : '';
+        const dateObj = new Date(dateString.replace(/-/g, "/"));
         
-        const { data, error } = await window.supabaseClient
-            .from('stundenplan')
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        // 1. Master-Daten (Grundbelegung) für den Wochentag laden
+        const { data: masterData, error: masterError } = await window.supabaseClient
+            .from('master_db')
+            .select('*')
+            .eq('wochentag', aktuellerWochentag);
+
+        if (masterError) throw masterError;
+
+        // 2. Tagesaktuelle Buchungen laden
+        const { data: buchungenData, error: buchungenError } = await window.supabaseClient
+            .from('buchungen_db')
             .select('*')
             .eq('datum', dateString);
 
-        if (error) throw error;
+        if (buchungenError) throw buchungenError;
 
-        let planObj = {};
-        if (Array.isArray(data)) {
-            data.forEach(row => {
-                if (row.slot_id) {
-                    planObj[row.slot_id] = {
-                        klasse: row.klasse,
-                        lehrer: row.lehrer
-                    };
+        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
+        const planObj = {};
+        for (let i = 1; i <= 60; i++) {
+            planObj[i] = { 
+                klasse: "", lehrer: "", halle: "", 
+                typ: "", verfasser: "", kommentar: "", material: "", details: "", weitergabe: null 
+            };
+        }
+
+        // 4. Master-Daten in den Plan schreiben
+        if (masterData) {
+            masterData.forEach(row => {
+                if (planObj[row.slot]) {
+                    planObj[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
+                    planObj[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
                 }
             });
-        } else if (data && data.plan) {
-            planObj = data.plan;
+        }
+
+        // 5. Tagesbuchungen darüberlegen
+        if (buchungenData) {
+            buchungenData.forEach(row => {
+                const slot = row.slot;
+                if (planObj[slot]) {
+                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
+
+                    if (klasseAusDB.toLowerCase() === "verschoben") {
+                        planObj[slot].klasse = "";
+                        planObj[slot].lehrer = "";
+                        planObj[slot].halle = "";
+                        planObj[slot].typ = "";
+                        planObj[slot].verfasser = "";
+                        planObj[slot].kommentar = "";
+                        planObj[slot].material = "";
+                        planObj[slot].details = "";
+                        planObj[slot].weitergabe = null;
+                    } else {
+                        if (klasseAusDB !== "") planObj[slot].klasse = klasseAusDB;
+                        if (row.halle) planObj[slot].halle = row.halle.toString();
+                        if (row.material) planObj[slot].material = row.material.toString();
+                        if (row.kommentar) planObj[slot].kommentar = row.kommentar.toString();
+                        if (row.details) planObj[slot].details = row.details.toString();
+                        if (row.typ) planObj[slot].typ = row.typ.toString();
+                        if (row.verfasser) planObj[slot].verfasser = row.verfasser.toString();
+                        if (row.weitergabe) planObj[slot].weitergabe = row.weitergabe.toString();
+                    }
+                }
+            });
         }
 
         parseAndFilterUserLektionen(planObj, kuerzel);
