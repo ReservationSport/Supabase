@@ -4989,13 +4989,27 @@ window.loadPlan = async function() {
     }
 
     try {
-        // Sperrzeiten direkt als Erstes prüfen
-        const sperrzeitenRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
-        if (!sperrzeitenRes.error && sperrzeitenRes.data && sperrzeitenRes.data.length > 0) {
-            const grund = sperrzeitenRes.data.map(s => s.grund).filter(Boolean).join(" | ");
-            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${grund}</div>`;
+        // --- SPERRZEITEN PRÜFUNG (Robust gegen Datums-/Timestamp-Formate) ---
+        let sperrzeitGrund = "";
+        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        
+        if (sperrzeitRes.error) {
+            console.error("Sperrzeiten-Fehler:", sperrzeitRes.error);
+        } else if (sperrzeitRes.data && sperrzeitRes.data.length > 0) {
+            sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+        } else {
+            // Fallback: Falls in Supabase ein Timestamp statt reinem Datum gespeichert ist
+            let sperrzeitLikeRes = await supabaseClient.from('sperrzeiten').select('*').like('datum', `${dateVal}%`);
+            if (sperrzeitLikeRes.data && sperrzeitLikeRes.data.length > 0) {
+                sperrzeitGrund = sperrzeitLikeRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+            }
+        }
+
+        if (sperrzeitGrund) {
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${sperrzeitGrund}</div>`;
             return;
         }
+        // -----------------------------------------------------------------
 
         // Hallen- und Material-Konfigurationen parallel laden
         const configPromises = [];
@@ -5340,13 +5354,24 @@ window.syncPlan = async function() {
         
         if (dateObj.getDay() === 0 || dateObj.getDay() === 6) return;
 
-        // Sperrzeiten beim Sync prüfen
-        const sperrzeitenRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
-        if (!sperrzeitenRes.error && sperrzeitenRes.data && sperrzeitenRes.data.length > 0) {
-            const grund = sperrzeitenRes.data.map(s => s.grund).filter(Boolean).join(" | ");
-            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${grund}</div>`;
+        // --- SPERRZEITEN PRÜFUNG beim Sync ---
+        let sperrzeitGrund = "";
+        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        
+        if (sperrzeitRes.data && sperrzeitRes.data.length > 0) {
+            sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+        } else {
+            let sperrzeitLikeRes = await supabaseClient.from('sperrzeiten').select('*').like('datum', `${dateVal}%`);
+            if (sperrzeitLikeRes.data && sperrzeitLikeRes.data.length > 0) {
+                sperrzeitGrund = sperrzeitLikeRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+            }
+        }
+
+        if (sperrzeitGrund) {
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${sperrzeitGrund}</div>`;
             return;
         }
+        // ------------------------------------
 
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
