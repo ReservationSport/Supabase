@@ -10333,7 +10333,7 @@ window.openNewStellvertretungModal = function() {
 
 
 /* ============================================================
-   11.7.1. Stellvertretung suchen (Kompensiert mit window.supabaseClient)
+   11.7.1. STELLVERTRETUNG SUCHEN
    ============================================================ */
    
 // Automatisches Vorbelegen mit dem heutigen Datum beim Öffnen des Hauptmodals
@@ -10933,7 +10933,7 @@ window.submitStellvertretungWithLessons = async function() {
 
     
 /* ============================================================
-   11.7.2. Stellvertretung übernehmen (Angepasst an Supabase Integer-IDs)
+   11.7.2. STELLVERTRETUNG ÜBERNEHMEN
    ============================================================ */
 
 window.openStellvertretungDetailModal = function(datum, verfasser) {
@@ -11208,15 +11208,15 @@ window.saveStellvertretungBereitschaften = function() {
 
 
 /* ============================================================
-   11.7.3 Stellvertretung löschen
+   11.7.3. STELLVERTRETUNG LÖSCHEN
    ============================================================ */
-    
+   
 // Globale Variablen zum Zwischenspeichern für den Löschvorgang
 let stvToDeleteDatum = null;
 let stvToDeleteVerfasser = null;
 
 /**
- * 1. Schritt: Öffnet das eigene Bestätigungs-Modal (ersetzt das alte confirm)
+ * 1. Schritt: Öffnet das eigene Bestätigungs-Modal
  */
 window.deleteStellvertretungTag = function(datum, verfasser) {
     stvToDeleteDatum = datum;
@@ -11224,7 +11224,6 @@ window.deleteStellvertretungTag = function(datum, verfasser) {
 
     const overlay = document.getElementById('stv-loesch-confirm-overlay');
     if (overlay) {
-        // Spinner verstecken, Buttons anzeigen
         const spinner = document.getElementById('stv-loesch-spinner');
         const actions = document.getElementById('stv-loesch-actions');
         
@@ -11250,48 +11249,39 @@ async function executeStvLoeschEcht() {
     if (actions) actions.style.display = 'none';
 
     const cleanVerfasser = stvToDeleteVerfasser.toLowerCase().trim();
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
     
-    // IDs aus der geladenen Datenbank-Struktur ermitteln
+    // IDs der zu löschenden Einträge über loadedStellvertretungen ermitteln
     const itemsToDelete = loadedStellvertretungen.filter(i => i.datum === stvToDeleteDatum && i.verfasser.toLowerCase().trim() === cleanVerfasser);
     const ids = itemsToDelete.map(i => i.id);
 
     try {
-        const response = await fetch(targetUrl, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "deleteStellvertretungTag",
-                ids: ids,
-                pw: userPw
-            })
-        });
+        // Direkt über Supabase aus service_db löschen
+        const { error } = await window.supabaseClient
+            .from('service_db')
+            .delete()
+            .in('id', ids);
 
-        const data = await response.json();
+        if (error) throw error;
 
-        if (data.status === "success") {
-            // 1. Bestätigungs-Modal schließen
-            closeStvLoeschConfirm();
+        // 1. Bestätigungs-Modal schließen
+        closeStvLoeschConfirm();
 
-            // 2. Detail-Modal schließen
-            const detailModal = document.getElementById('stv-detail-modal');
-            if (detailModal) detailModal.style.display = 'none';
+        // 2. Detail-Modal schließen
+        const detailModal = document.getElementById('stv-detail-modal');
+        if (detailModal) detailModal.style.display = 'none';
 
-            // 3. Hauptfenster der Stellvertretung öffnen & neu laden
-            const stvOverlay = document.getElementById('stellvertretung-overlay');
-            if (stvOverlay) {
-                stvOverlay.style.display = 'flex';
-                if (typeof renderStellvertretung === 'function') {
-                    renderStellvertretung();
-                }
+        // 3. Hauptfenster der Stellvertretung öffnen & neu laden
+        const stvOverlay = document.getElementById('stellvertretung-overlay');
+        if (stvOverlay) {
+            stvOverlay.style.display = 'flex';
+            if (typeof renderStellvertretung === 'function') {
+                renderStellvertretung();
             }
-        } else {
-            alert("Fehler beim Löschen: " + (data.msg || "Unbekannter Fehler"));
-            if (spinner) spinner.style.display = 'none';
-            if (actions) actions.style.display = 'flex';
         }
+
     } catch (e) {
-        console.error("Netzwerkfehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
+        console.error("Supabase-Fehler beim Löschen:", e);
+        alert("Ein Fehler ist aufgetreten: " + (e.message || e));
         if (spinner) spinner.style.display = 'none';
         if (actions) actions.style.display = 'flex';
     } finally {
@@ -11321,7 +11311,6 @@ window.closeStvLoeschConfirm = function() {
 
 
 
-    
 
     
 
