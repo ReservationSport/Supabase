@@ -10006,7 +10006,6 @@ window.openNewApothekeModal = async function() {
     const modal = document.getElementById('new-apotheke-modal');
     const container = document.getElementById('apotheke-db-list');
     
-    // Modal anzeigen
     if (modal) modal.style.display = 'flex';
     if (!container) return;
     
@@ -10019,14 +10018,17 @@ window.openNewApothekeModal = async function() {
     `;
 
     try {
-        // Artikel direkt aus der 'material'-Tabelle laden, bei denen apotheke = true ist
+        // Alle Einträge laden, bei denen die Spalte 'apotheke' gefüllt ist
         const { data: items, error } = await window.supabaseClient
             .from('material')
             .select('*')
-            .eq('apotheke', true)
-            .order('material', { ascending: true });
+            .not('apotheke', 'is', null)
+            .order('apotheke', { ascending: true });
 
         if (error) throw error;
+
+        // Zusätzlich leere Strings abfangen
+        const validItems = items ? items.filter(item => item.apotheke && String(item.apotheke).trim() !== "") : [];
 
         // Freestyle-Eintrag ganz oben einfügen
         let htmlContent = `
@@ -10036,15 +10038,15 @@ window.openNewApothekeModal = async function() {
             </div>
         `;
 
-        if (items && items.length > 0) {
-            htmlContent += items.map((item, index) => `
+        if (validItems.length > 0) {
+            htmlContent += validItems.map((item, index) => `
                 <div class="apotheke-checkbox-item" style="margin-bottom: 6px;">
-                    <input type="checkbox" id="apo-item-${index}" value="${item.material}" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;">
-                    <label for="apo-item-${index}" style="color: #fff; cursor: pointer; font-size: 0.95rem; margin-left: 8px;">${item.material}</label>
+                    <input type="checkbox" id="apo-item-${index}" value="${item.apotheke}" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;">
+                    <label for="apo-item-${index}" style="color: #fff; cursor: pointer; font-size: 0.95rem; margin-left: 8px;">${item.apotheke}</label>
                 </div>
             `).join('');
         } else {
-            htmlContent += "<p style='color: #aaa; font-size: 0.9rem;'>Keine Artikel mit Apotheke = true gefunden.</p>";
+            htmlContent += "<p style='color: #aaa; font-size: 0.9rem;'>Keine Artikel in der Spalte 'apotheke' gefunden.</p>";
         }
         
         container.innerHTML = htmlContent;
