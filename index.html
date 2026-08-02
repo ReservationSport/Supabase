@@ -8784,7 +8784,7 @@ window.openNewMeldungModal = function() {
     }, 100);
 };
 
-// 3. Speichert die neue Meldung direkt in Supabase (service_db mit typ 'meldung' und numerischer ID)
+// 3. Speichert die neue Meldung direkt in Supabase (service_db mit typ 'meldung' und automatischer ID)
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
@@ -8803,16 +8803,17 @@ window.saveMeldung = async function() {
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
-        const datumStr = new Date().toISOString().split('T')[0];
+        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
+        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
 
-        // 1. In die service_db speichern (id wird hier weggelassen, da die DB sie automatisch hochzählt)
+        // 1. In die service_db speichern (id weggelassen für Auto-Increment, datum als timestamptz)
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
                 typ: 'meldung',
                 beschreibung: text,
                 verfasser: userKuerzelVal,
-                datum: datumStr,
+                datum: datumIso,
                 status: 'offen'
             }]);
 
@@ -8822,7 +8823,7 @@ window.saveMeldung = async function() {
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
-                date: datumStr,
+                date: datumDateOnly,
                 slot: "0",
                 klasse: "Defekt",
                 halle: "defekt_meldung",
@@ -8917,7 +8918,7 @@ window.markAsResolved = async function(id, btnElement) {
 // Alias für eventuelle Altaufrufe
 window.markResolved = window.markAsResolved;
 
-// 5. Lädt die offene Liste direkt aus der service_db ( filtert nach typ 'meldung' )
+// 5. Lädt die offene Liste direkt aus der service_db (filtert nach typ 'meldung')
 window.renderMeldungen = async function() {
     const container = document.getElementById('meldungen-container');
     if (!container) return;
@@ -8934,9 +8935,9 @@ window.renderMeldungen = async function() {
         const { data: meldungen, error } = await window.supabaseClient
             .from('service_db')
             .select('*')
-            .eq('typ', 'meldung') // Hier wird gezielt nach typ 'meldung' gefiltert
+            .eq('typ', 'meldung') // Gezielt nach typ 'meldung' gefiltert
             .eq('status', 'offen') // Nur offene anzeigen
-            .order('created_at', { ascending: false });
+            .order('datum', { ascending: false }); // Sortierung über die timestamptz-Spalte 'datum'
 
         if (error) throw error;
 
@@ -8946,14 +8947,16 @@ window.renderMeldungen = async function() {
         }
         
         container.innerHTML = meldungen.map(m => {
-            let formattedDate = m.datum || '';
-            if (m.datum && m.datum.includes('-')) {
+            let formattedDate = '';
+            if (m.datum) {
                 const dateObj = new Date(m.datum);
                 if (!isNaN(dateObj)) {
                     formattedDate = dateObj.toLocaleDateString('de-DE', {
                         day: '2-digit',
                         month: '2-digit',
-                        year: 'numeric'
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
                     });
                 }
             }
