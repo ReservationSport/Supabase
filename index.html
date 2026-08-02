@@ -668,10 +668,10 @@ body {
     color: #ffb74d !important; /* Mülleimer im hellen Orange gut erkennbar */
 }
 .news-item.news-unread .news-text {
-    color: #ffffff; /* Haupttext in reinem Weiß für perfekte Lesbarkeit auf Orange */
+    color: #ffffff; 
 }
-.news-item.news-unread .news-text div:last-child {
-    color: #ffd54f; /* Untertitel in hellem Gold/Gelbton */
+.news-item.news-unread .news-text div {
+    color: #ffffff !important; /* Sämtliche Zeilen im Textblock in reinem Weiß wie der Titel */
 }
 .news-item.news-unread div:last-child {
     color: #ffcc80 !important; /* Datum & Verfasser im Footer */
@@ -684,6 +684,9 @@ body {
     opacity: 0.7;
 }
 .news-item.news-gelesen .status-icon { color: #888; font-weight: normal; }
+.news-item.news-gelesen .news-text div {
+    color: #ffffff !important; /* Auch bei gelesenen News den Text weiß halten */
+}
 
 /* Hover-Effekt */
 .news-item:hover { 
@@ -693,9 +696,8 @@ body {
 
 .news-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.8em; }
 .status-icon { font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; }
-.news-text { margin: 6px 0; font-size: 0.95em; color: #eee; line-height: 1.4; }
-
-
+.news-text { margin: 6px 0; font-size: 0.95em; color: #ffffff; line-height: 1.4; }
+.news-text div { color: #ffffff; }
     
 
 
