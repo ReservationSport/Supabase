@@ -4989,29 +4989,21 @@ window.loadPlan = async function() {
     }
 
     try {
-        // --- SPERRZEITEN PRÜFUNG (Mit Konvertierung zu DD.MM.YYYY) ---
         const [y, m, d] = dateVal.split('-');
-        const dbFormatDate = `${d}.${m}.${y}`; // z.B. "05.10.2026"
-        
-        console.log("Suche Sperrzeit für formatiertes Datum:", dbFormatDate);
+        const dbFormatDate = `${d}.${m}.${y}`;
         
         let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dbFormatDate);
 
         let sperrzeitGrund = "";
-        if (sperrzeitRes.error) {
-            console.error("Sperrzeiten-Fehler:", sperrzeitRes.error);
-        } else if (sperrzeitRes.data && sperrzeitRes.data.length > 0) {
+        if (!sperrzeitRes.error && sperrzeitRes.data && sperrzeitRes.data.length > 0) {
             sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
         }
 
         if (sperrzeitGrund) {
-            console.log("Sperrzeit gefunden! Grund:", sperrzeitGrund);
-            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${sperrzeitGrund}</div>`;
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
             return;
         }
-        // -----------------------------------------------------------
 
-        // Hallen- und Material-Konfigurationen parallel laden
         const configPromises = [];
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
             const initHallen = window.initHallenConfig || (typeof initHallenConfig === 'function' ? initHallenConfig : null);
@@ -5023,7 +5015,6 @@ window.loadPlan = async function() {
         }
         if (configPromises.length > 0) await Promise.all(configPromises);
 
-        // 1. Kalender-Kontext über die zentrale Hilfsfunktion laden
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
             : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
@@ -5031,7 +5022,6 @@ window.loadPlan = async function() {
         const istUngeradeWoche = calContext.istUngeradeWoche;
         const targetSlotIdx = calContext.targetSlotIdx;
 
-        // 2. Master-Daten & Buchungen parallel aus Supabase laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
 
@@ -5043,7 +5033,6 @@ window.loadPlan = async function() {
         const masterData = masterRes.data;
         let buchungenData = buchungenRes.data;
 
-        // --- AUTOMATISCHE U21-ERSTBUCHUNG ---
         if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
             let temporaerPlan = {};
             for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "", lehrer: "" };
@@ -5113,7 +5102,6 @@ window.loadPlan = async function() {
             }
         }
 
-        // 3. Plan-Objekt initialisieren (Slots 1 bis 60)
         const plan = {};
         for (let i = 1; i <= 60; i++) {
             plan[i] = { 
@@ -5122,7 +5110,6 @@ window.loadPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen
         if (masterData) {
             masterData.forEach(row => {
                 if (plan[row.slot]) {
@@ -5147,7 +5134,6 @@ window.loadPlan = async function() {
             });
         }
 
-        // 5. Tagesbuchungen darüberlegen
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
@@ -5269,7 +5255,6 @@ window.loadPlan = async function() {
             }
         });
     } catch(e) { 
-        console.error("Ladefehler:", e); 
         container.innerHTML = `<div class="box info-box" style="color:red; grid-column: span 6;">Fehler: Daten konnten nicht geladen werden.</div>`;
     }
 };
@@ -5333,206 +5318,277 @@ window.resumeSync = function() {
 /* ============================================================
    SYNC PLAN - DOM-Sicher (Supabase-Architektur)
    ============================================================ */
-window.syncPlan = async function() {
-    if (window.actionQueue && (window.actionQueue.length > 0 || window.isProcessingQueue)) {
-        return;
-    }
-
-    if (window.isSyncPaused) return;
-
+window.loadPlan = async function() {
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
+    
     if (!dp || !container) return;
+    
+    const dateVal = dp.value;
+    if (!dateVal) return;
+
+    container.innerHTML = ""; 
+    if (typeof updateNavButtons === 'function') updateNavButtons();
+
+    const dateObj = new Date(dateVal.replace(/-/g, "/")); 
+    const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+    if (dateObj.getDay() === 0 || dateObj.getDay() === 6) { 
+        container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Mach mal Pause! Es ist Wochenende...</div>`; 
+        return; 
+    }
 
     try {
-        const dateVal = dp.value;
-        if (!dateVal) return;
-
-        const dateObj = new Date(dateVal.replace(/-/g, "/"));
-        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-        
-        if (dateObj.getDay() === 0 || dateObj.getDay() === 6) return;
-
-        // --- SPERRZEITEN PRÜFUNG beim Sync (Mit Konvertierung zu DD.MM.YYYY) ---
         const [y, m, d] = dateVal.split('-');
-        const dbFormatDate = `${d}.${m}.${y}`; // z.B. "05.10.2026"
+        const dbFormatDate = `${d}.${m}.${y}`;
+        
+        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dbFormatDate);
 
         let sperrzeitGrund = "";
-        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dbFormatDate);
-        
-        if (sperrzeitRes.error) {
-            console.error("Sperrzeiten-Fehler beim Sync:", sperrzeitRes.error);
-        } else if (sperrzeitRes.data && sperrzeitRes.data.length > 0) {
+        if (!sperrzeitRes.error && sperrzeitRes.data && sperrzeitRes.data.length > 0) {
             sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
         }
 
         if (sperrzeitGrund) {
-            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${sperrzeitGrund}</div>`;
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
             return;
         }
-        // --------------------------------------------------------------------
 
-        const aktuellerWochentag = wtArr[dateObj.getDay()];
+        const configPromises = [];
+        if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
+            const initHallen = window.initHallenConfig || (typeof initHallenConfig === 'function' ? initHallenConfig : null);
+            if (initHallen) configPromises.push(initHallen());
+        }
+        if (!window.materialConfig || Object.keys(window.materialConfig).length === 0) {
+            const initMaterial = window.initMaterialConfig || (typeof initMaterialConfig === 'function' ? initMaterialConfig : null);
+            if (initMaterial) configPromises.push(initMaterial());
+        }
+        if (configPromises.length > 0) await Promise.all(configPromises);
 
-        // 1. Kalender-Kontext laden
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
             : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
 
         const istUngeradeWoche = calContext.istUngeradeWoche;
+        const targetSlotIdx = calContext.targetSlotIdx;
 
-        // 2. Master-Daten & Buchungen parallel laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
 
         const [masterRes, buchungenRes] = await Promise.all([masterPromise, buchungenPromise]);
 
-        if (masterRes.error || !masterRes.data) return;
-        if (buchungenRes.error) return;
+        if (masterRes.error) throw masterRes.error;
+        if (buchungenRes.error) throw buchungenRes.error;
 
         const masterData = masterRes.data;
-        const buchungenData = buchungenRes.data;
+        let buchungenData = buchungenRes.data;
 
-        // 3. Plan-Objekt initialisieren
-        const newPlan = {};
+        if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
+            let temporaerPlan = {};
+            for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "", lehrer: "" };
+
+            if (masterData) {
+                masterData.forEach(row => {
+                    let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
+                    let klasseName = "";
+                    let lehrerName = row.lehrer ? row.lehrer.toString().trim() : "";
+                    
+                    if (roheKlasse.includes("/")) {
+                        let teile = roheKlasse.split("/").map(s => s.trim());
+                        klasseName = istUngeradeWoche ? (teile[0] || "") : (teile[1] || "");
+                    } else {
+                        klasseName = roheKlasse;
+                    }
+
+                    if (klasseName === "") {
+                        lehrerName = "";
+                    }
+
+                    if (temporaerPlan[row.slot]) {
+                        temporaerPlan[row.slot].klasse = klasseName;
+                        temporaerPlan[row.slot].lehrer = lehrerName;
+                    }
+                });
+            }
+
+            let neueEintraege = [];
+            for (let lektion = 0; lektion < 12; lektion++) {
+                let klassenInLektion = 0;
+                for (let h = 1; h <= 5; h++) {
+                    let sId = (lektion * 5) + h;
+                    if (temporaerPlan[sId] && temporaerPlan[sId].klasse !== "") klassenInLektion++;
+                }
+
+                if (klassenInLektion === 5) {
+                    let u21SlotId = (lektion * 5) + targetSlotIdx;
+                    let betroffeneKlasse = temporaerPlan[u21SlotId] ? temporaerPlan[u21SlotId].klasse : "";
+                    let ursprungsLehrer = temporaerPlan[u21SlotId] ? temporaerPlan[u21SlotId].lehrer : "";
+
+                    let neueBuchung = {
+                        datum: dateVal,
+                        slot: u21SlotId,
+                        klasse: betroffeneKlasse,
+                        halle: "U21",
+                        typ: "automatisch"
+                    };
+
+                    if (ursprungsLehrer !== "") {
+                        neueBuchung.verfasser = ursprungsLehrer;
+                    }
+
+                    neueEintraege.push(neueBuchung);
+                }
+            }
+
+            if (neueEintraege.length > 0) {
+                const { data: insertedBuchungen, error: insertError } = await supabaseClient
+                    .from('buchungen_db')
+                    .insert(neueEintraege)
+                    .select('*');
+
+                if (!insertError && insertedBuchungen) {
+                    buchungenData = insertedBuchungen;
+                }
+            }
+        }
+
+        const plan = {};
         for (let i = 1; i <= 60; i++) {
-            newPlan[i] = { 
+            plan[i] = { 
                 klasse: "", lehrer: "", halle: "", 
                 typ: "", verfasser: "", kommentar: "", material: "", details: "", weitergabe: null 
             };
         }
 
-        // 4. Master-Daten eintragen
-        masterData.forEach(row => {
-            if (newPlan[row.slot]) {
-                let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
-                let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
-                
-                if (roheKlasse.includes("/")) {
-                    const teile = roheKlasse.split("/").map(s => s.trim());
-                    if (teile.length >= 2) {
-                        roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
+        if (masterData) {
+            masterData.forEach(row => {
+                if (plan[row.slot]) {
+                    let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
+                    let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
+                    
+                    if (roheKlasse.includes("/")) {
+                        const teile = roheKlasse.split("/").map(s => s.trim());
+                        if (teile.length >= 2) {
+                            roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
+                        }
                     }
-                }
 
-                if (roheKlasse === "") {
-                    newPlan[row.slot].klasse = "";
-                    newPlan[row.slot].lehrer = "";
-                } else {
-                    newPlan[row.slot].klasse = roheKlasse;
-                    newPlan[row.slot].lehrer = roherLehrer;
-                }
-            }
-        });
-
-        // 5. Tagesbuchungen darüberlegen
-        if (buchungenData) {
-            buchungenData.forEach(row => {
-                const slot = row.slot;
-                if (newPlan[slot]) {
-                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
-
-                    if (klasseAusDB.toLowerCase() === "verschoben") {
-                        newPlan[slot].klasse = "";
-                        newPlan[slot].lehrer = "";
-                        newPlan[slot].halle = "";
-                        newPlan[slot].typ = "";
-                        newPlan[slot].verfasser = "";
-                        newPlan[slot].kommentar = "";
-                        newPlan[slot].material = "";
-                        newPlan[slot].details = "";
-                        newPlan[slot].weitergabe = null;
+                    if (roheKlasse === "") {
+                        plan[row.slot].klasse = "";
+                        plan[row.slot].lehrer = "";
                     } else {
-                        if (klasseAusDB !== "") newPlan[slot].klasse = klasseAusDB;
-                        if (row.halle) newPlan[slot].halle = row.halle.toString();
-                        if (row.material) newPlan[slot].material = row.material.toString();
-                        if (row.kommentar) newPlan[slot].kommentar = row.kommentar.toString();
-                        if (row.details) newPlan[slot].details = row.details.toString();
-                        if (row.typ) newPlan[slot].typ = row.typ.toString();
-                        if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
-                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString();
+                        plan[row.slot].klasse = roheKlasse;
+                        plan[row.slot].lehrer = roherLehrer;
                     }
                 }
             });
         }
 
-        if (window.currentInteractionMode !== null) return;
+        if (buchungenData) {
+            buchungenData.forEach(row => {
+                const slot = row.slot;
+                if (plan[slot]) {
+                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
 
-        window.lastPlanData = newPlan;
-        const myClasses = window.myClasses || [];
-        const allClassTeachers = window.allClassTeachers || {};
-        
-        let rawUserKuerzel = "";
-        if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
-            rawUserKuerzel = userKuerzel;
-        } else if (typeof window.userKuerzel === 'string' && window.userKuerzel.trim() !== "") {
-            rawUserKuerzel = window.userKuerzel;
-        } else {
-            const el = document.getElementById('userKuerzel');
-            rawUserKuerzel = el ? (el.value || "") : "";
+                    if (klasseAusDB.toLowerCase() === "verschoben") {
+                        plan[slot].klasse = "";
+                        plan[slot].lehrer = "";
+                        plan[slot].halle = "";
+                        plan[slot].typ = "";
+                        plan[slot].verfasser = "";
+                        plan[slot].kommentar = "";
+                        plan[slot].material = "";
+                        plan[slot].details = "";
+                        plan[slot].weitergabe = null;
+                    } else {
+                        if (klasseAusDB !== "") plan[slot].klasse = klasseAusDB;
+                        if (row.halle) plan[slot].halle = row.halle.toString();
+                        if (row.material) plan[slot].material = row.material.toString();
+                        if (row.kommentar) plan[slot].kommentar = row.kommentar.toString();
+                        if (row.details) plan[slot].details = row.details.toString();
+                        if (row.typ) plan[slot].typ = row.typ.toString();
+                        if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
+                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString();
+                    }
+                }
+            });
         }
-        const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
 
-        Object.keys(newPlan).forEach(slot => {
-            const slotData = newPlan[slot] || {};
-            const box = container.querySelector(`[data-slot="${slot}"]`);
-            if (!box) return;
+        window.lastPlanData = plan; 
+        window.myClasses = window.myClasses || []; 
+        window.allClassTeachers = window.allClassTeachers || {};
+        
+        const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
 
-            const lastUpdate = box.dataset.lastManualUpdate ? parseInt(box.dataset.lastManualUpdate) : 0;
-            const isProtected = (Date.now() - lastUpdate) < 5000;
-            if (isProtected) return; 
+        let html = `<div class="box header-row" style="grid-column: span 6;"><span>${aktuellerWochentag}, ${d}.${m}.${y}</span></div>`;
 
-            const klasse = slotData.klasse || "";
-            const verfasser = slotData.verfasser || "";
-            const lehrerDaten = slotData.lehrer || "";
-            const halle = slotData.halle || "";
-            const typ = slotData.typ || "";
-            const isAusfall = (halle === "Ausfall");
-            const isKlasseLeer = (klasse.trim() === "");
+        zeiten.forEach((zeitStr, rowIndex) => {
+            if (rowIndex + 1 === 4 || rowIndex + 1 === 10) html += `<div class="divider-thin" style="grid-column: span 6;"></div>`;
+            if (rowIndex + 1 === 7) html += `<div class="divider-thick" style="grid-column: span 6;"></div>`;
+            html += `<div class="box zeit-box">${zeitStr}</div>`;
             
-            const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
-            const isMyClass = !isKlasseLeer && myClasses.some(c => String(c).trim().toLowerCase() === klasse.trim().toLowerCase());
-            
-            const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
-            const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
-            const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
-            
-            const canEdit = isMyClass || isMyBooking;
-            
-            const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
-            const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
+            for(let i = 1; i <= 5; i++) {
+                const absoluteSlot = (rowIndex * 5) + i; 
+                const slotData = plan[absoluteSlot] || {};
+                
+                const klasse = (slotData.klasse !== undefined && slotData.klasse !== null) ? String(slotData.klasse) : "";
+                const halle = (slotData.halle !== undefined && slotData.halle !== null) ? String(slotData.halle) : "";
+                const typ = (slotData.typ !== undefined && slotData.typ !== null) ? String(slotData.typ) : "";
+                const verfasser = (slotData.verfasser !== undefined && slotData.verfasser !== null) ? String(slotData.verfasser) : "";
+                const lehrerDaten = (slotData.lehrer !== undefined && slotData.lehrer !== null) ? String(slotData.lehrer) : "";
+                
+                if (klasse.trim().toLowerCase() === "verschoben") {
+                    html += `<div class="box empty" data-slot="${absoluteSlot}" data-time="${zeitStr}"></div>`;
+                    continue; 
+                }
 
-            box.className = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
-            box.style.backgroundColor = bgFarbe;
-            box.style.cursor = canEdit ? 'pointer' : 'default';
+                const isAusfall = (halle === "Ausfall");
+                const isKlasseLeer = (klasse.trim() === "");
+                const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
+                
+                const isMyClass = !isKlasseLeer && window.myClasses.some(c => 
+                    String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
+                );
+                
+                let rawUserKuerzel = "";
+                if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
+                    rawUserKuerzel = userKuerzel;
+                } else {
+                    const el = document.getElementById('userKuerzel');
+                    rawUserKuerzel = el ? (el.value || "") : "";
+                }
 
-            const klassenEl = box.querySelector('.klasse-label');
-            const lehrerEl = box.querySelector('.lehrer-info');
-            const halleEl = box.querySelector('.halle-label');
-            
-            if (klassenEl) klassenEl.innerText = klasse;
-            if (lehrerEl) lehrerEl.innerText = lehrer;
-            if (halleEl) halleEl.innerText = halle;
-
-            const altesNotizIcon = box.querySelector('.box-notiz-icon');
-            if (altesNotizIcon) altesNotizIcon.remove();
-            
-            const altesMaterialIcon = box.querySelector('.material-indicator');
-            if (altesMaterialIcon) altesMaterialIcon.remove();
-            
-            let lockContainer = box.querySelector('.lock-icon-container');
-            if (!lockContainer) {
-                lockContainer = document.createElement('div');
-                lockContainer.className = 'lock-icon-container';
-                Object.assign(lockContainer.style, { 
-                    position: 'absolute', right: '-3px', bottom: '5px', display: 'flex', alignItems: 'center' 
-                });
-                box.appendChild(lockContainer);
+                const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
+                const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+                const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
+                const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
+                
+                const canEdit = isMyClass || isMyBooking;
+                const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
+                const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
+                
+                const classList = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
+                
+                html += `
+                <div class="${classList}" data-slot="${absoluteSlot}" data-time="${zeitStr}" 
+                     style="background-color: ${bgFarbe}; cursor: ${canEdit ? 'pointer' : 'default'}; position: relative;">
+                     <div class="klasse-label">${klasse}</div>
+                     <div class="lehrer-info">${lehrer}</div>
+                     <div class="halle-label">${halle}</div>
+                     <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
+                       ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
+                     </div>
+                </div>`;
             }
-            lockContainer.innerHTML = (typ === 'fix') 
-                ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' 
-                : '';
+        });
+        
+        container.innerHTML = html;
 
+        container.querySelectorAll('.box:not(.zeit-box):not(.header-row)').forEach(box => {
+            const slot = box.getAttribute('data-slot');
+            const slotData = window.lastPlanData[slot] || {};
+            
             if (slotData.kommentar && slotData.kommentar.trim() !== "") {
                 const notizElement = document.createElement('span');
                 notizElement.className = 'box-notiz-icon';
@@ -5540,20 +5596,17 @@ window.syncPlan = async function() {
                 Object.assign(notizElement.style, { position: 'absolute', top: '-2px', left: '4px', cursor: 'pointer', zIndex: '5' });
                 notizElement.onclick = (e) => { 
                     e.stopPropagation(); 
-                    if (typeof showNotizDetailPopup === "function") showNotizDetailPopup(klasse, slotData.kommentar); 
+                    if (typeof showNotizDetailPopup === "function") showNotizDetailPopup(slotData.klasse || "", slotData.kommentar); 
                 };
                 box.appendChild(notizElement);
             }
 
             if (slotData.material && slotData.material.trim() !== "") {
-                let matDetail = slotData.details || slotData.materialDetail || slotData.materialKommentar || "";
-                if (typeof markBoxWithMaterialIcon === "function") {
-                    markBoxWithMaterialIcon(box, slotData.material, matDetail);
-                }
+                if (typeof markBoxWithMaterialIcon === "function") markBoxWithMaterialIcon(box, slotData.material, slotData.details || slotData.kommentar || "");
             }
         });
-    } catch(e) {
-        console.error("Hintergrund-Sync fehlgeschlagen:", e);
+    } catch(e) { 
+        container.innerHTML = `<div class="box info-box" style="color:red; grid-column: span 6;">Fehler: Daten konnten nicht geladen werden.</div>`;
     }
 };
 
