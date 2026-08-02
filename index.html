@@ -4515,6 +4515,9 @@ window.handleLogin = async function() {
         if (newsContainer) newsContainer.style.display = 'block';
         
         if (typeof initNewsSystem === 'function') await initNewsSystem();
+
+        // Login erfolgreich -> Lade-Sperre aufheben und Plan laden
+        window.initialLoadDone = true;
         if (dp && typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
 
         window.lastKnownChange = Number(userRows[0].g1 || 0);
@@ -4986,7 +4989,7 @@ window.hideLoading = function() {
     
 window.loadPlan = async function(isExplicitUserAction = false) {
     // Verhindern, dass beim initialen Laden der Seite automatisch geladen wird, 
-    // es sei denn, es ist eine explizite Benutzeraktion (z.B. Klick im Kalender/Navigation)
+    // es sei denn, es ist eine explizite Benutzeraktion oder der Login ist erfolgt.
     if (!window.initialLoadDone && !isExplicitUserAction) {
         return;
     }
