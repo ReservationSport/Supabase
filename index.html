@@ -11772,7 +11772,7 @@ window.confirmInlineAdd = async function(targetSlot) {
         const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
         const aktuellesKuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel : "";
 
-        // Supabase Upsert für den neuen Slot (angepasst an 'datum' und 'lehrer')
+        // Supabase Upsert für den neuen Slot (mit Spalte "verfasser")
         const { error } = await window.supabaseClient
             .from('buchungen_db')
             .upsert({
@@ -11784,7 +11784,7 @@ window.confirmInlineAdd = async function(targetSlot) {
                 kommentar: "", 
                 details: "",
                 typ: "Zusatz",
-                lehrer: aktuellesKuerzel
+                verfasser: aktuellesKuerzel
             }, { onConflict: 'datum,slot' });
 
         if (error) throw error;
@@ -11815,6 +11815,7 @@ window.confirmInlineAdd = async function(targetSlot) {
         if (typeof hideLoading === 'function') hideLoading();
     }
 };
+    
 
 window.cancelAddMode = function() {
     console.log("Add-Mode wird sauber beendet...");
