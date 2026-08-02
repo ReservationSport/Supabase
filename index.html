@@ -10894,7 +10894,8 @@ window.submitStellvertretungWithLessons = async function() {
             verfasser: aktuellerUser,
             beschreibung: currentStvData.grund,
             klasse: l.eintraege.map(e => e.klasse).join(', '),
-            bereitschaft: ''
+            bereitschaft: '',
+            zeitslot: parseInt(l.lektionNr, 10) // Speichert den Zeitslot (1-12) direkt ab
         };
     });
 
@@ -10956,7 +10957,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
     
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
 
-    // Prüfen, ob beim Öffnen bereits alle gültigen Lektionen markiert sind
+    // Prüfen, ob bereits alle geladenen Lektionen markiert sind
     const validItems = currentDetailData.workingItems;
     const allAreChecked = validItems.length > 0 && validItems.every(i => {
         const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
@@ -10978,7 +10979,6 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
         dateInfo.innerHTML = `Welche Lektionen könnten am <strong>${formattedDate}</strong> übernommen werden?`;
     }
 
-    // Unterscheidung: Eigene Abwesenheit (Löschen) vs. Fremde Abwesenheit (Alle Bereitschaften markieren)
     if (deleteBtnContainer) {
         deleteBtnContainer.style.display = 'block';
         if (aktuellerUser === cleanVerfasser) {
@@ -10996,7 +10996,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 };
     
 /**
- * Rendert die Lektionen im Detail-Modal basierend auf den vorhandenen DB-Einträgen für diesen Tag/Verfasser
+ * Rendert die 12 Lektionen im Detail-Modal über den zeitslot
  */
 function renderStvDetailLektionenList() {
     const container = document.getElementById('stv-detail-container');
@@ -11009,16 +11009,11 @@ function renderStvDetailLektionenList() {
 
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
 
-    // Zeige alle Lektionen (1 bis 12) durch und prüfe, ob es dazu einen Datensatz in workingItems gibt
     for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
         const zeitString = getLektionZeit(lektionNr);
         
-        // Da wir keine _l Suffixe mehr haben, können wir die Einträge z. B. anhand der Reihenfolge oder Beschreibung zuordnen 
-        // oder direkt alle Einträge aus workingItems nacheinander anzeigen. 
-        // Am sichersten ist es, workingItems direkt zu durchlaufen oder nach Index / Zeit zu mappen.
-        // Falls deine service_db pro Lektion eine Zeile speichert, können wir sie über die Position oder ein Feld matchen.
-        // Hier nehmen wir an, dass workingItems genau die gespeicherten Lektionen dieses Blocks enthält.
-        const dbItem = currentDetailData.workingItems[lektionNr - 1];
+        // Exakte Zuordnung über die neue Spalte 'zeitslot'
+        const dbItem = currentDetailData.workingItems.find(i => Number(i.zeitslot) === lektionNr);
 
         const card = document.createElement('div');
         card.style.display = 'flex';
@@ -11034,7 +11029,7 @@ function renderStvDetailLektionenList() {
             card.style.cursor = 'default';
             card.innerHTML = `
                 <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">${zeitString}</div>
-                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;">Keine Lektion eingetragen</div>
+                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;"></div>
             `;
         } else {
             let bereitschaftList = dbItem.bereitschaft ? dbItem.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
@@ -11050,7 +11045,7 @@ function renderStvDetailLektionenList() {
                     ${zeitString}
                 </div>
                 <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff;">
-                    <strong>${dbItem.klasse || 'Lektion'}</strong><br>
+                    <strong>${dbItem.klasse}</strong><br>
                     <span style="font-size: 12px; color: #888;">Bereitschaft: ${bereitschaftList.length > 0 ? bereitschaftList.join(', ') : 'Noch niemand'}</span>
                 </div>
                 <div style="display: flex; align-items: center;">
@@ -11067,6 +11062,7 @@ function renderStvDetailLektionenList() {
     }
 }
 
+    
 /**
  * Lokales Umschalten der Bereitschaft im Arbeits-Array (Einzelklick) über die numerische ID
  */
