@@ -8582,8 +8582,9 @@ window.toggleCategory = function(headerElement, event) {
     currentCategory.classList.toggle('active');
 };
 
+    
 /* ============================================================
-   11.8. Lektion hinzufügen (Modus-geschützt)
+   11.9. Lektion hinzufügen (Modus-geschützt)
    ============================================================ */
 
 window.startAddMode = function() {
@@ -11312,7 +11313,7 @@ window.closeStvLoeschConfirm = function() {
 
 
 /* ============================================================
-   11.8. TEAMKASSE (Supabase-Version)
+   11.8. TEAMKASSE
    ============================================================ */
 
 window.openTeamkasse = function() {
@@ -11484,17 +11485,23 @@ window.openNewAusgabeModal = function() {
     document.getElementById('ausgabe-beschreibung').value = '';
     document.getElementById('ausgabe-betrag').value = '';
     
-    modal.style.display = 'flex';
-    setTimeout(() => input.focus(), 100);
+    if (modal) modal.style.display = 'flex';
+    if (input) setTimeout(() => input.focus(), 100);
 };
 
-window.saveTeamkasseAusgabe = function() {
+window.saveTeamkasseAusgabe = async function() {
     const beschreibung = document.getElementById('ausgabe-beschreibung').value.trim();
-    const betrag = document.getElementById('ausgabe-betrag').value.trim();
+    const betragStr = document.getElementById('ausgabe-betrag').value.trim();
     const saveBtn = document.querySelector('#new-ausgabe-modal .btn-primary');
     
-    if (!beschreibung || !betrag) {
+    if (!beschreibung || !betragStr) {
         alert("Bitte Beschreibung und Betrag eingeben.");
+        return;
+    }
+
+    const betrag = parseFloat(betragStr);
+    if (isNaN(betrag)) {
+        alert("Bitte einen gültigen Betrag eingeben.");
         return;
     }
 
@@ -11503,195 +11510,303 @@ window.saveTeamkasseAusgabe = function() {
         saveBtn.innerText = "Wird gespeichert...";
     }
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveTeamkasseAusgabe", 
-            beschreibung: beschreibung,
-            betrag: betrag,
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Ausgabe als neue Zeile in Supabase speichern
+        const { error: insertError } = await window.supabaseClient
+            .from('konfiguration')
+            .insert([
+                { 
+                    ausgabe: beschreibung, 
+                    betrag: betrag, 
+                    datum: today 
+                }
+            ]);
+
+        if (insertError) throw insertError;
+
+        // 2. Kontostand in der Konfiguration-Tabelle aktualisieren (Ausgabe abziehen)
+        const { data: rows, error: fetchError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('id, kontostand');
+
+        if (!fetchError && rows) {
+            const configRow = rows.find(r => r.kontostand !== null && r.kontostand !== undefined);
+            if (configRow) {
+                const neuerKontostand = Number(configRow.kontostand || 0) - betrag;
+                await window.supabaseClient
+                    .from('konfiguration')
+                    .update({ kontostand: neuerKontostand })
+                    .eq('id', configRow.id);
+            }
+        }
+
         if (saveBtn) { 
             saveBtn.disabled = false; 
             saveBtn.innerText = "Speichern"; 
         }
         
-        if (data.status === "success") {
-            closeModal('new-ausgabe-modal');
-            renderTeamkasse(); // Lädt das Hauptmodal neu, damit der neue Stand und die Ausgabe sofort sichtbar sind
-        } else {
-            alert("Fehler: " + data.msg);
-        }
-    })
-    .catch(e => {
+        closeModal('new-ausgabe-modal');
+        renderTeamkasse(); // Ansicht aktualisieren
+
+    } catch (e) {
         if (saveBtn) { 
             saveBtn.disabled = false; 
             saveBtn.innerText = "Speichern"; 
         }
         console.error("Fehler beim Speichern der Ausgabe:", e);
-        alert("Verbindungsfehler.");
-    });
+        alert("Fehler beim Speichern: " + (e.message || e));
+    }
 };
 
-window.deleteTeamkasseAusgabe = function(rowNumber) {
+window.deleteTeamkasseAusgabe = async function(id) {
     if (!confirm("Möchtest du diese Ausgabe wirklich löschen?")) return;
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "deleteTeamkasseAusgabe", 
-            row: rowNumber,
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            renderTeamkasse(); // Ansicht aktualisieren
-        } else {
-            alert("Fehler: " + data.msg);
+    try {
+        // Zuerst den Betrag holen, um den Kontostand wieder anzupassen
+        const { data: itemData, error: fetchItemError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('betrag')
+            .eq('id', id)
+            .single();
+
+        const ausgabeBetrag = itemData ? Number(itemData.betrag || 0) : 0;
+
+        // Zeile löschen
+        const { error: deleteError } = await window.supabaseClient
+            .from('konfiguration')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
+
+        // Kontostand wieder erhöhen
+        const { data: rows, error: fetchError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('id, kontostand');
+
+        if (!fetchError && rows) {
+            const configRow = rows.find(r => r.kontostand !== null && r.kontostand !== undefined);
+            if (configRow) {
+                const neuerKontostand = Number(configRow.kontostand || 0) + ausgabeBetrag;
+                await window.supabaseClient
+                    .from('konfiguration')
+                    .update({ kontostand: neuerKontostand })
+                    .eq('id', configRow.id);
+            }
         }
-    })
-    .catch(e => {
+
+        renderTeamkasse();
+
+    } catch (e) {
         console.error("Fehler beim Löschen der Ausgabe:", e);
-        alert("Verbindungsfehler.");
-    });
+        alert("Fehler beim Löschen: " + (e.message || e));
+    }
 };
 
-window.toggleTeamkasseStatus = function(name, currentStatus, element) {
-    const neuerStatusText = (currentStatus.toLowerCase() === 'bezahlt') ? 'offen' : 'bezahlt';
+window.toggleTeamkasseStatus = async function(id, currentStatus, element) {
+    const isBezahlt = currentStatus && currentStatus.toLowerCase() === 'bezahlt';
+    const neuerStatusText = isBezahlt ? 'offen' : 'bezahlt';
     
+    const tkItem = element.closest('.tk-item');
+    const nameEl = tkItem ? tkItem.querySelector('strong') : null;
+    const name = nameEl ? nameEl.innerText : 'Lehrperson';
+
     if (!confirm(`Möchtest du den Status für ${name} wirklich auf "${neuerStatusText}" ändern?`)) return;
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "toggleTeamkasseStatus", 
-            name: name,
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            renderTeamkasse(); // Ansicht und Kontostand sofort aktualisieren
-        } else {
-            alert("Fehler: " + data.msg);
+    try {
+        // Betrag/Schuld der Lehrperson ermitteln
+        const { data: lpData, error: lpError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('betrag, schuld')
+            .eq('id', id)
+            .single();
+
+        if (lpError) throw lpError;
+
+        const betragWert = Number(lpData.schuld || lpData.betrag || 0);
+
+        // Status aktualisieren
+        const { error: updateError } = await window.supabaseClient
+            .from('konfiguration')
+            .update({ status: neuerStatusText })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // Kontostand anpassen (bezahlt = +Betrag, offen = -Betrag)
+        const { data: rows, error: fetchError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('id, kontostand');
+
+        if (!fetchError && rows) {
+            const configRow = rows.find(r => r.kontostand !== null && r.kontostand !== undefined);
+            if (configRow) {
+                let aktuellerKontostand = Number(configRow.kontostand || 0);
+                if (!isBezahlt) {
+                    aktuellerKontostand += betragWert;
+                } else {
+                    aktuellerKontostand -= betragWert;
+                }
+
+                await window.supabaseClient
+                    .from('konfiguration')
+                    .update({ kontostand: aktuellerKontostand })
+                    .eq('id', configRow.id);
+            }
         }
-    })
-    .catch(e => {
+
+        renderTeamkasse();
+
+    } catch (e) {
         console.error("Fehler beim Umschalten des Status:", e);
-        alert("Verbindungsfehler.");
-    });
+        alert("Fehler beim Aktualisieren: " + (e.message || e));
+    }
 };
 
 window.openKassenAdminModal = function() {
     const modal = document.getElementById('teamkasse-admin-modal');
-    modal.style.display = 'flex';
+    if (modal) modal.style.display = 'flex';
     renderAdminLpList();
 };
 
-window.renderAdminLpList = function() {
+window.renderAdminLpList = async function() {
     const container = document.getElementById('admin-lp-list-container');
+    if (!container) return;
     container.innerHTML = "<p style='color: #888; text-align: center;'>Lade Daten...</p>";
 
-    fetch(`${url}?action=getTeamkasse&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data.lehrpersonen || data.lehrpersonen.length === 0) {
-                container.innerHTML = "<p style='color: #888; text-align: center;'>Keine Lehrpersonen erfasst.</p>";
-                return;
-            }
+    try {
+        const { data: rows, error } = await window.supabaseClient
+            .from('konfiguration')
+            .select('*');
 
-            container.innerHTML = data.lehrpersonen.map((lp, index) => {
-                const rowNum = index + 2; // Zeile im Sheet
-                return `
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: #2c2c2c; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 0.85em;">
-                        <div style="flex: 2; color: #fff;"><strong>${lp.name}</strong></div>
-                        <div style="flex: 1.5; color: #aaa;">Schuld: <strong>${lp.schuld} CHF</strong><br><span style="font-size: 0.8em; color: #888;">Basis: ${lp.grundbetrag}</span></div>
-                        <div style="flex: 1; text-align: right;">
-                            <button class="btn-action" onclick="deleteTeamkasseLP(${rowNum}, '${lp.name}')" style="background: #c0392b; color: white; padding: 4px 8px; font-size: 0.8em;" title="Löschen">Löschen</button>
-                        </div>
+        if (error) throw error;
+
+        const lehrpersonenRows = rows ? rows.filter(r => r.lehrer && r.lehrer.trim() !== "") : [];
+
+        if (lehrpersonenRows.length === 0) {
+            container.innerHTML = "<p style='color: #888; text-align: center;'>Keine Lehrpersonen erfasst.</p>";
+            return;
+        }
+
+        container.innerHTML = lehrpersonenRows.map((lp) => {
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #2c2c2c; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 0.85em;">
+                    <div style="flex: 2; color: #fff;"><strong>${lp.lehrer}</strong></div>
+                    <div style="flex: 1.5; color: #aaa;">Schuld: <strong>${lp.schuld || lp.betrag || 0} CHF</strong><br><span style="font-size: 0.8em; color: #888;">Basis: ${lp.betrag || 0}</span></div>
+                    <div style="flex: 1; text-align: right;">
+                        <button class="btn-action" onclick="deleteTeamkasseLP(${lp.id}, '${lp.lehrer}')" style="background: #c0392b; color: white; padding: 4px 8px; font-size: 0.8em;" title="Löschen">Löschen</button>
                     </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            container.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
-            console.error(e);
-        });
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
+        console.error("Admin LP List Fehler:", e);
+    }
 };
 
-window.addTeamkasseLP = function() {
+window.addTeamkasseLP = async function() {
     const name = document.getElementById('admin-lp-name').value.trim();
-    const betrag = document.getElementById('admin-lp-betrag').value.trim();
+    const betragStr = document.getElementById('admin-lp-betrag').value.trim();
 
-    if (!name || !betrag) {
+    if (!name || !betragStr) {
         alert("Bitte Name und Betrag eingeben.");
         return;
     }
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ action: "saveTeamkasseLP", name: name, betrag: betrag, pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            document.getElementById('admin-lp-name').value = '';
-            document.getElementById('admin-lp-betrag').value = '';
-            renderAdminLpList();
-            renderTeamkasse(); // Hauptansicht aktualisieren
-        } else {
-            alert("Fehler: " + data.msg);
-        }
-    });
+    const betrag = parseFloat(betragStr);
+    if (isNaN(betrag)) {
+        alert("Bitte einen gültigen Betrag eingeben.");
+        return;
+    }
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('konfiguration')
+            .insert([
+                {
+                    lehrer: name,
+                    betrag: betrag,
+                    schuld: betrag,
+                    status: 'offen'
+                }
+            ]);
+
+        if (error) throw error;
+
+        document.getElementById('admin-lp-name').value = '';
+        document.getElementById('admin-lp-betrag').value = '';
+        renderAdminLpList();
+        renderTeamkasse();
+
+    } catch (e) {
+        console.error("Fehler beim Hinzufügen der Lehrperson:", e);
+        alert("Fehler: " + (e.message || e));
+    }
 };
 
-window.deleteTeamkasseLP = function(rowNumber, name) {
+window.deleteTeamkasseLP = async function(id, name) {
     if (!confirm(`Möchtest du ${name} wirklich aus der Teamkasse löschen?`)) return;
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ action: "deleteTeamkasseLP", row: rowNumber, pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            renderAdminLpList();
-            renderTeamkasse();
-        } else {
-            alert("Fehler: " + data.msg);
-        }
-    });
+    try {
+        const { error } = await window.supabaseClient
+            .from('konfiguration')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        renderAdminLpList();
+        renderTeamkasse();
+
+    } catch (e) {
+        console.error("Fehler beim Löschen der Lehrperson:", e);
+        alert("Fehler: " + (e.message || e));
+    }
 };
 
-window.startNeueZahlungsrunde = function() {
-    if (!confirm("Möchtest du eine neue Zahlungsrunde starten?\nOffene Beträge der Vorrunde werden automatisch zum Grundbetrag addiert.")) return;
+window.startNeueZahlungsrunde = async function() {
+    if (!confirm("Möchtest du eine neue Zahlungsrunde starten?\nOffene Beträge der Vorrunde werden zum Grundbetrag addiert.")) return;
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ action: "resetTeamkasseRunde", pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            if (data.hinweis) {
-                alert("Neue Runde erfolgreich gestartet!\n\n" + data.hinweis);
-            } else {
-                alert("Neue Runde erfolgreich gestartet! Alle haben sauber bezahlt.");
+    try {
+        const { data: rows, error: fetchError } = await window.supabaseClient
+            .from('konfiguration')
+            .select('*');
+
+        if (fetchError) throw fetchError;
+
+        const lehrpersonenRows = rows ? rows.filter(r => r.lehrer && r.lehrer.trim() !== "") : [];
+
+        for (const lp of lehrpersonenRows) {
+            const isBezahlt = lp.status && lp.status.toLowerCase() === 'bezahlt';
+            let neueSchuld = Number(lp.betrag || 0);
+
+            if (!isBezahlt) {
+                const alteSchuld = Number(lp.schuld || lp.betrag || 0);
+                neueSchuld += alteSchuld; // Restschuld mitnehmen
             }
-            renderAdminLpList();
-            renderTeamkasse();
-        } else {
-            alert("Fehler: " + data.msg);
-        }
-    });
-};
 
+            await window.supabaseClient
+                .from('konfiguration')
+                .update({
+                    status: 'offen',
+                    schuld: neueSchuld
+                })
+                .eq('id', lp.id);
+        }
+
+        alert("Neue Runde erfolgreich gestartet! Alle Status wurden auf 'offen' gesetzt.");
+        renderAdminLpList();
+        renderTeamkasse();
+
+    } catch (e) {
+        console.error("Fehler beim Starten der neuen Runde:", e);
+        alert("Fehler: " + (e.message || e));
+    }
+};
 
 
 
