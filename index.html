@@ -11851,11 +11851,10 @@ window.cancelAddMode = function() {
 
     
 /* ============================================================
-   12. PASTE-MODE
+   12. PASTE-MODE (Mit direkter Anbindung an saveNewsToDBFrontend)
    ============================================================ */
 
 window.createPasteOverlay = function(halleName) {
-    // 1. Overlay (Eigene ID & Klasse)
     if (!document.getElementById('paste-overlay')) {
         const overlay = document.createElement('div');
         overlay.className = 'paste-mode-overlay'; 
@@ -11863,7 +11862,6 @@ window.createPasteOverlay = function(halleName) {
         document.body.appendChild(overlay);
     }
     
-    // 2. Panel (Eigene ID)
     if (!document.getElementById('paste-panel-ui')) {
         const panel = document.createElement('div');
         panel.id = 'paste-panel-ui';
@@ -11886,21 +11884,18 @@ window.createPasteOverlay = function(halleName) {
         document.body.appendChild(panel);
     }
     
-    // 3. Modus-Status setzen (BLOCKIERT SYNC)
     window.currentInteractionMode = 'PASTEN';
     document.body.classList.add('paste-mode-active');
 
-    // 4. Highlight NUR für eigene Boxen
     document.querySelectorAll('.box.is-mine').forEach(box => {
         box.classList.add('paste-mode-highlight');
     });
 };
 
 window.cancelPasteMode = function() {
-    window.copiedSlotData = null; // Copy-Daten löschen
-    window.currentInteractionMode = null; // SYNC WIEDER ERLAUBEN
+    window.copiedSlotData = null;
+    window.currentInteractionMode = null;
     
-    // UI entfernen
     const overlay = document.getElementById('paste-overlay');
     if (overlay) overlay.remove();
     const panel = document.getElementById('paste-panel-ui');
@@ -11908,11 +11903,9 @@ window.cancelPasteMode = function() {
     
     document.body.classList.remove('paste-mode-active');
     
-    // ALLE Boxen von Paste-Markierungen befreien
     document.querySelectorAll('.box').forEach(box => {
         box.classList.remove('paste-mode-highlight', 'is-being-copied');
         
-        // Klick-Events wiederherstellen
         const slot = box.getAttribute('data-slot');
         if (slot) {
             const klasse = box.querySelector('.klasse-label')?.innerText || "";
@@ -11923,13 +11916,12 @@ window.cancelPasteMode = function() {
         }
     });
 
-    console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
     if (typeof window.syncPlan === 'function') {
         window.syncPlan(); 
     }
 };
 
-// --- HILFSFUNKTION FÜR PASTE (Supabase & News-Integration) ---
+// --- HILFSFUNKTION FÜR PASTE (Mit Supabase-Speicherung & News-Systematik) ---
 async function performPaste(targetSlot, data) {
     const dp = document.getElementById('datePicker');
     const box = document.querySelector(`[data-slot="${targetSlot}"]`);
@@ -11942,7 +11934,7 @@ async function performPaste(targetSlot, data) {
         return;
     }
 
-    // 1. Sicherheit: Kollisionsprüfung (Ausfall und Outdoor/Badi verhalten sich flexibel)
+    // 1. Sicherheit: Kollisionsprüfung
     if (data.halle !== "Ausfall") {
         const rowIndex = Math.floor((targetSlot - 1) / 5);
         const startSlot = (rowIndex * 5) + 1;
@@ -12031,27 +12023,30 @@ async function performPaste(targetSlot, data) {
 
         if (upsertError) throw upsertError;
 
-        // 4. NEWS-SYSTEMATIK AUSLÖSEN (Greift nun für alle Typen wie Outdoor, Badi, Ausfall, etc.)
-        if (typeof window.sendeNews === 'function') {
-            window.sendeNews({
+        // 4. NEWS-SYSTEMATIK DIREKT AUSLÖSEN (Nutzt deine gefundene Funktion)
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            const newsPayload = {
                 kuerzel: aktuellesKuerzel,
                 halle: data.halle,
                 klasse: klasseImZiel,
                 datum: aktuellesDatum,
                 slot: targetSlot,
                 typ: data.typ || ""
-            });
-        } else if (typeof window.createNewsEntry === 'function') {
-            window.createNewsEntry(aktuellesKuerzel, data.halle, klasseImZiel, aktuellesDatum, targetSlot);
+            };
+            console.log("Sende News-Payload via saveNewsToDBFrontend:", newsPayload);
+            await window.saveNewsToDBFrontend(newsPayload, window.lastPlanData);
+        } else {
+            console.warn("window.saveNewsToDBFrontend wurde nicht gefunden.");
         }
 
-        console.log("Paste & News erfolgreich verarbeitet!");
+        console.log("Paste, DB-Speicherung & News-Systematik erfolgreich abgeschlossen!");
         
-        // Nach erfolgreichem Speichern den Plan synchronisieren
         if (typeof window.syncPlan === 'function') {
             window.syncPlan();
         }
 
+    }schließlich {
+        // Fallback / Clean-up falls nötig
     } catch (e) {
         console.error("Paste-Aktion fehlgeschlagen:", e);
         alert("Fehler beim Einfügen in die Datenbank: " + (e.message || e));
@@ -12061,7 +12056,6 @@ async function performPaste(targetSlot, data) {
         }
     }
 }
-
     
 
 
