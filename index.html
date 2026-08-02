@@ -8803,7 +8803,7 @@ window.saveMeldung = async function() {
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
-        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
+        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz (Sortierung/DB)
         const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
 
         // 1. In die service_db speichern (id weggelassen für Auto-Increment, datum als timestamptz)
@@ -8918,7 +8918,7 @@ window.markAsResolved = async function(id, btnElement) {
 // Alias für eventuelle Altaufrufe
 window.markResolved = window.markAsResolved;
 
-// 5. Lädt die offene Liste direkt aus der service_db (filtert nach typ 'meldung')
+// 5. Lädt die offene Liste direkt aus lauter service_db (filtert nach typ 'meldung')
 window.renderMeldungen = async function() {
     const container = document.getElementById('meldungen-container');
     if (!container) return;
@@ -8951,12 +8951,11 @@ window.renderMeldungen = async function() {
             if (m.datum) {
                 const dateObj = new Date(m.datum);
                 if (!isNaN(dateObj)) {
+                    // Nur das Datum (Tag.Monat.Jahr) ohne Uhrzeit
                     formattedDate = dateObj.toLocaleDateString('de-DE', {
                         day: '2-digit',
                         month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
+                        year: 'numeric'
                     });
                 }
             }
