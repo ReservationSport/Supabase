@@ -8755,6 +8755,22 @@ window.cancelAddMode = function() {
    11.1. MELDUNGEN (DEFEKTE) - SUPABASE VERSION
    ============================================================ */
 
+window.openMeldungen = function() {
+    // 1. Modal / Ansicht öffnen (falls du eine openModal Funktion hast, nutze sie)
+    if (typeof openModal === 'function') {
+        openModal('new-meldung-modal'); // Passe den Namen an, falls das Modal anders heißt
+    } else {
+        const modal = document.getElementById('new-meldung-modal');
+        if (modal) modal.style.display = 'flex';
+    }
+
+    // 2. Daten direkt frisch aus Supabase laden
+    if (typeof renderMeldungen === 'function') {
+        renderMeldungen();
+    }
+};
+
+    
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
