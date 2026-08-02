@@ -8888,10 +8888,10 @@ window.saveMeldung = async function() {
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
-        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz (Sortierung/DB)
-        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
+        const datumIso = new Date().toISOString(); 
+        const datumDateOnly = datumIso.split('T')[0]; 
 
-        // 1. In die service_db speichern (id weggelassen für Auto-Increment, datum als timestamptz)
+        // 1. In die service_db speichern
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
@@ -8904,15 +8904,15 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Gleichzeitig den News-Eintrag erstellen
+        // 2. Gleichzeitig den News-Eintrag erstellen (mit 'verfasser' und 'datum')
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
-                date: datumDateOnly,
+                datum: datumDateOnly,
                 slot: "0",
                 klasse: "Defekt",
                 halle: "defekt_meldung",
-                user: userKuerzelVal,
+                verfasser: userKuerzelVal,
                 text: text
             }]);
 
