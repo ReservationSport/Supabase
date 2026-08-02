@@ -8594,39 +8594,99 @@ window.fuehreAbklebenAus = async function(klasse) {
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
 
     try {
-        // Schleife läuft über alle Slots der Doppellektion (oder den Einzelslot)
-        for (const slot of window.slotsToClear) {
-            const slotNum = parseInt(slot, 10);
+        // Wochentag aus dem Startdatum ermitteln
+        const tempDate = new Date(targetDate.replace(/-/g, "/"));
+        const wochentageListe = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const zielTag = wochentageListe[tempDate.getDay()];
 
-            // 1. Aus master_db löschen (Struktureller Eintrag / Grundstunde)
-            const { error: masterError } = await window.supabaseClient
-                .from('master_db')
-                .delete()
-                .eq('slot', slotNum);
+        const zielSlotsListe = (window.slotsToClear || []).map(s => String(s).trim());
+        const aktiverNutzer = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toString().trim() || window.userKuerzel || "System";
 
-            if (masterError) {
-                console.error("Fehler beim Löschen aus master_db:", masterError);
+        // 1. MASTER-DB DATEN LADEN UND AKTUALISIEREN (mit Schrägstrich-Logik)
+        const { data: masterData, error: masterError } = await window.supabaseClient
+            .from('master_db')
+            .select('*')
+            .eq('wochentag', zielTag);
+
+        if (masterError) throw masterError;
+
+        let geloescht = false;
+
+        for (let row of masterData) {
+            if (zielSlotsListe.includes(row.slot.toString())) {
+                let sheetKlasseRaw = row.klasse ? row.klasse.toString().trim() : "";
+                let neuerKlassenWert = sheetKlasseRaw;
+                let wertGeaendert = false;
+
+                if (sheetKlasseRaw.toLowerCase() === klasse.toLowerCase()) {
+                    neuerKlassenWert = "";
+                    wertGeaendert = true;
+                } else if (/\s+\/\s+|\s+\/|\/\s+/.test(sheetKlasseRaw)) {
+                    let teile = sheetKlasseRaw.split("/").map(s => s.trim());
+                    
+                    if (teile[0].toLowerCase() === klasse.toLowerCase()) {
+                        neuerKlassenWert = " / " + teile[1];
+                        wertGeaendert = true;
+                    } else if (teile[1].toLowerCase() === klasse.toLowerCase()) {
+                        neuerKlassenWert = teile[0] + " / ";
+                        wertGeaendert = true;
+                    }
+                }
+
+                if (wertGeaendert) {
+                    let bereinigterTestWert = neuerKlassenWert.replace(/\//g, "").trim();
+                    if (bereinigterTestWert === "") {
+                        neuerKlassenWert = ""; 
+                    }
+
+                    let updatePayload = { klasse: neuerKlassenWert };
+                    if (neuerKlassenWert === "") {
+                        updatePayload.lehrer = "";
+                    }
+
+                    const { error: updateError } = await window.supabaseClient
+                        .from('master_db')
+                        .update(updatePayload)
+                        .eq('id', row.id);
+
+                    if (!updateError) {
+                        geloescht = true;
+                    }
+                }
             }
+        }
 
-            // 2. Aus buchungen_db löschen (Tageseinträge/Überschreibungen)
-            const { error: buchungenError } = await window.supabaseClient
-                .from('buchungen_db')
-                .delete()
-                .eq('datum', targetDate)
-                .eq('slot', slotNum);
+        // 2. ZUKÜNFTIGE BUCHUNGEN AB STARTDATUM LÖSCHEN
+        const { data: buchungsData, error: buchungsError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('*')
+            .gte('datum', targetDate)
+            .eq('klasse', klasse);
 
-            if (buchungenError) {
-                console.error("Fehler beim Löschen aus buchungen_db:", buchungenError);
+        if (!buchungsError && buchungsData) {
+            let idsZuLoeschen = [];
+            buchungsData.forEach(bRow => {
+                if (zielSlotsListe.includes(bRow.slot.toString())) {
+                    idsZuLoeschen.push(bRow.id);
+                }
+            });
+
+            if (idsZuLoeschen.length > 0) {
+                await window.supabaseClient
+                    .from('buchungen_db')
+                    .delete()
+                    .in('id', idsZuLoeschen);
             }
+        }
 
-            // 3. News-System direkt triggern (an Stelle des alten Wrappers)
-            if (typeof window.saveNewsToDBFrontend === 'function') {
-                const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toString().trim();
+        // 3. NEWS-SYSTEM TRIGGERN FÜR ABGEKLEBTE KLASSEN
+        if (geloescht && typeof window.saveNewsToDBFrontend === 'function') {
+            for (let slotIndex of zielSlotsListe) {
                 await window.saveNewsToDBFrontend({
                     halle: "beendet", // Signalisiert der News-Logik das Abkleben
-                    slot: slotNum,
+                    slot: slotIndex,
                     klasse: klasse,
-                    kuerzel: aktuellesKuerzel,
+                    kuerzel: aktiverNutzer,
                     datum: targetDate
                 }, window.lastPlanData);
             }
@@ -8661,9 +8721,6 @@ window.fuehreAbklebenAus = async function(klasse) {
         gridContainer.style.pointerEvents = "auto";
     }
 };
-
-
-
 
 
 
