@@ -11311,221 +11311,8 @@ window.closeStvLoeschConfirm = function() {
 
 
 
-
-    
-
 /* ============================================================
-   19. LINKS (Direkt im Untermenü)
-   ============================================================ */    
-
-window.renderLinks = function() {
-    const container = document.getElementById('links-container');
-    if (!container) return; // Falls das Element nicht existiert, abbrechen
-    
-    // Wir nehmen die Variable, die wir in loadPlan befüllt haben
-    const data = window.lastLinks || [];
-
-    if (data.length === 0) {
-        container.innerHTML = `<div class="menu-item" style="color: #888; cursor: default;">Keine Links hinterlegt</div>`;
-        return;
-    }
-
-    // Wir nutzen jetzt die Klasse 'menu-item', damit sie genau wie die anderen Menüpunkte aussehen
-    container.innerHTML = data.map(l => `
-        <div class="menu-item" onclick="window.open('${l.url}', '_blank')">
-            <span class="material-symbols-outlined">link</span> ${l.name}
-        </div>
-    `).join('');
-};
-
-
-
-  
-
-/* ============================================================
-   21. PASTE-MODE (ISOLIERT)
-   ============================================================ */
-
-window.createPasteOverlay = function(halleName) {
-    // 1. Overlay (Eigene ID & Klasse)
-    if (!document.getElementById('paste-overlay')) {
-        const overlay = document.createElement('div');
-        overlay.className = 'paste-mode-overlay'; 
-        overlay.id = 'paste-overlay';
-        document.body.appendChild(overlay);
-    }
-    
-    // 2. Panel (Eigene ID)
-    if (!document.getElementById('paste-panel-ui')) {
-        const panel = document.createElement('div');
-        panel.id = 'paste-panel-ui';
-        panel.className = 'move-panel'; 
-        
-        Object.assign(panel.style, {
-            position: 'fixed',
-            top: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#e67e22',
-            color: 'white',
-            zIndex: '2147483647'
-        });
-
-        panel.innerHTML = `
-            <span>Wähle ein Ziel-Feld, um <strong>${halleName}</strong> einzufügen...</span>
-            <button onclick="cancelPasteMode()" class="btn-cancel">Beenden</button>
-        `;
-        document.body.appendChild(panel);
-    }
-    
-    // 3. Modus-Status setzen (BLOCKIERT SYNC)
-    window.currentInteractionMode = 'PASTEN';
-    document.body.classList.add('paste-mode-active');
-
-    // 4. Highlight NUR für eigene Boxen
-    document.querySelectorAll('.box.is-mine').forEach(box => {
-        box.classList.add('paste-mode-highlight');
-    });
-};
-
-window.cancelPasteMode = function() {
-    window.copiedSlotData = null; // Copy-Daten löschen
-    window.currentInteractionMode = null; // SYNC WIEDER ERLAUBEN
-    
-    // UI entfernen
-    const overlay = document.getElementById('paste-overlay');
-    if (overlay) overlay.remove();
-    const panel = document.getElementById('paste-panel-ui');
-    if (panel) panel.remove();
-    
-    document.body.classList.remove('paste-mode-active');
-    
-    // ALLE Boxen von Paste-Markierungen befreien
-    document.querySelectorAll('.box').forEach(box => {
-        box.classList.remove('paste-mode-highlight', 'is-being-copied');
-        
-        // Klick-Events wiederherstellen (analog zum Verschiebe-Modus)
-        const slot = box.getAttribute('data-slot');
-        if (slot) {
-            const klasse = box.querySelector('.klasse-label')?.innerText || "";
-            const isMine = box.classList.contains('is-mine');
-            if (typeof setBoxClick === 'function') {
-                setBoxClick(box, klasse, slot, isMine);
-            }
-        }
-    });
-
-    // --- DER FIX: Daten neu laden ---
-    console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
-    if (typeof window.syncPlan === 'function') {
-        window.syncPlan(); 
-    }
-};
-
-// --- HILFSFUNKTION FÜR PASTE ---
-async function performPaste(targetSlot, data) {
-    const dp = document.getElementById('datePicker');
-    const box = document.querySelector(`[data-slot="${targetSlot}"]`);
-    
-    // 1. Sicherheit: Kollisionsprüfung
-    if (data.halle !== "Ausfall") {
-        const rowIndex = Math.floor((targetSlot - 1) / 5);
-        const startSlot = (rowIndex * 5) + 1;
-        const endSlot = startSlot + 4;
-        
-        const zuPruefendeTeile = data.halle.toLowerCase().split('+').map(h => h.trim());
-        let istGesperrt = false;
-
-        for (let s = startSlot; s <= endSlot; s++) {
-            if (s === parseInt(targetSlot)) continue;
-            
-            const andereData = window.lastPlanData ? window.lastPlanData[s] : null;
-            if (andereData && andereData.halle && andereData.halle !== "Ausfall") {
-                const besetzteTeile = andereData.halle.toLowerCase().split('+').map(h => h.trim());
-                if (zuPruefendeTeile.some(t => t !== "outdoor" && t !== "badi" && besetzteTeile.includes(t))) {
-                    istGesperrt = true;
-                    break;
-                }
-            }
-        }
-
-        if (istGesperrt) {
-            alert(`${data.halle} ist in diesem Zeitfenster bereits vergeben!`);
-            return; 
-        }
-    }
-
-    // 2. Daten für den Ziel-Slot
-    const zielSlotData = window.lastPlanData && window.lastPlanData[targetSlot] ? window.lastPlanData[targetSlot] : {};
-    const klasseImZiel = zielSlotData.klasse || "";
-    const isAusfall = (data.halle === "Ausfall");
-
-    // 3. Payload erstellen
-    const payload = {
-        action: "saveBooking",
-        pw: typeof userPw !== 'undefined' ? userPw : "",
-        kuerzel: typeof userKuerzel !== 'undefined' ? userKuerzel : "",
-        date: dp ? dp.value : "",
-        slot: targetSlot,
-        klasse: klasseImZiel, 
-        origin: 'pasteMode',
-        halle: data.halle,
-        typ: data.typ || ""
-    };
-
-    try {
-        if (typeof window.prozessiereAktion === 'function') {
-            console.log(`Paste: Kopiere ${data.halle} nach Slot ${targetSlot}`);
-            
-            if (!window.lastPlanData) window.lastPlanData = {};
-            window.lastPlanData[targetSlot] = { 
-                ...zielSlotData, 
-                halle: data.halle, 
-                typ: data.typ,
-                verfasser: typeof userKuerzel !== 'undefined' ? userKuerzel : "" 
-            };
-
-            if (box) {
-                box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig && window.hallenConfig[data.halle]?.color || "");
-                
-                const kLabel = box.querySelector('.klasse-label');
-                if (kLabel) kLabel.textContent = klasseImZiel;
-                
-                const hLabel = box.querySelector('.halle-label');
-                if (hLabel) hLabel.textContent = data.halle;
-                
-                box.classList.remove('empty', 'not-mine');
-                box.classList.add('is-mine');
-                
-                if (isAusfall) {
-                    box.classList.add('ausfall-mode');
-                } else {
-                    box.classList.remove('ausfall-mode');
-                }
-                
-                const lockContainer = box.querySelector('.lock-icon-container');
-                if (lockContainer) {
-                    lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
-                        '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
-                }
-            }
-
-            window.prozessiereAktion(payload, (p) => {
-                console.log("Paste erfolgreich!");
-            });
-        } else {
-            throw new Error("prozessiereAktion nicht gefunden");
-        }
-    } catch (e) {
-        console.error("Paste-Aktion fehlgeschlagen:", e);
-        alert("Fehler beim Einfügen.");
-    }
-}
-
-
-    
-/* ============================================================
-   22. Teamkasse - Funktionen
+   11.8. TEAMKASSE (Supabase-Version)
    ============================================================ */
 
 window.openTeamkasse = function() {
@@ -11547,7 +11334,7 @@ window.openTeamkasse = function() {
     }
 };
 
-window.renderTeamkasse = function() {
+window.renderTeamkasse = async function() {
     const lpContainer = document.getElementById('teamkasse-lp-container');
     const ausgabenContainer = document.getElementById('teamkasse-ausgaben-container');
     const kontostandEl = document.getElementById('teamkasse-kontostand');
@@ -11564,113 +11351,130 @@ window.renderTeamkasse = function() {
     ausgabenContainer.innerHTML = loaderHTML;
     kontostandEl.innerText = "... CHF";
 
-    // Daten vom Google Sheet abrufen (Action "getTeamkasse")
-    fetch(`${url}?action=getTeamkasse&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            // 1. Kontostand aktualisieren
-            if (data.kontostand !== undefined) {
-                kontostandEl.innerText = Number(data.kontostand).toFixed(2) + " CHF";
+    try {
+        // Daten aus der Supabase-Tabelle 'konfiguration' abrufen
+        const { data: rows, error } = await window.supabaseClient
+            .from('konfiguration')
+            .select('*');
+
+        if (error) throw error;
+
+        // 1. Kassenwart und Kontostand ermitteln (aus irgendeiner Zeile oder globalem Konfig-Eintrag)
+        // Wir suchen nach einer Zeile, die einen Kassenwart oder Kontostand hinterlegt hat
+        let kassenwart = "";
+        let kontostand = 0;
+
+        if (rows && rows.length > 0) {
+            const configRowWithKassenwart = rows.find(r => r.kassenwart);
+            if (configRowWithKassenwart) kassenwart = configRowWithKassenwart.kassenwart;
+
+            const configRowWithKontostand = rows.find(r => r.kontostand !== null && r.kontostand !== undefined);
+            if (configRowWithKontostand) kontostand = Number(configRowWithKontostand.kontostand);
+        }
+
+        kontostandEl.innerText = Number(kontostand).toFixed(2) + " CHF";
+
+        // 2. Prüfen, ob der aktuelle User der Kassenwart ist
+        const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
+        const istKassenwart = (aktuellerUser && kassenwart && aktuellerUser === kassenwart.toLowerCase().trim());
+
+        // Admin-Buttons unten im Modal einblenden falls Kassenwart, sonst nur Schliessen
+        if (modalActions) {
+            if (istKassenwart) {
+                modalActions.innerHTML = `
+                    <button class="btn-action btn-primary" onclick="openNewAusgabeModal()">+ Ausgabe</button>
+                    <button class="btn-action btn-secondary" onclick="openKassenAdminModal()">Verwaltung</button>
+                    <button class="btn-action btn-secondary" onclick="closeModal('teamkasse-overlay')">Schliessen</button>
+                `;
             } else {
-                kontostandEl.innerText = "0.00 CHF";
+                modalActions.innerHTML = `
+                    <button class="btn-action btn-secondary" onclick="closeModal('teamkasse-overlay')">Schliessen</button>
+                `;
             }
+        }
 
-            // 2. Prüfen, ob der aktuelle User der Kassenwart ist
-            const istKassenwart = (typeof userKuerzel !== 'undefined' && userKuerzel && data.kassenwart && userKuerzel.trim() === data.kassenwart.trim());
+        // 3. Lehrpersonen-Liste filtern (alle Zeilen, die ein 'lehrer'-Kürzel besitzen)
+        const lehrpersonenRows = rows ? rows.filter(r => r.lehrer && r.lehrer.trim() !== "") : [];
 
-            // Admin-Buttons unten im Modal einblenden falls Kassenwart, sonst nur Schliessen
-            if (modalActions) {
-                if (istKassenwart) {
-                    modalActions.innerHTML = `
-                        <button class="btn-action btn-primary" onclick="openNewAusgabeModal()">+ Ausgabe</button>
-                        <button class="btn-action btn-secondary" onclick="openKassenAdminModal()">Verwaltung</button>
-                        <button class="btn-action btn-secondary" onclick="closeModal('teamkasse-overlay')">Schliessen</button>
-                    `;
-                } else {
-                    modalActions.innerHTML = `
-                        <button class="btn-action btn-secondary" onclick="closeModal('teamkasse-overlay')">Schliessen</button>
-                    `;
+        if (lehrpersonenRows.length === 0) {
+            lpContainer.innerHTML = "<p style='color: #888; text-align: center;'>Keine Einträge vorhanden.</p>";
+        } else {
+            lpContainer.innerHTML = lehrpersonenRows.map((lp) => {
+                const isBezahlt = lp.status && lp.status.toLowerCase() === 'bezahlt';
+                const statusClass = isBezahlt ? 'status-bezahlt' : 'status-offen';
+                const badgeClass = isBezahlt ? 'bezahlt' : 'offen';
+                const statusText = isBezahlt ? 'Bezahlt' : 'Offen';
+
+                let uebertragHinweis = "";
+                // Falls 'schuld' und 'betrag' als Grundbetrag dienen
+                if (!isBezahlt && lp.schuld && lp.betrag && Number(lp.schuld) > Number(lp.betrag)) {
+                    const differenz = Number(lp.schuld) - Number(lp.betrag);
+                    uebertragHinweis = `<span style="font-size: 0.75em; color: #e74c3c; display: block; margin-top: 2px;" title="Beinhaltet ${differenz} CHF Restschuld aus Vorrunde">⚠️ Inkl. Restschuld aus Vorrunde</span>`;
                 }
-            }
 
-            // 3. Lehrpersonen-Liste rendern (Spalten A-D)
-            if (!data.lehrpersonen || data.lehrpersonen.length === 0) {
-                lpContainer.innerHTML = "<p style='color: #888; text-align: center;'>Keine Einträge vorhanden.</p>";
-            } else {
-                lpContainer.innerHTML = data.lehrpersonen.map((lp, index) => {
-                    const isBezahlt = lp.status && lp.status.toLowerCase() === 'bezahlt';
-                    const statusClass = isBezahlt ? 'status-bezahlt' : 'status-offen';
-                    const badgeClass = isBezahlt ? 'bezahlt' : 'offen';
-                    const statusText = isBezahlt ? 'Bezahlt' : 'Offen';
+                const betragAnzeige = isBezahlt 
+                    ? `<span class="tk-meta" style="color: #2ecc71;">${lp.schuld || lp.betrag || 0} CHF eingezahlt</span>` 
+                    : `<span class="tk-meta">${lp.schuld || lp.betrag || 0} CHF</span>`;
 
-                    // Prüfen, ob ein Übertrag/Restschuld vorliegt (nur relevant wenn noch offen)
-                    let uebertragHinweis = "";
-                    if (!isBezahlt && Number(lp.schuld) > Number(lp.grundbetrag)) {
-                        const differenz = Number(lp.schuld) - Number(lp.grundbetrag);
-                        uebertragHinweis = `<span style="font-size: 0.75em; color: #e74c3c; display: block; margin-top: 2px;" title="Beinhaltet ${differenz} CHF Restschuld aus Vorrunde">⚠️ Inkl. Restschuld aus Vorrunde</span>`;
-                    }
+                // Wenn Kassenwart, Status per Klick umschalten (über ID der Zeile)
+                const badgeAction = istKassenwart ? `onclick="toggleTeamkasseStatus(${lp.id}, '${lp.status}', this)" style="cursor:pointer;" title="Status umschalten"` : '';
 
-                    // Wenn bezahlt, zeigen wir den Betrag als "eingezahlt" an
-                    const betragAnzeige = isBezahlt 
-                        ? `<span class="tk-meta" style="color: #2ecc71;">${lp.schuld} CHF eingezahlt</span>` 
-                        : `<span class="tk-meta">${lp.schuld} CHF</span>`;
-
-                    // Wenn Kassenwart, kann er per Klick auf das Badge den Status umschalten
-                    const badgeAction = istKassenwart ? `onclick="toggleTeamkasseStatus('${lp.name}', '${lp.status}', this)" style="cursor:pointer;" title="Status umschalten"` : '';
-
-                    return `
-                        <div class="tk-item ${statusClass}">
-                            <div>
-                                <strong>${lp.name}</strong>
-                                ${betragAnzeige}
-                                ${uebertragHinweis}
-                            </div>
-                            <span class="tk-badge ${badgeClass}" ${badgeAction}>${statusText}</span>
+                return `
+                    <div class="tk-item ${statusClass}">
+                        <div>
+                            <strong>${lp.lehrer}</strong>
+                            ${betragAnzeige}
+                            ${uebertragHinweis}
                         </div>
-                    `;
-                }).join('');
-            }
+                        <span class="tk-badge ${badgeClass}" ${badgeAction}>${statusText}</span>
+                    </div>
+                `;
+            }).join('');
+        }
 
-            // 4. Ausgaben-Liste rendern (Spalten E-G)
-            if (!data.ausgaben || data.ausgaben.length === 0) {
-                ausgabenContainer.innerHTML = "<p style='color: #888; text-align: center;'>Keine Ausgaben erfasst.</p>";
-            } else {
-                ausgabenContainer.innerHTML = data.ausgaben.map((ausgabe, index) => {
-                    let formattedDate = ausgabe.datum;
-                    if (ausgabe.datum) {
-                        const dateObj = new Date(ausgabe.datum);
-                        if (!isNaN(dateObj)) {
-                            formattedDate = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                        }
+        // 4. Ausgaben-Liste filtern (alle Zeilen, bei denen 'ausgabe' gefüllt ist)
+        const ausgabenRows = rows ? rows.filter(r => r.ausgabe && r.ausgabe.trim() !== "") : [];
+
+        if (ausgabenRows.length === 0) {
+            ausgabenContainer.innerHTML = "<p style='color: #888; text-align: center;'>Keine Ausgaben erfasst.</p>";
+        } else {
+            ausgabenContainer.innerHTML = ausgabenRows.map((ausgabe) => {
+                let formattedDate = ausgabe.datum;
+                if (ausgabe.datum) {
+                    const dateOnly = ausgabe.datum.split('T')[0];
+                    const parts = dateOnly.split('-');
+                    if (parts.length === 3) {
+                        formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
                     }
+                }
 
-                    // Wenn Kassenwart, Klick zum Löschen ermöglichen (Zeile im Sheet ist index + 2, da Header bei Zeile 1)
-                    const rowNumber = index + 2;
-                    const deleteAction = istKassenwart ? `onclick="deleteTeamkasseAusgabe(${rowNumber})" style="cursor:pointer;" title="Klicken zum Löschen"` : '';
-                    const deleteIconHint = istKassenwart ? `<span style="font-size: 0.65em; color: #aaa; display: block; text-align: right;">Klicken zum Löschen</span>` : '';
+                // Kassenwart kann Ausgabe direkt über die ID löschen
+                const deleteAction = istKassenwart ? `onclick="deleteTeamkasseAusgabe(${ausgabe.id})" style="cursor:pointer;" title="Klicken zum Löschen"` : '';
+                const deleteIconHint = istKassenwart ? `<span style="font-size: 0.65em; color: #aaa; display: block; text-align: right;">Klicken zum Löschen</span>` : '';
 
-                    return `
-                        <div class="tk-item" style="border-left-color: #e67e22; ${istKassenwart ? 'cursor:pointer;' : ''}" ${deleteAction}>
-                            <div>
-                                <strong>${ausgabe.beschreibung}</strong>
-                                <span class="tk-meta">${formattedDate}</span>
-                            </div>
-                            <div style="text-align: right;">
-                                <span style="font-weight: bold; color: #e74c3c;">-${ausgabe.betrag} CHF</span>
-                                ${deleteIconHint}
-                            </div>
+                return `
+                    <div class="tk-item" style="border-left-color: #e67e22; ${istKassenwart ? 'cursor:pointer;' : ''}" ${deleteAction}>
+                        <div>
+                            <strong>${ausgabe.ausgabe}</strong>
+                            <span class="tk-meta">${formattedDate || ''}</span>
                         </div>
-                    `;
-                }).join('');
-            }
-        })
-        .catch(e => {
-            lpContainer.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
-            ausgabenContainer.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
-            kontostandEl.innerText = "Fehler";
-            console.error("Teamkasse Ladefehler:", e);
-        });
+                        <div style="text-align: right;">
+                            <span style="font-weight: bold; color: #e74c3c;">-${ausgabe.betrag || 0} CHF</span>
+                            ${deleteIconHint}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+    } catch (e) {
+        lpContainer.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
+        ausgabenContainer.innerHTML = "<p style='color: #e74c3c; text-align: center;'>Fehler beim Laden.</p>";
+        kontostandEl.innerText = "Fehler";
+        console.error("Teamkasse Ladefehler:", e);
+    }
 };
+    
 
 window.openNewAusgabeModal = function() {
     const modal = document.getElementById('new-ausgabe-modal');
@@ -11887,6 +11691,222 @@ window.startNeueZahlungsrunde = function() {
         }
     });
 };
+
+
+
+
+    
+
+/* ============================================================
+   19. LINKS (Direkt im Untermenü)
+   ============================================================ */    
+
+window.renderLinks = function() {
+    const container = document.getElementById('links-container');
+    if (!container) return; // Falls das Element nicht existiert, abbrechen
+    
+    // Wir nehmen die Variable, die wir in loadPlan befüllt haben
+    const data = window.lastLinks || [];
+
+    if (data.length === 0) {
+        container.innerHTML = `<div class="menu-item" style="color: #888; cursor: default;">Keine Links hinterlegt</div>`;
+        return;
+    }
+
+    // Wir nutzen jetzt die Klasse 'menu-item', damit sie genau wie die anderen Menüpunkte aussehen
+    container.innerHTML = data.map(l => `
+        <div class="menu-item" onclick="window.open('${l.url}', '_blank')">
+            <span class="material-symbols-outlined">link</span> ${l.name}
+        </div>
+    `).join('');
+};
+
+
+
+  
+
+/* ============================================================
+   21. PASTE-MODE (ISOLIERT)
+   ============================================================ */
+
+window.createPasteOverlay = function(halleName) {
+    // 1. Overlay (Eigene ID & Klasse)
+    if (!document.getElementById('paste-overlay')) {
+        const overlay = document.createElement('div');
+        overlay.className = 'paste-mode-overlay'; 
+        overlay.id = 'paste-overlay';
+        document.body.appendChild(overlay);
+    }
+    
+    // 2. Panel (Eigene ID)
+    if (!document.getElementById('paste-panel-ui')) {
+        const panel = document.createElement('div');
+        panel.id = 'paste-panel-ui';
+        panel.className = 'move-panel'; 
+        
+        Object.assign(panel.style, {
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#e67e22',
+            color: 'white',
+            zIndex: '2147483647'
+        });
+
+        panel.innerHTML = `
+            <span>Wähle ein Ziel-Feld, um <strong>${halleName}</strong> einzufügen...</span>
+            <button onclick="cancelPasteMode()" class="btn-cancel">Beenden</button>
+        `;
+        document.body.appendChild(panel);
+    }
+    
+    // 3. Modus-Status setzen (BLOCKIERT SYNC)
+    window.currentInteractionMode = 'PASTEN';
+    document.body.classList.add('paste-mode-active');
+
+    // 4. Highlight NUR für eigene Boxen
+    document.querySelectorAll('.box.is-mine').forEach(box => {
+        box.classList.add('paste-mode-highlight');
+    });
+};
+
+window.cancelPasteMode = function() {
+    window.copiedSlotData = null; // Copy-Daten löschen
+    window.currentInteractionMode = null; // SYNC WIEDER ERLAUBEN
+    
+    // UI entfernen
+    const overlay = document.getElementById('paste-overlay');
+    if (overlay) overlay.remove();
+    const panel = document.getElementById('paste-panel-ui');
+    if (panel) panel.remove();
+    
+    document.body.classList.remove('paste-mode-active');
+    
+    // ALLE Boxen von Paste-Markierungen befreien
+    document.querySelectorAll('.box').forEach(box => {
+        box.classList.remove('paste-mode-highlight', 'is-being-copied');
+        
+        // Klick-Events wiederherstellen (analog zum Verschiebe-Modus)
+        const slot = box.getAttribute('data-slot');
+        if (slot) {
+            const klasse = box.querySelector('.klasse-label')?.innerText || "";
+            const isMine = box.classList.contains('is-mine');
+            if (typeof setBoxClick === 'function') {
+                setBoxClick(box, klasse, slot, isMine);
+            }
+        }
+    });
+
+    // --- DER FIX: Daten neu laden ---
+    console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
+    if (typeof window.syncPlan === 'function') {
+        window.syncPlan(); 
+    }
+};
+
+// --- HILFSFUNKTION FÜR PASTE ---
+async function performPaste(targetSlot, data) {
+    const dp = document.getElementById('datePicker');
+    const box = document.querySelector(`[data-slot="${targetSlot}"]`);
+    
+    // 1. Sicherheit: Kollisionsprüfung
+    if (data.halle !== "Ausfall") {
+        const rowIndex = Math.floor((targetSlot - 1) / 5);
+        const startSlot = (rowIndex * 5) + 1;
+        const endSlot = startSlot + 4;
+        
+        const zuPruefendeTeile = data.halle.toLowerCase().split('+').map(h => h.trim());
+        let istGesperrt = false;
+
+        for (let s = startSlot; s <= endSlot; s++) {
+            if (s === parseInt(targetSlot)) continue;
+            
+            const andereData = window.lastPlanData ? window.lastPlanData[s] : null;
+            if (andereData && andereData.halle && andereData.halle !== "Ausfall") {
+                const besetzteTeile = andereData.halle.toLowerCase().split('+').map(h => h.trim());
+                if (zuPruefendeTeile.some(t => t !== "outdoor" && t !== "badi" && besetzteTeile.includes(t))) {
+                    istGesperrt = true;
+                    break;
+                }
+            }
+        }
+
+        if (istGesperrt) {
+            alert(`${data.halle} ist in diesem Zeitfenster bereits vergeben!`);
+            return; 
+        }
+    }
+
+    // 2. Daten für den Ziel-Slot
+    const zielSlotData = window.lastPlanData && window.lastPlanData[targetSlot] ? window.lastPlanData[targetSlot] : {};
+    const klasseImZiel = zielSlotData.klasse || "";
+    const isAusfall = (data.halle === "Ausfall");
+
+    // 3. Payload erstellen
+    const payload = {
+        action: "saveBooking",
+        pw: typeof userPw !== 'undefined' ? userPw : "",
+        kuerzel: typeof userKuerzel !== 'undefined' ? userKuerzel : "",
+        date: dp ? dp.value : "",
+        slot: targetSlot,
+        klasse: klasseImZiel, 
+        origin: 'pasteMode',
+        halle: data.halle,
+        typ: data.typ || ""
+    };
+
+    try {
+        if (typeof window.prozessiereAktion === 'function') {
+            console.log(`Paste: Kopiere ${data.halle} nach Slot ${targetSlot}`);
+            
+            if (!window.lastPlanData) window.lastPlanData = {};
+            window.lastPlanData[targetSlot] = { 
+                ...zielSlotData, 
+                halle: data.halle, 
+                typ: data.typ,
+                verfasser: typeof userKuerzel !== 'undefined' ? userKuerzel : "" 
+            };
+
+            if (box) {
+                box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig && window.hallenConfig[data.halle]?.color || "");
+                
+                const kLabel = box.querySelector('.klasse-label');
+                if (kLabel) kLabel.textContent = klasseImZiel;
+                
+                const hLabel = box.querySelector('.halle-label');
+                if (hLabel) hLabel.textContent = data.halle;
+                
+                box.classList.remove('empty', 'not-mine');
+                box.classList.add('is-mine');
+                
+                if (isAusfall) {
+                    box.classList.add('ausfall-mode');
+                } else {
+                    box.classList.remove('ausfall-mode');
+                }
+                
+                const lockContainer = box.querySelector('.lock-icon-container');
+                if (lockContainer) {
+                    lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
+                        '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
+                }
+            }
+
+            window.prozessiereAktion(payload, (p) => {
+                console.log("Paste erfolgreich!");
+            });
+        } else {
+            throw new Error("prozessiereAktion nicht gefunden");
+        }
+    } catch (e) {
+        console.error("Paste-Aktion fehlgeschlagen:", e);
+        alert("Fehler beim Einfügen.");
+    }
+}
+
+
+    
 
 
 
