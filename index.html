@@ -8752,25 +8752,39 @@ window.cancelAddMode = function() {
     
 
 /* ============================================================
-   11.1. MELDUNGEN (DEFEKTE) - SUPABASE VERSION
+   11.1. MELDUNGEN (DEFEKTE)
    ============================================================ */
 
+// 1. Wird im Menü geklickt: Öffnet das Haupt-Overlay und lädt die Daten
 window.openMeldungen = function() {
-    // 1. Modal / Ansicht öffnen (falls du eine openModal Funktion hast, nutze sie)
-    if (typeof openModal === 'function') {
-        openModal('new-meldung-modal'); // Passe den Namen an, falls das Modal anders heißt
-    } else {
-        const modal = document.getElementById('new-meldung-modal');
-        if (modal) modal.style.display = 'flex';
+    const overlay = document.getElementById('meldungen-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex'; // Hauptmodal anzeigen
     }
-
-    // 2. Daten direkt frisch aus Supabase laden
+    
+    // Direkt die Daten aus der service_db laden und rendern
     if (typeof renderMeldungen === 'function') {
         renderMeldungen();
     }
 };
 
+// 2. Öffnet das Eingabe-Modal ("Meldung erfassen") über den Button im Haupt-Overlay
+window.openNewMeldungModal = function() {
+    const input = document.getElementById('meldung-text');
+    if (input) input.value = ''; // Feld beim Öffnen leeren
     
+    const modal = document.getElementById('new-meldung-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+    
+    // Nach kurzem Fokus ins Eingabefeld setzen
+    setTimeout(() => {
+        if (input) input.focus();
+    }, 100);
+};
+
+// 3. Speichert die neue Meldung direkt in Supabase (service_db & news_db)
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
@@ -8793,7 +8807,7 @@ window.saveMeldung = async function() {
         const meldungId = "M-" + Date.now();
         const datumStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD für saubere Sortierung
 
-        // 1. In die zentrale service_db speichern (typ: 'defekt')
+        // In die zentrale service_db speichern (typ: 'defekt')
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
@@ -8807,7 +8821,7 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Gleichzeitig den News-Eintrag erstellen
+        // Gleichzeitig den News-Eintrag erstellen
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
@@ -8845,15 +8859,14 @@ window.saveMeldung = async function() {
     }
 };
 
-
-// Funktion zum Erledigen (Kompatibel mit beiden Funktionsnamen)
+// 4. Markiert eine Meldung als behoben (in service_db & generiert News)
 window.markAsResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
     
     const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
 
     try {
-        // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
+        // Zuerst den Beschreibungstext des Defekts auslesen (für die News)
         const { data: record, error: fetchError } = await window.supabaseClient
             .from('service_db')
             .select('beschreibung')
@@ -8863,7 +8876,7 @@ window.markAsResolved = async function(id, btnElement) {
         if (fetchError) throw fetchError;
         const ursprungsText = record ? record.beschreibung : "";
 
-        // 2. Status in der service_db auf "behoben" aktualisieren
+        // Status in der service_db auf "behoben" aktualisieren
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
@@ -8871,7 +8884,7 @@ window.markAsResolved = async function(id, btnElement) {
 
         if (updateError) throw updateError;
 
-        // 3. News-Eintrag für "Defekt behoben" erstellen
+        // News-Eintrag für "Defekt behoben" erstellen
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
@@ -8904,11 +8917,10 @@ window.markAsResolved = async function(id, btnElement) {
     }
 };
 
-// Alias damit eventuelle ältere Aufrufe von markResolved direkt greifen
+// Alias für eventuelle Altaufrufe
 window.markResolved = window.markAsResolved;
 
-
-// Lädt die Liste direkt aus der service_db (nur typ 'defekt' und status 'offen')
+// 5. Lädt die offene Liste direkt aus der service_db
 window.renderMeldungen = async function() {
     const container = document.getElementById('meldungen-container');
     if (!container) return;
@@ -8937,7 +8949,6 @@ window.renderMeldungen = async function() {
         }
         
         container.innerHTML = meldungen.map(m => {
-            // Datum formatieren (unterstützt ISO-Strings und einfache Strings)
             let formattedDate = m.datum || '';
             if (m.datum && m.datum.includes('-')) {
                 const dateObj = new Date(m.datum);
@@ -8969,8 +8980,7 @@ window.renderMeldungen = async function() {
     }
 };
 
-
-// Registriert den Enter-Listener sicher, falls das Eingabefeld existiert
+// 6. Registriert den Enter-Listener sicher, falls das Eingabefeld existiert
 const meldungInputEl = document.getElementById('meldung-text');
 if (meldungInputEl) {
     meldungInputEl.addEventListener('keypress', function(e) {
