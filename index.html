@@ -8583,7 +8583,7 @@ window.toggleCategory = function(headerElement, event) {
 };
 
 /* ============================================================
-   15. Lektion hinzufügen (Modus-geschützt)
+   11.8. Lektion hinzufügen (Modus-geschützt)
    ============================================================ */
 
 window.startAddMode = function() {
@@ -8752,7 +8752,7 @@ window.cancelAddMode = function() {
     
 
 /* ============================================================
-   16. Defekt-Meldungen (Server-Synchronisiert mit Google Sheet)
+   11.1. MELDUNGEN (DEFEKTE)
    ============================================================ */
 
 window.openMeldungen = function() {
@@ -8787,7 +8787,7 @@ window.openNewMeldungModal = function() {
     }, 100);
 };
 
-window.saveMeldung = function() {
+window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input.value.trim();
     
@@ -8803,38 +8803,107 @@ window.saveMeldung = function() {
     saveBtn.disabled = true;
     saveBtn.innerText = "Wird gesendet...";
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveMeldung", 
-            text: text, 
-            user: typeof userKuerzel !== 'undefined' ? userKuerzel : "LP",
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        // Button-Zustand zurücksetzen
-        saveBtn.disabled = false;
-        saveBtn.innerText = "Speichern";
+    try {
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const meldungId = "M-" + Date.now();
+        const datumStr = new Date().toLocaleDateString();
+
+        // 1. In die zentrale service_db speichern
+        const { error: dbError } = await supabase
+            .from('service_db')
+            .insert([{
+                id: meldungId,
+                typ: 'defekt',
+                beschreibung: text,
+                verfasser: userKuerzelVal,
+                datum: datumStr,
+                status: 'offen'
+            }]);
+
+        if (dbError) throw dbError;
+
+        // 2. Gleichzeitig den News-Eintrag erstellen (analog zu deinem alten System)
+        const { error: newsError } = await supabase
+            .from('news_db')
+            .insert([{
+                date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+                slot: "0",
+                klasse: "Defekt",
+                halle: "defekt_meldung",
+                user: userKuerzelVal,
+                text: text
+            }]);
+
+        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+
+        // UI aufräumen
+        input.value = '';
+        closeModal('new-meldung-modal');
         
-        if(data.status === "success") {
-            // UI aufräumen
-            input.value = '';
-            closeModal('new-meldung-modal');
+        if (typeof renderMeldungen === 'function') {
             renderMeldungen(); // Liste neu laden
-        } else {
-            alert("Fehler beim Speichern: " + data.msg);
         }
-    })
-    .catch(e => {
-        // Bei Fehler Button ebenfalls zurücksetzen
+        if (typeof updateG1 === 'function') {
+            updateG1();
+        }
+
+    } catch (e) {
+        console.error("Fehler beim Senden:", e);
+        alert("Fehler beim Speichern: " + (e.message || e));
+    } finally {
+        // Button-Zustand immer zurücksetzen
         saveBtn.disabled = false;
         saveBtn.innerText = "Speichern";
-        console.error("Fehler beim Senden:", e);
-    });
+    }
 };
 
+
+window.markResolved = async function(id) {
+    try {
+        // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
+        const { data: record, error: fetchError } = await supabase
+            .from('service_db')
+            .select('beschreibung')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+        const ursprungsText = record ? record.beschreibung : "";
+
+        // 2. Status in der service_db auf "behoben" aktualisieren
+        const { error: updateError } = await supabase
+            .from('service_db')
+            .update({ status: 'behoben' })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // 3. News-Eintrag für "Defekt behoben" erstellen
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "System";
+        await supabase
+            .from('news_db')
+            .insert([{
+                date: new Date().toISOString().split('T')[0],
+                slot: "0",
+                klasse: "Info",
+                halle: "defekt_meldung",
+                user: userKuerzelVal,
+                text: `Defekt behoben: ${ursprungsText}`
+            }]);
+
+        if (typeof renderMeldungen === 'function') {
+            renderMeldungen();
+        }
+        if (typeof updateG1 === 'function') {
+            updateG1();
+        }
+
+    } catch (e) {
+        console.error("Fehler beim Aktualisieren:", e);
+        alert("ID konnte nicht aktualisiert werden: " + (e.message || e));
+    }
+};
+    
     
 
 // Lädt die Liste aus dem Sheet
