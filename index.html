@@ -10889,7 +10889,6 @@ window.submitStellvertretungWithLessons = async function() {
 
     let lektionenPayload = selectedLektionen.map(l => {
         return {
-            id: 'stv_' + Date.now() + '_' + l.lektionNr,
             typ: 'stv',
             datum: currentStvData.datum,
             verfasser: aktuellerUser,
