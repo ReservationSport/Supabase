@@ -9494,10 +9494,13 @@ if (krueckenInputEl) {
         }
     });
 }
+
+    
 /* ============================================================
-   19. Bannermeldungen
+   11.4. BANNERMELDUNGEN
    ============================================================ */
 
+// 1. Wird im Menü geklickt: Öffnet das Haupt-Overlay und lädt die Daten
 window.openBanner = function() {
     console.log("Starte openBanner...");
     
@@ -9511,63 +9514,34 @@ window.openBanner = function() {
     const overlay = document.getElementById('banner-overlay');
     if (overlay) {
         overlay.style.display = 'flex';
-        renderBanner(); 
+        
+        if (typeof renderBanner === 'function') {
+            renderBanner(); 
+        } else {
+            console.error("Funktion renderBanner ist nicht definiert!");
+        }
     } else {
         console.error("Fehler: Element mit ID 'banner-overlay' existiert nicht!");
     }
 };
 
+// 2. Öffnet das Eingabe-Modal ("Banner erfassen") über den Button im Haupt-Overlay
 window.openNewBannerModal = function() {
     const modal = document.getElementById('new-banner-modal');
     const input = document.getElementById('banner-text-input'); // Fokus auf Textfeld
-    modal.style.display = 'flex';
-    input.value = ''; // Optional zurücksetzen beim Öffnen
-    setTimeout(() => input.focus(), 100);
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+    if (input) {
+        input.value = ''; // Zurücksetzen beim Öffnen
+        setTimeout(() => input.focus(), 100);
+    }
 };
 
-window.renderBanner = function() {
-    const container = document.getElementById('banner-container');
-    
-    container.innerHTML = `
-        <div class="loader-container">
-            <div class="littlespinner"></div>
-            <span>Bannermeldungen werden geladen...</span>
-        </div>
-    `;
-
-    fetch(`${url}?action=getBanner&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                container.innerHTML = "<p>Keine aktiven Bannermeldungen.</p>";
-                return;
-            }
-            
-            container.innerHTML = data.map(b => {
-                const dateObj = new Date(b.datum);
-                const formattedDate = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-                return `
-                    <div class="banner-item">
-                        <div>
-                            <strong>${b.text}</strong>
-                            <span class="banner-meta">${b.verfasser} | ${formattedDate}</span>
-                        </div>
-                        <button class="btn-erledigt" onclick="markBannerResolved('${b.id}', this)" title="Löschen / Erledigt">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            container.innerHTML = "Fehler beim Laden.";
-            console.error(e);
-        });
-};
-
-window.saveBanner = function() {
-    const text = document.getElementById('banner-text-input').value.trim();
+// 3. Speichert die neue Bannermeldung direkt in Supabase (service_db & news_db)
+window.saveBanner = async function() {
+    const input = document.getElementById('banner-text-input');
+    const text = input ? input.value.trim() : '';
     const saveBtn = document.querySelector('#new-banner-modal .btn-primary');
     
     if (!text) {
@@ -9580,49 +9554,181 @@ window.saveBanner = function() {
         saveBtn.innerText = "Wird gesendet...";
     }
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveBanner", 
-            text: text,
-            user: typeof userKuerzel !== 'undefined' ? userKuerzel : "LP", 
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Speichern"; }
-        
-        if(data.status === "success") {
-            document.getElementById('banner-text-input').value = '';
+    try {
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
+        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
+
+        // In die service_db speichern (typ: 'banner' mit den gewünschten Spalten)
+        const { error: dbError } = await window.supabaseClient
+            .from('service_db')
+            .insert([{
+                typ: 'banner',
+                beschreibung: text,
+                verfasser: userKuerzelVal,
+                datum: datumIso,
+                status: 'offen'
+            }]);
+
+        if (dbError) throw dbError;
+
+        // Gleichzeitig den News-Eintrag erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: datumDateOnly,
+                slot: "0",
+                klasse: "Banner",
+                halle: "bannermeldung",
+                user: userKuerzelVal,
+                text: text
+            }]);
+
+        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+
+        // UI aufräumen
+        if (input) input.value = '';
+        if (typeof closeModal === 'function') {
             closeModal('new-banner-modal');
-            renderBanner();
-        } else {
-            alert("Fehler: " + data.msg);
         }
-    })
-    .catch(e => {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Speichern"; }
-        console.error("Fehler:", e);
-    });
+        
+        if (typeof renderBanner === 'function') {
+            renderBanner(); // Liste neu laden
+        }
+        if (typeof updateG1 === 'function') {
+            updateG1();
+        }
+
+    } catch (e) {
+        console.error("Fehler beim Senden:", e);
+        alert("Fehler beim Speichern: " + (e.message || e));
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
+    }
 };
 
-window.markBannerResolved = function(id, btnElement) {
-    btnElement.classList.add('is-success');
-    fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'markBannerResolved', id: id, pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            setTimeout(() => renderBanner(), 300);
-        } else {
-            alert("Fehler: " + data.msg);
-            btnElement.classList.remove('is-success');
-        }
-    });
+// 4. Markiert eine Bannermeldung als behoben/gelöscht (in service_db & generiert News)
+window.markBannerResolved = async function(id, btnElement) {
+    if (btnElement) btnElement.classList.add('is-success');
+    
+    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
+
+    try {
+        // Zuerst den Beschreibungstext auslesen (für die News)
+        const { data: record, error: fetchError } = await window.supabaseClient
+            .from('service_db')
+            .select('beschreibung')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+        const ursprungsText = record ? record.beschreibung : "";
+
+        // Status in der service_db auf "behoben" aktualisieren
+        const { error: updateError } = await window.supabaseClient
+            .from('service_db')
+            .update({ status: 'behoben' })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // News-Eintrag für "Bannermeldung beendet" erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: new Date().toISOString().split('T')[0],
+                slot: "0",
+                klasse: "Info",
+                halle: "bannermeldung",
+                user: userVal,
+                text: `Bannermeldung beendet: ${ursprungsText}`
+            }]);
+
+        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
+
+        setTimeout(() => {
+            if (typeof renderBanner === 'function') {
+                renderBanner();
+            }
+            if (typeof refreshNews === 'function') {
+                refreshNews(); 
+            }
+            if (typeof updateG1 === 'function') {
+                updateG1();
+            }
+        }, 300);
+
+    } catch (e) {
+        console.error("Error beim Beheben:", e);
+        alert("Fehler beim Aktualisieren: " + (e.message || e));
+        if (btnElement) btnElement.classList.remove('is-success');
+    }
 };
+
+// 5. Lädt die offene Banner-Liste direkt aus der service_db (filtert nach typ 'banner')
+window.renderBanner = async function() {
+    const container = document.getElementById('banner-container');
+    if (!container) return;
+    
+    // Lade-Zustand mit littlespinner
+    container.innerHTML = `
+        <div class="loader-container">
+            <div class="littlespinner"></div>
+            <span>Bannermeldungen werden geladen...</span>
+        </div>
+    `;
+
+    try {
+        const { data: bannerList, error } = await window.supabaseClient
+            .from('service_db')
+            .select('*')
+            .eq('typ', 'banner') // Gezielt nach typ 'banner' gefiltert
+            .eq('status', 'offen') // Nur offene anzeigen
+            .order('datum', { ascending: false }); // Sortierung über das Datum
+
+        if (error) throw error;
+
+        if (!bannerList || bannerList.length === 0) {
+            container.innerHTML = "<p>Keine aktiven Bannermeldungen.</p>";
+            return;
+        }
+        
+        container.innerHTML = bannerList.map(b => {
+            let formattedDate = '';
+            if (b.datum) {
+                const dateObj = new Date(b.datum);
+                if (!isNaN(dateObj)) {
+                    formattedDate = dateObj.toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+                }
+            }
+
+            return `
+                <div class="banner-item">
+                    <div>
+                        <strong>${b.beschreibung}</strong>
+                        <span class="banner-meta">${b.verfasser} | ${formattedDate}</span>
+                    </div>
+                    <button class="btn-erledigt" onclick="markBannerResolved(${b.id}, this)" title="Löschen / Erledigt">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = "<p>Fehler beim Laden.</p>";
+        console.error(e);
+    }
+};
+
+// 6. Optionaler Enter-Listener, falls per Enter im Textarea gespeichert werden soll (Shift+Enter für Zeilenumbruch empfohlen, hier reines Click-Verhalten beibehalten)
             
 
 /* ============================================================
