@@ -5739,7 +5739,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return;
     }
 
-    // Hilfsfunktion für das korrekte lokale Datum (verhindert UTC-Verschiebungen)
+    // Hilfsfunktion für das lokale Datum (verhindert UTC-Verschiebungen)
     const getLocalIsoDate = (date = new Date()) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -5783,26 +5783,17 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         handelndeLP = (payload.verfasser || payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
     }
     
-    // Lokales Datum erzwingen, falls keines übergeben wurde
-    const stvDatum = payload.datum || payload.date || getLocalIsoDate();
-
-    // 2. ID-Logik
-    let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
-    if (isStv) {
-        newsId = "STV_" + stvDatum + "_" + handelndeLP;
-    } else if (isSpecial || isFreieHalle) {
-        newsId += "_" + Date.now(); 
-    }
+    const eventDatum = payload.datum || payload.date || getLocalIsoDate();
 
     // Wochentag & Tag-Index ermitteln
     let zielTag = payload.wochentag;
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-    if (!zielTag && stvDatum) {
-        zielTag = wochentage[new Date(stvDatum.replace(/-/g, "/")).getDay()];
+    if (!zielTag && eventDatum) {
+        zielTag = wochentage[new Date(eventDatum.replace(/-/g, "/")).getDay()];
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 3. Empfänger-Berechnung
+    // 2. Empfänger-Berechnung
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5846,9 +5837,10 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
     
-    // 4. TITEL-, TEXT- UND ZEITFENSTER-LOGIK
+    // 3. TITEL-, TEXT- UND ZEITFENSTER-LOGIK
     let displayHeader = "";
     let newsText = "";
+    let newsTyp = rawHalle || "allgemein";
     const payloadText = payload.text ? payload.text.toString() : "";
     const kl = payload.klasse ? payload.klasse.toString() : "unbekannt";
 
@@ -5882,7 +5874,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         if (!anzahlLektionen || anzahlLektionen === 0) {
             anzahlLektionen = "Mehrere";
         }
-        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${stvDatum} (${anzahlLektionen} Lektionen).`;
+        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${eventDatum} (${anzahlLektionen} Lektionen).`;
     } else if (isZahlungsrunde) {
         displayHeader = "TEAMKASSE";
         newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
@@ -5908,7 +5900,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
     ];
 
-    let formatiertesEventDatum = stvDatum;
+    let formatiertesEventDatum = eventDatum;
     if (formatiertesEventDatum.includes('-')) {
         const parts = formatiertesEventDatum.split('-');
         if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
@@ -5925,48 +5917,30 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
 
-    // 5. Speichern in Supabase (zeitstempel nutzt volles timestamptz, datum_event das lokale Datum)
+    // 4. Speichern in Supabase (ID wird nun automatisch von der DB als int8 generiert)
     try {
         const newsData = {
-            id: newsId,
-            titel: displayHeader,
-            zeitfenster: zeitfensterString,
-            datum_event: stvDatum, 
-            slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
+            typ: newsTyp,
+            datum_event: eventDatum,
             tag_index: tagIndex !== -1 ? tagIndex : null,
+            slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
+            zeitfenster: zeitfensterString,
+            datum: new Date().toISOString(), // Erstellungszeitpunkt der Meldung
+            titel: displayHeader,
+            text: newsText,
             klasse: payload.klasse || "",
             verfasser: handelndeLP,
             empfaenger: empfaenger,
-            text: newsText,
-            zeitstempel: new Date().toISOString(), // Voller timestamptz für den exakten Erstellungszeitpunkt
             gelesen: "",
             geloescht: "" 
         };
 
-        const { data: existingNews, error: fetchError } = await client
+        const { error } = await client
             .from('news_db')
-            .select('id')
-            .eq('id', newsId)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        let error;
-        if (existingNews && existingNews.id) {
-            const res = await client
-                .from('news_db')
-                .update(newsData)
-                .eq('id', newsId);
-            error = res.error;
-        } else {
-            const res = await client
-                .from('news_db')
-                .insert([newsData]);
-            error = res.error;
-        }
+            .insert([newsData]);
 
         if (error) throw error;
-        console.log("🎯 News erfolgreich in Supabase gespeichert mit lokalem Datum:", stvDatum);
+        console.log("🎯 News erfolgreich in Supabase gespeichert (Auto-ID vergeben).");
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
