@@ -11477,6 +11477,10 @@ window.renderTeamkasse = async function() {
 };
     
 
+/* ============================================================
+   11.8.1. TEAMKASSE - KASSENWART
+   ============================================================ */
+  
 window.openNewAusgabeModal = function() {
     const modal = document.getElementById('new-ausgabe-modal');
     const input = document.getElementById('ausgabe-beschreibung');
@@ -11560,6 +11564,7 @@ window.saveTeamkasseAusgabe = async function() {
     }
 };
 
+    
 window.deleteTeamkasseAusgabe = async function(id) {
     if (!confirm("Möchtest du diese Ausgabe wirklich löschen?")) return;
 
@@ -11605,6 +11610,8 @@ window.deleteTeamkasseAusgabe = async function(id) {
     }
 };
 
+
+    
 window.toggleTeamkasseStatus = async function(id, currentStatus, element) {
     const isBezahlt = currentStatus && currentStatus.toLowerCase() === 'bezahlt';
     const neuerStatusText = isBezahlt ? 'offen' : 'bezahlt';
@@ -11665,12 +11672,14 @@ window.toggleTeamkasseStatus = async function(id, currentStatus, element) {
     }
 };
 
+    
 window.openKassenAdminModal = function() {
     const modal = document.getElementById('teamkasse-admin-modal');
     if (modal) modal.style.display = 'flex';
     renderAdminLpList();
 };
 
+    
 window.renderAdminLpList = async function() {
     const container = document.getElementById('admin-lp-list-container');
     if (!container) return;
@@ -11708,6 +11717,7 @@ window.renderAdminLpList = async function() {
     }
 };
 
+    
 window.addTeamkasseLP = async function() {
     const name = document.getElementById('admin-lp-name').value.trim();
     const betragStr = document.getElementById('admin-lp-betrag').value.trim();
@@ -11748,6 +11758,7 @@ window.addTeamkasseLP = async function() {
     }
 };
 
+    
 window.deleteTeamkasseLP = async function(id, name) {
     if (!confirm(`Möchtest du ${name} wirklich aus der Teamkasse löschen?`)) return;
 
@@ -11768,6 +11779,7 @@ window.deleteTeamkasseLP = async function(id, name) {
     }
 };
 
+    
 window.startNeueZahlungsrunde = async function() {
     if (!confirm("Möchtest du eine neue Zahlungsrunde starten?\nOffene Beträge der Vorrunde werden zum Grundbetrag addiert.")) return;
 
@@ -11813,7 +11825,7 @@ window.startNeueZahlungsrunde = async function() {
     
 
 /* ============================================================
-   19. LINKS (Direkt im Untermenü)
+   11.9. LINKS
    ============================================================ */    
 
 window.renderLinks = function() {
@@ -11838,10 +11850,8 @@ window.renderLinks = function() {
 
 
 
-  
-
 /* ============================================================
-   21. PASTE-MODE (ISOLIERT)
+   11.10. PASTE-MODE (Supabase-Version)
    ============================================================ */
 
 window.createPasteOverlay = function(halleName) {
@@ -11920,11 +11930,19 @@ window.cancelPasteMode = function() {
     }
 };
 
-// --- HILFSFUNKTION FÜR PASTE ---
+// --- HILFSFUNKTION FÜR PASTE (Supabase Integration) ---
 async function performPaste(targetSlot, data) {
     const dp = document.getElementById('datePicker');
     const box = document.querySelector(`[data-slot="${targetSlot}"]`);
     
+    const aktuellesDatum = dp ? dp.value : "";
+    const aktuellesKuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel : "";
+
+    if (!aktuellesDatum) {
+        alert("Datum konnte nicht ermittelt werden.");
+        return;
+    }
+
     // 1. Sicherheit: Kollisionsprüfung
     if (data.halle !== "Ausfall") {
         const rowIndex = Math.floor((targetSlot - 1) / 5);
@@ -11958,76 +11976,79 @@ async function performPaste(targetSlot, data) {
     const klasseImZiel = zielSlotData.klasse || "";
     const isAusfall = (data.halle === "Ausfall");
 
-    // 3. Payload erstellen
-    const payload = {
-        action: "saveBooking",
-        pw: typeof userPw !== 'undefined' ? userPw : "",
-        kuerzel: typeof userKuerzel !== 'undefined' ? userKuerzel : "",
-        date: dp ? dp.value : "",
-        slot: targetSlot,
-        klasse: klasseImZiel, 
-        origin: 'pasteMode',
-        halle: data.halle,
-        typ: data.typ || ""
-    };
-
     try {
-        if (typeof window.prozessiereAktion === 'function') {
-            console.log(`Paste: Kopiere ${data.halle} nach Slot ${targetSlot}`);
+        console.log(`Paste (Supabase): Speichere ${data.halle} in buchungen_db für Slot ${targetSlot}`);
+        
+        if (!window.lastPlanData) window.lastPlanData = {};
+        window.lastPlanData[targetSlot] = { 
+            ...zielSlotData, 
+            halle: data.halle, 
+            typ: data.typ,
+            verfasser: aktuellesKuerzel 
+        };
+
+        // UI direkt vorab aktualisieren (Optimistic UI Update)
+        if (box) {
+            box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig && window.hallenConfig[data.halle]?.color || "");
             
-            if (!window.lastPlanData) window.lastPlanData = {};
-            window.lastPlanData[targetSlot] = { 
-                ...zielSlotData, 
-                halle: data.halle, 
-                typ: data.typ,
-                verfasser: typeof userKuerzel !== 'undefined' ? userKuerzel : "" 
-            };
-
-            if (box) {
-                box.style.backgroundColor = isAusfall ? "" : (window.hallenConfig && window.hallenConfig[data.halle]?.color || "");
-                
-                const kLabel = box.querySelector('.klasse-label');
-                if (kLabel) kLabel.textContent = klasseImZiel;
-                
-                const hLabel = box.querySelector('.halle-label');
-                if (hLabel) hLabel.textContent = data.halle;
-                
-                box.classList.remove('empty', 'not-mine');
-                box.classList.add('is-mine');
-                
-                if (isAusfall) {
-                    box.classList.add('ausfall-mode');
-                } else {
-                    box.classList.remove('ausfall-mode');
-                }
-                
-                const lockContainer = box.querySelector('.lock-icon-container');
-                if (lockContainer) {
-                    lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
-                        '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
-                }
+            const kLabel = box.querySelector('.klasse-label');
+            if (kLabel) kLabel.textContent = klasseImZiel;
+            
+            const hLabel = box.querySelector('.halle-label');
+            if (hLabel) hLabel.textContent = data.halle;
+            
+            box.classList.remove('empty', 'not-mine');
+            box.classList.add('is-mine');
+            
+            if (isAusfall) {
+                box.classList.add('ausfall-mode');
+            } else {
+                box.classList.remove('ausfall-mode');
             }
-
-            window.prozessiereAktion(payload, (p) => {
-                console.log("Paste erfolgreich!");
-            });
-        } else {
-            throw new Error("prozessiereAktion nicht gefunden");
+            
+            const lockContainer = box.querySelector('.lock-icon-container');
+            if (lockContainer) {
+                lockContainer.innerHTML = (!isAusfall && data.typ === 'fix') ? 
+                    '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : '';
+            }
         }
+
+        // Direkt in die Supabase-Tabelle `buchungen_db` schreiben (Upsert, um bestehende Buchungen für Datum+Slot zu überschreiben)
+        const { error: upsertError } = await window.supabaseClient
+            .from('buchungen_db')
+            .upsert([
+                {
+                    datum: aktuellesDatum,
+                    slot: parseInt(targetSlot),
+                    lehrer: aktuellesKuerzel,
+                    halle: data.halle,
+                    klasse: klasseImZiel,
+                    typ: data.typ || ""
+                }
+            ], {
+                onConflict: 'datum,slot' // Nimmt an, dass es einen Unique-Constraint auf datum+slot gibt
+            });
+
+        if (upsertError) throw upsertError;
+
+        console.log("Paste erfolgreich in buchungen_db gespeichert!");
+        
+        // Nach erfolgreichem Speichern den Plan synchronisieren / neu laden
+        if (typeof window.syncPlan === 'function') {
+            window.syncPlan();
+        }
+
     } catch (e) {
         console.error("Paste-Aktion fehlgeschlagen:", e);
-        alert("Fehler beim Einfügen.");
+        alert("Fehler beim Einfügen in die Datenbank: " + (e.message || e));
+        // Bei Fehler Plan zurücksetzen/neu laden
+        if (typeof window.syncPlan === 'function') {
+            window.syncPlan();
+        }
     }
 }
 
-
     
-
-
-
-
-
-
 
 
 
