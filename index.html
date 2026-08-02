@@ -5001,7 +5001,7 @@ window.loadPlan = async function() {
         }
         if (configPromises.length > 0) await Promise.all(configPromises);
 
-        // 1. Kalender-Kontext über die neue Hilfsfunktion laden (inkl. A/B & U21-Slot)
+        // 1. Kalender-Kontext über die zentrale Hilfsfunktion laden
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
             : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
@@ -5024,7 +5024,7 @@ window.loadPlan = async function() {
         // --- AUTOMATISCHE U21-ERSTBUCHUNG ---
         if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
             let temporaerPlan = {};
-            for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "" };
+            for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "", lehrer: "" };
 
             if (masterData) {
                 masterData.forEach(row => {
@@ -5037,7 +5037,10 @@ window.loadPlan = async function() {
                     } else {
                         klasseName = roheKlasse;
                     }
-                    if (temporaerPlan[row.slot]) temporaerPlan[row.slot].klasse = klasseName;
+                    if (temporaerPlan[row.slot]) {
+                        temporaerPlan[row.slot].klasse = klasseName;
+                        temporaerPlan[row.slot].lehrer = row.lehrer ? row.lehrer.toString().trim() : "";
+                    }
                 });
             }
 
@@ -5052,18 +5055,22 @@ window.loadPlan = async function() {
                 if (klassenInLektion === 5) {
                     let u21SlotId = (lektion * 5) + targetSlotIdx;
                     let betroffeneKlasse = temporaerPlan[u21SlotId] ? temporaerPlan[u21SlotId].klasse : "";
-                    let timestamp = new Date().toISOString();
+                    let ursprungsLehrer = temporaerPlan[u21SlotId] ? temporaerPlan[u21SlotId].lehrer : "";
 
-                    neueEintraege.push({
+                    let neueBuchung = {
                         datum: dateVal,
                         slot: u21SlotId,
                         klasse: betroffeneKlasse,
                         halle: "U21",
-                        typ: "automatisch",
-                        verfasser: "System",
-                        kommentar: "Automatische U21 Buchung",
-                        details: timestamp
-                    });
+                        typ: "automatisch"
+                    };
+
+                    // Ursprünglichen Lehrer als Verfasser mitnehmen, damit die Box-Zugehörigkeit erhalten bleibt
+                    if (ursprungsLehrer !== "") {
+                        neueBuchung.verfasser = ursprungsLehrer;
+                    }
+
+                    neueEintraege.push(neueBuchung);
                 }
             }
 
@@ -5320,7 +5327,7 @@ window.syncPlan = async function() {
 
         const istUngeradeWoche = calContext.istUngeradeWoche;
 
-        // 2. Daten parallel aus Supabase laden
+        // 2. Master-Daten & Buchungen parallel aus Supabase laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
 
