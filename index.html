@@ -4984,7 +4984,13 @@ window.hideLoading = function() {
 
 
     
-window.loadPlan = async function() {
+window.loadPlan = async function(isExplicitUserAction = false) {
+    // Verhindern, dass beim initialen Laden der Seite automatisch geladen wird, 
+    // es sei denn, es ist eine explizite Benutzeraktion (z.B. Klick im Kalender/Navigation)
+    if (!window.initialLoadDone && !isExplicitUserAction) {
+        return;
+    }
+
     const dp = document.getElementById('datePicker');
     const container = document.getElementById('plan-container'); 
     
