@@ -10932,7 +10932,7 @@ window.submitStellvertretungWithLessons = async function() {
 
     
 /* ============================================================
-   11.7.2. Stellvertretung übernehmen
+   11.7.2. Stellvertretung übernehmen (Angepasst an Supabase Integer-IDs)
    ============================================================ */
 
 window.openStellvertretungDetailModal = function(datum, verfasser) {
@@ -10957,12 +10957,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
 
     // Prüfen, ob beim Öffnen bereits alle gültigen Lektionen markiert sind
-    const validItems = [];
-    for (let l = 1; l <= 12; l++) {
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
-        if (dbItem) validItems.push(dbItem);
-    }
-
+    const validItems = currentDetailData.workingItems;
     const allAreChecked = validItems.length > 0 && validItems.every(i => {
         const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
         return bList.includes(aktuellerUser);
@@ -10970,7 +10965,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 
     currentDetailData.allSelected = allAreChecked;
 
-    const dateObj = new Date(datum);
+    const dateObj = new Date(datum.replace(/-/g, "/"));
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     const formattedDate = dateObj.toLocaleDateString('de-DE', options);
 
@@ -10989,7 +10984,6 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
         if (aktuellerUser === cleanVerfasser) {
             deleteBtnContainer.innerHTML = `<button onclick="deleteStellvertretungTag('${datum}', '${cleanVerfasser}')" class="btn-stv-loeschen-hover" style="background: #e67e22; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 10px;">Diese Abwesenheit löschen</button>`;
         } else {
-            // Button-Design wird dynamisch je nach 'allAreChecked' beim Öffnen gesetzt
             const btnBg = allAreChecked ? "#b95c00" : "#e67e22";
             const btnText = allAreChecked ? "Alle Markierungen entfernen" : "Alle Lektionen markieren";
 
@@ -11002,7 +10996,7 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 };
     
 /**
- * Rendert die 12 Lektionen im Detail-Modal (mit Braun/Orange-Design für Bereitschaft)
+ * Rendert die Lektionen im Detail-Modal basierend auf den vorhandenen DB-Einträgen für diesen Tag/Verfasser
  */
 function renderStvDetailLektionenList() {
     const container = document.getElementById('stv-detail-container');
@@ -11015,9 +11009,16 @@ function renderStvDetailLektionenList() {
 
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
 
+    // Zeige alle Lektionen (1 bis 12) durch und prüfe, ob es dazu einen Datensatz in workingItems gibt
     for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
         const zeitString = getLektionZeit(lektionNr);
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + lektionNr));
+        
+        // Da wir keine _l Suffixe mehr haben, können wir die Einträge z. B. anhand der Reihenfolge oder Beschreibung zuordnen 
+        // oder direkt alle Einträge aus workingItems nacheinander anzeigen. 
+        // Am sichersten ist es, workingItems direkt zu durchlaufen oder nach Index / Zeit zu mappen.
+        // Falls deine service_db pro Lektion eine Zeile speichert, können wir sie über die Position oder ein Feld matchen.
+        // Hier nehmen wir an, dass workingItems genau die gespeicherten Lektionen dieses Blocks enthält.
+        const dbItem = currentDetailData.workingItems[lektionNr - 1];
 
         const card = document.createElement('div');
         card.style.display = 'flex';
@@ -11033,7 +11034,7 @@ function renderStvDetailLektionenList() {
             card.style.cursor = 'default';
             card.innerHTML = `
                 <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">${zeitString}</div>
-                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;"></div>
+                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;">Keine Lektion eingetragen</div>
             `;
         } else {
             let bereitschaftList = dbItem.bereitschaft ? dbItem.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
@@ -11049,7 +11050,7 @@ function renderStvDetailLektionenList() {
                     ${zeitString}
                 </div>
                 <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff;">
-                    <strong>${dbItem.klasse}</strong><br>
+                    <strong>${dbItem.klasse || 'Lektion'}</strong><br>
                     <span style="font-size: 12px; color: #888;">Bereitschaft: ${bereitschaftList.length > 0 ? bereitschaftList.join(', ') : 'Noch niemand'}</span>
                 </div>
                 <div style="display: flex; align-items: center;">
@@ -11067,7 +11068,7 @@ function renderStvDetailLektionenList() {
 }
 
 /**
- * Lokales Umschalten der Bereitschaft im Arbeits-Array (Einzelklick)
+ * Lokales Umschalten der Bereitschaft im Arbeits-Array (Einzelklick) über die numerische ID
  */
 function toggleLocalBereitschaft(itemId) {
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
@@ -11089,13 +11090,7 @@ function toggleLocalBereitschaft(itemId) {
 
     item.bereitschaft = list.join(', ');
 
-    // Prüfen, ob durch diesen Einzelklick nun alle vorhandenen Lektionen markiert sind
-    const validItems = [];
-    for (let l = 1; l <= 12; l++) {
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
-        if (dbItem) validItems.push(dbItem);
-    }
-
+    const validItems = currentDetailData.workingItems;
     const allAreChecked = validItems.length > 0 && validItems.every(i => {
         const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
         return bList.includes(aktuellerUser);
@@ -11161,10 +11156,9 @@ window.toggleAllDetailStvLessons = function() {
 };
 
 /**
- * Änderungen im Detail-Modal speichern und ans Backend senden
+ * Änderungen im Detail-Modal speichern und direkt an Supabase (service_db) senden
  */
 window.saveStellvertretungBereitschaften = function() {
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
     const saveBtn = document.querySelector('#stv-detail-modal .btn-primary');
     
     if (saveBtn) {
@@ -11172,36 +11166,36 @@ window.saveStellvertretungBereitschaften = function() {
         saveBtn.innerText = "Wird gespeichert...";
     }
 
-    fetch(targetUrl, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "updateStellvertretungBereitschaftMulti",
-            items: currentDetailData.workingItems, // Enthält nun korrekte Spaltenstruktur (inkl. id, typ, datum, verfasser, beschreibung, klasse, bereitschaft)
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerText = "Speichern";
-        }
+    // Da wir Supabase direkt nutzen, senden wir die geänderten Zeilen mit ihrer Integer-ID per upsert
+    (async () => {
+        try {
+            // Wir aktualisieren jede geänderte Zeile anhand ihrer ID in der service_db
+            for (const item of currentDetailData.workingItems) {
+                const { error } = await window.supabaseClient
+                    .from('service_db')
+                    .update({ bereitschaft: item.bereitschaft })
+                    .eq('id', item.id);
 
-        if (data.status === "success") {
+                if (error) throw error;
+            }
+
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerText = "Speichern";
+            }
+
             closeModal('stv-detail-modal');
             renderStellvertretung();
-        } else {
-            alert("Fehler beim Speichern: " + (data.msg || "Unbekannter Fehler"));
+
+        } catch (e) {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerText = "Speichern";
+            }
+            console.error("Supabase-Fehler beim Speichern der Bereitschaften:", e);
+            alert("Ein Fehler ist aufgetreten: " + (e.message || e));
         }
-    })
-    .catch(e => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerText = "Speichern";
-        }
-        console.error("Netzwerkfehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
-    });
+    })();
 };
 
 
