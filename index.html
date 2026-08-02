@@ -5739,25 +5739,33 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return;
     }
 
+    // Hilfsfunktion für das korrekte lokale Datum (verhindert UTC-Verschiebungen)
+    const getLocalIsoDate = (date = new Date()) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const rawHalle = (payload.halle || "").toString().toLowerCase().trim();
     const klasseVal = (payload.klasse || "").toString().toLowerCase().trim();
 
     const isZahlungsrunde = (rawHalle === "zahlungsrunde");
     const isApotheke = (rawHalle === "apotheke_bestellung");
     const isDefekt = (rawHalle === "defekt_meldung" || klasseVal === "defekt");
+    const isDefektBehoben = (rawHalle === "defekt_behoben");
     const isMaterial = (rawHalle === "material_wunsch");
     const isIdee = (rawHalle === "ideenbrett");
     const isApothekeMeldung = (rawHalle === "apotheke_meldung");
     const isStv = (rawHalle === "stellvertretung");
-    const isAusfall = (rawHalle === "ausfall"); // Nur bei explizitem Ausfall greifen lassen!
+    const isAusfall = (rawHalle === "ausfall"); 
     const isAbkleben = (rawHalle === "beendet" || rawHalle === "abgeklebt");
     const isOutdoor = rawHalle.includes("outdoor");
     const isBadi = rawHalle.includes("badi");
     
-    const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
+    const isSpecial = (isDefekt || isDefektBehoben || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
     const isFreieHalle = (isAusfall || isAbkleben || isOutdoor || isBadi);
 
-    // 🛑 WICHTIG: Wenn weder Special noch Freie Halle, wird keine News verschickt
     if (!isSpecial && !isFreieHalle) {
         console.log("ℹ️ Normale Hallen-Reservierung/-Änderung: Es wird keine News verschickt.");
         return;
@@ -5775,7 +5783,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         handelndeLP = (payload.verfasser || payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
     }
     
-    const stvDatum = payload.datum || payload.date || new Date().toISOString().split('T')[0];
+    // Lokales Datum erzwingen, falls keines übergeben wurde
+    const stvDatum = payload.datum || payload.date || getLocalIsoDate();
 
     // 2. ID-Logik
     let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
@@ -5793,7 +5802,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 3. Empfänger-Berechnung über window.lastPlanData (5er-Block)
+    // 3. Empfänger-Berechnung
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5801,7 +5810,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaenger = payload.kuerzel || ""; 
     } else if (isApotheke) {
         empfaenger = "chef"; 
-    } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
+    } else if (isDefekt || isDefektBehoben || isMaterial || isIdee || isApothekeMeldung || isStv) {
         empfaenger = "alle";
     } else {
         const currentSlot = parseInt(payload.slot, 10);
@@ -5850,6 +5859,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     } else if (isDefekt) {
         displayHeader = "DEFEKT";
         newsText = `NEUER DEFEKT: ${payloadText} (Gemeldet von: ${handelndeLP})`;
+    } else if (isDefektBehoben) {
+        displayHeader = "DEFEKT BEHOBEN";
+        newsText = payloadText;
     } else if (isMaterial) {
         displayHeader = "MATERIALWUNSCH";
         newsText = `MATERIALWUNSCH: ${payloadText} (Von: ${handelndeLP})`;
@@ -5913,20 +5925,20 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
 
-    // 5. Sicherer Speichervorgang in Supabase (news_db)
+    // 5. Speichern in Supabase (zeitstempel nutzt volles timestamptz, datum_event das lokale Datum)
     try {
         const newsData = {
             id: newsId,
             titel: displayHeader,
             zeitfenster: zeitfensterString,
-            datum_event: stvDatum,
+            datum_event: stvDatum, 
             slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
             tag_index: tagIndex !== -1 ? tagIndex : null,
             klasse: payload.klasse || "",
             verfasser: handelndeLP,
             empfaenger: empfaenger,
             text: newsText,
-            zeitstempel: new Date().toISOString(),
+            zeitstempel: new Date().toISOString(), // Voller timestamptz für den exakten Erstellungszeitpunkt
             gelesen: "",
             geloescht: "" 
         };
@@ -5954,7 +5966,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
 
         if (error) throw error;
-        console.log("🎯 News erfolgreich in Supabase gespeichert mit Empfängern:", empfaenger);
+        console.log("🎯 News erfolgreich in Supabase gespeichert mit lokalem Datum:", stvDatum);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
