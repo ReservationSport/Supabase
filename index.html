@@ -5494,7 +5494,6 @@ function updateNewsDot() {
    9.1. NEWS AUSLÖSEN
    ============================================================ */
 
-
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     if (!supabaseClient) {
         console.error("❌ Supabase Client fehlt für News-Speicherung.");
@@ -5531,12 +5530,12 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     
     const stvDatum = payload.date || payload.datum || new Date().toISOString().split('T')[0];
 
-    // 2. ID-Logik (entspricht deiner Spalte 'id')
+    // 2. ID-Logik
     let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
     if (isStv) {
         newsId = "STV_" + stvDatum + "_" + handelndeLP;
     } else if (isSpecial || isFreieHalle) {
-        newsId += "_" + Date.now(); // Verhindert Überschreibung, damit jede Aktion als eigene News ankommt
+        newsId += "_" + Date.now(); 
     }
 
     // Wochentag & Tag-Index ermitteln
@@ -5547,7 +5546,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 3. Empfänger-Berechnung
+    // 3. Empfänger-Berechnung direkt über window.lastPlanData (5er-Block)
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5558,57 +5557,62 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
         empfaenger = "alle";
     } else {
-        // Logik für freie Hallen & Standard-Slot-Änderungen: Parallelslots im 5er-Block filtern
         const currentSlot = parseInt(payload.slot, 10);
-        if (!isNaN(currentSlot) && currentSlot > 0) {
+        
+        if (!isNaN(currentSlot) && currentSlot > 0 && window.lastPlanData) {
             const rowIndex = Math.floor((currentSlot - 1) / 5);
             const rowStartSlot = (rowIndex * 5) + 1;
-            const targetSlots = [];
+
             for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
-                targetSlots.push(s.toString());
-            }
+                const slotData = window.lastPlanData[s];
+                if (!slotData) continue;
 
-            if (currentMasterData && Array.isArray(currentMasterData)) {
-                currentMasterData.forEach(row => {
-                    let sheetTag = row.wochentag ? row.wochentag.toString().trim().toLowerCase() : "";
-                    let sheetSlot = row.slot ? row.slot.toString().trim() : "";
-                    let lehrerKuerzel = row.verfasser || row.lehrer ? (row.verfasser || row.lehrer).toString().trim() : "";
+                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
+                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
+                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
+                }
 
-                    // Prüfen ob Tag, Slot im selben 5er-Block und ob es nicht der Verfasser selbst ist
-                    if (sheetTag === (zielTag || "").toLowerCase() && targetSlots.includes(sheetSlot) && lehrerKuerzel !== "") {
-                        if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel)) {
-                            gefundeneLehrer.push(lehrerKuerzel);
-                        }
+                lehrerKuerzel = lehrerKuerzel.toString().trim();
+
+                if (lehrerKuerzel !== "") {
+                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
+                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
                     }
-                });
+                }
             }
         }
 
-        // FALLBACK: Wenn keine anderen Lehrer im Block gefunden wurden, geht die Info an "alle" (bzw. leer lassen nach Wunsch, hier beibehalten)
         if (gefundeneLehrer.length === 0) {
-            empfaenger = isFreieHalle ? "" : "alle"; // Bei freien Hallen leer lassen, wenn niemand im Block ist
+            empfaenger = isFreieHalle ? "" : "alle";
         } else {
             empfaenger = gefundeneLehrer.join(",");
         }
     }
     
-    // 4. DYNAMISCHE TEXT-LOGIK
+    // 4. TITEL-, TEXT- UND ZEITFENSTER-LOGIK (Entspricht genau der Newszentrale)
+    let displayHeader = "";
     let newsText = "";
-    if (isAbkleben) {
-        newsText = `${handelndeLP} hat die Klasse ${payload.klasse} abgeklebt!`;
-    } else if (isOutdoor) {
-        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} "outdoor"!`;
-    } else if (isBadi) {
-        newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} in der "Badi"!`;
+    const payloadText = payload.text ? payload.text.toString() : "";
+    const kl = payload.klasse ? payload.klasse.toString() : "unbekannt";
+
+    if (isIdee) {
+        displayHeader = "Neue Idee";
+        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
+        newsText = `NEUE IDEE: [${kat}] ${payloadText}`;
     } else if (isDefekt) {
-        newsText = `NEUER DEFEKT: ${payload.text} (Gemeldet von: ${handelndeLP})`;
+        displayHeader = "DEFEKT";
+        newsText = `NEUER DEFEKT: ${payloadText} (Gemeldet von: ${handelndeLP})`;
     } else if (isMaterial) {
-        newsText = `MATERIALWUNSCH: ${payload.text} (Von: ${handelndeLP})`;
+        displayHeader = "MATERIALWUNSCH";
+        newsText = `MATERIALWUNSCH: ${payloadText} (Von: ${handelndeLP})`;
     } else if (isApotheke) {
-        newsText = `APOTHEKEN-BEDARF: ${payload.text} (Bestellt von: ${handelndeLP})`;
+        displayHeader = "APOTHEKEN-BESTELLUNG";
+        newsText = `APOTHEKEN-BEDARF: ${payloadText} (Bestellt von: ${handelndeLP})`;
     } else if (isApothekeMeldung) {
-        newsText = payload.text;
+        displayHeader = "Meldung";
+        newsText = payloadText;
     } else if (isStv) {
+        displayHeader = "STELLVERTRETUNG GESUCHT";
         let anzahlLektionen = payload.anzahlLektionen || payload.count || payload.lektionen;
         if (!anzahlLektionen && payload.slots && Array.isArray(payload.slots)) {
             anzahlLektionen = payload.slots.length;
@@ -5620,20 +5624,56 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
         newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${stvDatum} (${anzahlLektionen} Lektionen).`;
     } else if (isZahlungsrunde) {
+        displayHeader = "TEAMKASSE";
         newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
-    } else if (isIdee) {
-        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
-        newsText = `NEUE IDEE: [${kat}] ${payload.text}`;
+    } else if (isBadi) {
+        displayHeader = "Halle frei!";
+        newsText = `Die Klasse ${kl} ist in der Badi!`;
+    } else if (isOutdoor) {
+        displayHeader = "Halle frei!";
+        newsText = `Die Klasse ${kl} ist draussen!`;
+    } else if (isAbkleben) {
+        displayHeader = "Halle frei!";
+        newsText = `Die Klasse ${kl} wurde abgeklebt!`;
     } else if (isAusfall) {
-        newsText = `${handelndeLP} hat einen Ausfall für die Klasse ${payload.klasse} eingetragen!`;
+        displayHeader = "Halle frei!";
+        newsText = `Die Klasse ${kl} fällt aus!`;
     } else {
-        newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
+        displayHeader = "Info:";
+        newsText = "Änderung: " + kl + " -> " + (payload.halle || "");
+    }
+
+    // Zeitfenster-Berechnung (z.B. 04.08.2026 / 08:05-08:50)
+    const zeiten = [
+        "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
+        "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
+        "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
+        "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
+    ];
+
+    let formatiertesEventDatum = stvDatum;
+    if (formatiertesEventDatum.includes('-')) {
+        const parts = formatiertesEventDatum.split('-');
+        if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    let zeitfensterString = formatiertesEventDatum;
+    const slotNummer = parseInt(payload.slot, 10);
+    if (!isNaN(slotNummer) && slotNummer > 0) {
+        const rowIndex = Math.floor((slotNummer - 1) / 5);
+        const uhrzeit = zeiten[rowIndex] || "";
+        if (uhrzeit) {
+            const formatierteUhrzeit = uhrzeit.replace(/\s*-\s*/g, '-');
+            zeitfensterString = `${formatiertesEventDatum} / ${formatierteUhrzeit}`;
+        }
     }
 
     // 5. Sicherer Speichervorgang
     try {
         const newsData = {
             id: newsId,
+            titel: displayHeader,
+            zeitfenster: zeitfensterString,
             datum_event: stvDatum,
             slot_index: payload.slot ? parseInt(payload.slot, 10) : null,
             tag_index: tagIndex !== -1 ? tagIndex : null,
@@ -5669,7 +5709,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
 
         if (error) throw error;
-        console.log("🎯 News erfolgreich in Supabase gespeichert:", newsId);
+        console.log("🎯 News erfolgreich in Supabase gespeichert mit Empfängern:", empfaenger);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
@@ -5677,18 +5717,15 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 };
 
     
+/* ============================================================
+   9.2. NEWS ANZEIGEN
+   ============================================================ */
+
 window.showNews = function() { 
     const sidebar = document.getElementById('newsSidebar'); 
     const newsContainer = document.getElementById('newsContent'); 
     const backdrop = document.getElementById('newsSidebarBackdrop'); 
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : ""; 
-
-    const zeiten = [
-        "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
-        "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
-        "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
-        "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
-    ]; 
 
     if (sidebar) sidebar.style.display = 'flex'; 
     if (backdrop) backdrop.style.display = 'block'; 
@@ -5715,21 +5752,7 @@ window.showNews = function() {
         const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim()); 
         const istGelesen = gelesenListe.includes(aktuellerUser); 
         
-        // Slot-Berechnung über slot_index (5 Slots pro Zeitfenster)
-        const slotNummer = parseInt((news.slot_index !== undefined && news.slot_index !== null) ? news.slot_index : news.slot, 10); 
-        const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0; 
-        const uhrzeit = zeiten[rowIndex] || ""; 
-
-        // 1. Event-Datum (für die Zeile direkt unter dem Titel)
-        let rawEventDatum = news.datum_event ? news.datum_event.toString() : (news.datum ? news.datum.toString() : ''); 
-        if (rawEventDatum.includes('T')) rawEventDatum = rawEventDatum.split('T')[0];
-        let formatiertesEventDatum = rawEventDatum; 
-        if (formatiertesEventDatum.includes('-')) { 
-            const parts = formatiertesEventDatum.split('-'); 
-            if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
-        } 
-
-        // 2. Erstellungsdatum / Zeitstempel (für unten links)
+        // 1. Erstellungsdatum / Zeitstempel (für unten links)
         let rawZeitstempel = news.zeitstempel ? news.zeitstempel.toString() : ''; 
         if (rawZeitstempel.includes('T')) rawZeitstempel = rawZeitstempel.split('T')[0];
         let formatiertesErstellungsDatum = rawZeitstempel; 
@@ -5741,84 +5764,20 @@ window.showNews = function() {
         const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : ''; 
         const displayVerfasser = safeVerfasserInput.toLowerCase(); 
 
-        const newsTextLower = (news.text !== null && news.text !== undefined) ? news.text.toString().toLowerCase() : ""; 
-        const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase() : ""; 
-        const kl = (news.klasse !== null && news.klasse !== undefined) ? news.klasse.toString() : 'unbekannt'; 
-        
-        let displayHeader = ""; 
-        let displayMain = ""; 
+        // 2. Direkte Daten-Übernahme aus der news_db
+        const displayHeader = news.titel || "Info:";
+        const eventInfoZeile = news.zeitfenster || "";
+        const displayMain = news.text || "";
 
-        const istStvCard = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung"); 
-        const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : ""; 
+        // Erkennung für Stellvertretungs-Karten
+        const titelUpper = (news.titel || "").toUpperCase();
+        const textUpper = (news.text || "").toUpperCase();
+        const idStr = (news.id || "").toUpperCase();
+        const istStvCard = titelUpper.includes("STELLVERTRETUNG") || textUpper.includes("ABWESENHEIT") || idStr.startsWith("STV_");
 
-        if (hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:")) { 
-            displayHeader = "Neue Idee:"; 
-            let saubererText = safeNewsText.replace(/^NEUE IDEE:\s*/i, '').replace(/^Neue Idee:\s*/i, '').trim(); 
-            const matchKat = saubererText.match(/^\[(.*?)\]\s*(.*)$/); 
-            
-            if (matchKat && matchKat[1] && matchKat[2]) { 
-                displayHeader = `IDEE FÜR "${matchKat[1].toUpperCase()}"`; 
-                displayMain = matchKat[2]; 
-            } else { 
-                displayMain = saubererText; 
-            } 
-        } 
-        else if (newsTextLower.includes("defekt behoben:")) { 
-            displayHeader = "DEFEKT BEHOBEN"; 
-            displayMain = safeNewsText.replace(/Defekt behoben: /i, '').replace(/NEUER DEFEKT: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim(); 
-        } else if (newsTextLower.includes("defekt")) { 
-            displayHeader = "DEFEKT"; 
-            displayMain = safeNewsText.replace(/NEUER DEFEKT: /i, '').replace(/Defekt behoben: /i, '').replace(/\(Gemeldet von: .*\)/i, '').replace(/\(Behoben durch: .*\)/i, '').trim(); 
-        } 
-        else if (hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch")) { 
-            if (newsTextLower.includes("erledigt")) { 
-                displayHeader = "MATERIALWUNSCH ERLEDIGT"; 
-                displayMain = safeNewsText.replace(/Materialwunsch erledigt: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/NEUER MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim(); 
-            } else { 
-                displayHeader = "MATERIALWUNSCH"; 
-                displayMain = safeNewsText.replace(/NEUER MATERIALWUNSCH: /i, '').replace(/MATERIALWUNSCH: /i, '').replace(/\(Von: .*\)/i, '').trim(); 
-            } 
-        } 
-        else if (hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken-bedarf")) { 
-            displayHeader = "APOTHEKEN-BESTELLUNG"; 
-            displayMain = safeNewsText.replace(/APOTHEKEN-BEDARF:\s*/i, '').replace(/\(Bestellt von: .*\)/i, '').trim(); 
-        } 
-        else if (hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde")) { 
-            displayHeader = "TEAMKASSE"; 
-            displayMain = safeNewsText; 
-        } 
-        else if (istStvCard) { 
-            displayHeader = "STELLVERTRETUNG GESUCHT"; 
-            const matchLek = safeNewsText.match(/\((\d+\s*Lektionen)\)/i); 
-            displayMain = (matchLek && matchLek[1]) ? matchLek[1] : safeNewsText; 
-        } 
-        else if (hallenTypLower.includes("badi") || newsTextLower.includes("badi")) { 
-            displayHeader = "Halle frei!"; 
-            displayMain = `Die Klasse ${kl} ist in der Badi!`; 
-        } 
-        else if (hallenTypLower.includes("outdoor") || newsTextLower.includes("outdoor")) { 
-            displayHeader = "Halle frei!"; 
-            displayMain = `Die Klasse ${kl} ist draussen!`; 
-        } 
-        else if (hallenTypLower.includes("beendet") || hallenTypLower.includes("abgeklebt") || newsTextLower.includes("abgeklebt")) { 
-            displayHeader = "Halle frei!"; 
-            displayMain = `Die Klasse ${kl} wurde abgeklebt!`; 
-        } 
-        else if (hallenTypLower.includes("ausfall") || newsTextLower.includes("ausfall")) { 
-            displayHeader = "Halle frei!"; 
-            displayMain = `Die Klasse ${kl} fällt aus!`; 
-        } 
-        else { 
-            displayHeader = "Info:"; 
-            displayMain = safeNewsText; 
-        } 
-        
         const card = document.createElement('div'); 
         card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`; 
         const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : ''; 
-
-        const formatierteUhrzeit = uhrzeit.replace(/\s*-\s*/g, '-');
-        const eventInfoZeile = uhrzeit ? `${formatiertesEventDatum} / ${formatierteUhrzeit}` : formatiertesEventDatum;
 
         card.innerHTML = ` 
             <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;"> 
