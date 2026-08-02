@@ -8784,7 +8784,7 @@ window.openNewMeldungModal = function() {
     }, 100);
 };
 
-// 3. Speichert die neue Meldung direkt in Supabase (service_db & news_db)
+// 3. Speichert die neue Meldung direkt in Supabase (service_db mit typ 'meldung' und numerischer ID)
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
@@ -8804,15 +8804,15 @@ window.saveMeldung = async function() {
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
-        const meldungId = "M-" + Date.now();
+        const meldungId = Date.now(); // Nur eine reine Zahl als ID
         const datumStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD für saubere Sortierung
 
-        // In die zentrale service_db speichern (typ: 'defekt')
+        // In die zentrale service_db speichern (typ: 'meldung' und id als Zahl)
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
                 id: meldungId,
-                typ: 'defekt',
+                typ: 'meldung',
                 beschreibung: text,
                 verfasser: userKuerzelVal,
                 datum: datumStr,
@@ -8920,7 +8920,7 @@ window.markAsResolved = async function(id, btnElement) {
 // Alias für eventuelle Altaufrufe
 window.markResolved = window.markAsResolved;
 
-// 5. Lädt die offene Liste direkt aus der service_db
+// 5. Lädt die offene Liste direkt aus der service_db ( filtert nach typ 'meldung' )
 window.renderMeldungen = async function() {
     const container = document.getElementById('meldungen-container');
     if (!container) return;
@@ -8937,7 +8937,7 @@ window.renderMeldungen = async function() {
         const { data: meldungen, error } = await window.supabaseClient
             .from('service_db')
             .select('*')
-            .eq('typ', 'defekt')
+            .eq('typ', 'meldung') // Hier wird gezielt nach typ 'meldung' gefiltert
             .eq('status', 'offen') // Nur offene anzeigen
             .order('created_at', { ascending: false });
 
@@ -8967,7 +8967,7 @@ window.renderMeldungen = async function() {
                         <strong>${m.beschreibung}</strong>
                         <span class="meldung-meta">${m.verfasser} | ${formattedDate}</span>
                     </div>
-                    <button class="btn-erledigt" onclick="markAsResolved('${m.id}', this)" title="Erledigt">
+                    <button class="btn-erledigt" onclick="markAsResolved(${m.id}, this)" title="Erledigt">
                         <span class="material-symbols-outlined">check</span>
                     </button>
                 </div>
