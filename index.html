@@ -616,7 +616,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 25px 15px 20px; /* Rechts mehr Puffer (25px), damit der Button nicht am Rand klebt */
+    padding: 20px 25px 15px 20px;
     border-bottom: 1px solid #222;
     flex-shrink: 0;
     box-sizing: border-box;
@@ -655,7 +655,64 @@ body {
     transition: all 0.3s ease;
 }
 
-/* 📥 UNGELESEN (news-unread) - Dein übliches Orange mit optimal lesbaren Textfarben */
+.news-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 6px; 
+    font-size: 0.8em; 
+}
+
+.status-icon { 
+    font-size: 0.9em; 
+    text-transform: uppercase; 
+    letter-spacing: 0.5px; 
+}
+
+.news-text { 
+    margin: 6px 0; 
+    line-height: 1.4; 
+}
+
+/* Spezifische Element-Stile */
+.news-title { 
+    font-weight: bold; 
+    font-size: 0.9rem; 
+    color: #ffffff; 
+}
+
+.news-time { 
+    font-weight: 300; 
+    font-size: 0.8rem; 
+    color: #ffffff; 
+    margin-top: 2px; 
+}
+
+.news-body { 
+    font-style: italic; 
+    font-size: 0.95em; 
+    margin-top: 4px; 
+    color: #ffffff; 
+}
+
+.news-footer { 
+    font-size: 0.75rem; 
+    color: #ffcc80; 
+    border-top: 1px solid #333; 
+    padding-top: 5px; 
+    display: flex; 
+    justify-content: space-between; 
+}
+
+.news-footer span {
+    color: #ffcc80 !important;
+}
+
+.news-footer span:last-child {
+    font-weight: bold;
+}
+
+/* 📥 UNGELESEN (news-unread) */
 .news-item.news-unread {
     border-left: 4px solid #ff9800;
     background: rgba(255, 152, 0, 0.18);
@@ -665,27 +722,18 @@ body {
     font-weight: bold; 
 }
 .news-item.news-unread .material-symbols-outlined {
-    color: #ffb74d !important; /* Mülleimer im hellen Orange gut erkennbar */
-}
-.news-item.news-unread .news-text {
-    color: #ffffff; 
-}
-.news-item.news-unread .news-text div {
-    color: #ffffff !important; /* Sämtliche Zeilen im Textblock in reinem Weiß wie der Titel */
-}
-.news-item.news-unread div:last-child {
-    color: #ffcc80 !important; /* Datum & Verfasser im Footer */
+    color: #ffb74d !important;
 }
 
-/* ⚪ GELESEN (news-gelesen) - Die graue Optik */
+/* ⚪ GELESEN (news-gelesen) */
 .news-item.news-gelesen {
     background: #151515 !important;
     border-left: 4px solid #444 !important;
     opacity: 0.7;
 }
-.news-item.news-gelesen .status-icon { color: #888; font-weight: normal; }
-.news-item.news-gelesen .news-text div {
-    color: #ffffff !important; /* Auch bei gelesenen News den Text weiß halten */
+.news-item.news-gelesen .status-icon { 
+    color: #888; 
+    font-weight: normal; 
 }
 
 /* Hover-Effekt */
@@ -693,11 +741,6 @@ body {
     border-color: #555;
     background: #222; 
 }
-
-.news-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.8em; }
-.status-icon { font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; }
-.news-text { margin: 6px 0; font-size: 0.95em; color: #ffffff; line-height: 1.4; }
-.news-text div { color: #ffffff; }
     
 
 
