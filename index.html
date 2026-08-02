@@ -8904,11 +8904,11 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Gleichzeitig den News-Eintrag erstellen (mit 'verfasser' und 'datum')
+        // 2. Gleichzeitig den News-Eintrag erstellen (mit 'datum_event' und 'verfasser')
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
-                datum: datumDateOnly,
+                datum_event: datumDateOnly,
                 slot: "0",
                 klasse: "Defekt",
                 halle: "defekt_meldung",
