@@ -4989,6 +4989,14 @@ window.loadPlan = async function() {
     }
 
     try {
+        // Sperrzeiten direkt als Erstes prüfen
+        const sperrzeitenRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        if (!sperrzeitenRes.error && sperrzeitenRes.data && sperrzeitenRes.data.length > 0) {
+            const grund = sperrzeitenRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${grund}</div>`;
+            return;
+        }
+
         // Hallen- und Material-Konfigurationen parallel laden
         const configPromises = [];
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
@@ -5039,7 +5047,6 @@ window.loadPlan = async function() {
                         klasseName = roheKlasse;
                     }
 
-                    // Wenn Klasse leer aufgelöst wird, muss auch der Lehrer leer sein!
                     if (klasseName === "") {
                         lehrerName = "";
                     }
@@ -5101,7 +5108,7 @@ window.loadPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen (mit robuster A/B-Wochen Logik)
+        // 4. Master-Daten eintragen
         if (masterData) {
             masterData.forEach(row => {
                 if (plan[row.slot]) {
@@ -5115,7 +5122,6 @@ window.loadPlan = async function() {
                         }
                     }
 
-                    // Wenn Klasse durch A/B-Aufteilung leer ist, bleibt die Box komplett frei
                     if (roheKlasse === "") {
                         plan[row.slot].klasse = "";
                         plan[row.slot].lehrer = "";
@@ -5331,16 +5337,27 @@ window.syncPlan = async function() {
 
         const dateObj = new Date(dateVal.replace(/-/g, "/"));
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        
+        if (dateObj.getDay() === 0 || dateObj.getDay() === 6) return;
+
+        // Sperrzeiten beim Sync prüfen
+        const sperrzeitenRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        if (!sperrzeitenRes.error && sperrzeitenRes.data && sperrzeitenRes.data.length > 0) {
+            const grund = sperrzeitenRes.data.map(s => s.grund).filter(Boolean).join(" | ");
+            container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${grund}</div>`;
+            return;
+        }
+
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        // 1. Kalender-Kontext über die zentrale Hilfsfunktion laden
+        // 1. Kalender-Kontext laden
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
             : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
 
         const istUngeradeWoche = calContext.istUngeradeWoche;
 
-        // 2. Master-Daten & Buchungen parallel aus Supabase laden
+        // 2. Master-Daten & Buchungen parallel laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
 
@@ -5361,7 +5378,7 @@ window.syncPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen (mit robuster A/B-Wochen Logik)
+        // 4. Master-Daten eintragen
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
                 let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
@@ -5374,7 +5391,6 @@ window.syncPlan = async function() {
                     }
                 }
 
-                // Wenn Klasse durch A/B-Aufteilung leer ist, bleibt die Box komplett frei
                 if (roheKlasse === "") {
                     newPlan[row.slot].klasse = "";
                     newPlan[row.slot].lehrer = "";
