@@ -8583,176 +8583,7 @@ window.toggleCategory = function(headerElement, event) {
 };
 
     
-/* ============================================================
-   11.9. Lektion hinzufügen (Modus-geschützt)
-   ============================================================ */
-
-window.startAddMode = function() {
-    const extraMenu = document.getElementById('extra-menu');
-    if (extraMenu) extraMenu.style.display = 'none';
-    
-    // MODUS STARTEN: Sync pausieren
-    window.currentInteractionMode = 'HINZUFUEGEN';
-    window.addMode = { date: document.getElementById('datePicker')?.value || "" };
-    
-    document.body.classList.add('move-mode-active');
-    
-    // Panel oben anzeigen
-    const panel = document.createElement('div');
-    panel.id = 'move-panel-ui'; 
-    panel.className = 'move-panel';
-    panel.innerHTML = `
-        <span>Wähle ein freies Feld, um eine Lektion hinzuzufügen...</span>
-        <button onclick="cancelAddMode()" class="btn-cancel">Abbrechen</button>
-    `;
-    document.body.appendChild(panel);
-
-    const container = document.getElementById('plan-container');
-    if (container) {
-        container.classList.add('move-mode-active');
-
-        // Event-Delegation am Container
-        container.onclick = function(e) {
-            if (!window.addMode) return;
-            
-            const box = e.target.closest('.box.empty');
-            if (box && !box.classList.contains('header-row')) {
-                showInlineInput(box);
-            }
-        };
-    }
-
-    // Optisches Highlight
-    document.querySelectorAll('.box.empty:not(.header-row)').forEach(box => {
-        box.classList.add('is-selectable', 'move-mode-highlight');
-    });
-};
-
-window.showInlineInput = function(box) {
-    const existing = document.getElementById('inline-input-panel');
-    if (existing) existing.remove();
-
-    const panel = document.createElement('div');
-    panel.id = 'inline-input-panel';
-    panel.className = 'inline-input-panel';
-    
-    panel.innerHTML = `
-        <div class="inline-content">
-            <div style="margin-bottom: 15px; font-weight: bold; text-align: center;">Klasse hinzufügen</div>
-            <input type="text" id="inline-klasse-name" placeholder="Klasse eingeben..." autofocus>
-            <div class="inline-input-actions">
-                <button onclick="cancelAddMode()" class="inline-input-btn-cancel">Abbrechen</button>
-                <button onclick="confirmInlineAdd(${box.dataset.slot})" class="inline-input-btn-save">OK</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(panel);
-
-    panel.querySelector('#inline-klasse-name').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') confirmInlineAdd(box.dataset.slot);
-    });
-
-    setTimeout(() => {
-        const input = document.getElementById('inline-klasse-name');
-        if (input) input.focus();
-    }, 50);
-};
-
-window.confirmInlineAdd = async function(targetSlot) {
-    const nameInput = document.getElementById('inline-klasse-name');
-    const name = nameInput ? nameInput.value.trim() : "";
-    if (!name) return alert("Bitte Namen eingeben!");
-
-    // Panel entfernen
-    document.getElementById('inline-input-panel')?.remove();
-    
-    // Lade-Overlay starten
-    if (typeof showLoading === 'function') showLoading('saving');
-
-    try {
-        const dp = document.getElementById('datePicker');
-        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
-
-        // Supabase Upsert für den neuen Slot (auf buchungen_db umgestellt)
-        const { error } = await supabaseClient
-            .from('buchungen_db')
-            .upsert({
-                date: dateVal,
-                slot: parseInt(targetSlot),
-                klasse: name,
-                halle: "", 
-                material: "", 
-                kommentar: "", 
-                details: "",
-                typ: "Zusatz",
-                verfasser: userKuerzel || ""
-            }, { onConflict: 'date,slot' });
-
-        if (error) throw error;
-
-        // 1. UI-Update für den Slot
-        const box = document.querySelector(`[data-slot="${targetSlot}"]`);
-        if (box) {
-            box.classList.remove('empty', 'not-mine');
-            box.classList.add('is-mine');
-            box.style.cursor = 'pointer';
-            box.innerHTML = `
-                <div class="klasse-label">${name}</div>
-                <div class="lehrer-info">${userKuerzel || ""}</div>
-                <div class="halle-label"></div>
-            `;
-            if (typeof setBoxClick === 'function') {
-                setBoxClick(box, name, targetSlot, true);
-            }
-        }
-
-        // 2. Modus beenden
-        cancelAddMode(); 
-        
-    } catch (err) {
-        console.error("Fehler beim Hinzufügen (Supabase):", err);
-        alert("Fehler beim Speichern der Lektion.");
-    } finally {
-        if (typeof hideLoading === 'function') hideLoading();
-    }
-};
-
-window.cancelAddMode = function() {
-    console.log("Add-Mode wird sauber beendet...");
-
-    // 1. Modus und Sperre zurücksetzen
-    window.addMode = null;
-    window.currentInteractionMode = null; 
-    
-    // 2. UI-Panels entfernen
-    document.getElementById('move-panel-ui')?.remove();
-    document.getElementById('inline-input-panel')?.remove();
-    document.getElementById('move-overlay')?.remove();
-    
-    // 3. CSS-Klassen & Container-Cleanup
-    document.body.classList.remove('move-mode-active');
-    const container = document.getElementById('plan-container');
-    if (container) {
-        container.classList.remove('move-mode-active');
-        container.onclick = null;
-    }
-    
-    // 4. Boxen resetten
-    document.querySelectorAll('.box').forEach(box => {
-        box.classList.remove('is-selectable', 'move-mode-highlight');
-    });
-
-    // 5. Sync erzwingen, um aktuelle Daten zu laden
-    if (typeof window.syncPlan === 'function') {
-        window.syncPlan(); 
-    }
-};
-
-
-    
-
-/* ============================================================
+   /* ============================================================
    11.1. MELDUNGEN (DEFEKTE)
    ============================================================ */
 
@@ -11849,9 +11680,176 @@ window.renderLinks = function() {
 };
 
 
+/* ============================================================
+   11.10. Lektion hinzufügen (Supabase-Version)
+   ============================================================ */
+
+window.startAddMode = function() {
+    const extraMenu = document.getElementById('extra-menu');
+    if (extraMenu) extraMenu.style.display = 'none';
+    
+    // MODUS STARTEN: Sync pausieren
+    window.currentInteractionMode = 'HINZUFUEGEN';
+    window.addMode = { date: document.getElementById('datePicker')?.value || "" };
+    
+    document.body.classList.add('move-mode-active');
+    
+    // Panel oben anzeigen
+    const panel = document.createElement('div');
+    panel.id = 'move-panel-ui'; 
+    panel.className = 'move-panel';
+    panel.innerHTML = `
+        <span>Wähle ein freies Feld, um eine Lektion hinzuzufügen...</span>
+        <button onclick="cancelAddMode()" class="btn-cancel">Abbrechen</button>
+    `;
+    document.body.appendChild(panel);
+
+    const container = document.getElementById('plan-container');
+    if (container) {
+        container.classList.add('move-mode-active');
+
+        // Event-Delegation am Container
+        container.onclick = function(e) {
+            if (!window.addMode) return;
+            
+            const box = e.target.closest('.box.empty');
+            if (box && !box.classList.contains('header-row')) {
+                showInlineInput(box);
+            }
+        };
+    }
+
+    // Optisches Highlight
+    document.querySelectorAll('.box.empty:not(.header-row)').forEach(box => {
+        box.classList.add('is-selectable', 'move-mode-highlight');
+    });
+};
+
+window.showInlineInput = function(box) {
+    const existing = document.getElementById('inline-input-panel');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'inline-input-panel';
+    panel.className = 'inline-input-panel';
+    
+    panel.innerHTML = `
+        <div class="inline-content">
+            <div style="margin-bottom: 15px; font-weight: bold; text-align: center;">Klasse hinzufügen</div>
+            <input type="text" id="inline-klasse-name" placeholder="Klasse eingeben..." autofocus>
+            <div class="inline-input-actions">
+                <button onclick="cancelAddMode()" class="inline-input-btn-cancel">Abbrechen</button>
+                <button onclick="confirmInlineAdd(${box.dataset.slot})" class="inline-input-btn-save">OK</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    panel.querySelector('#inline-klasse-name').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') confirmInlineAdd(box.dataset.slot);
+    });
+
+    setTimeout(() => {
+        const input = document.getElementById('inline-klasse-name');
+        if (input) input.focus();
+    }, 50);
+};
+
+window.confirmInlineAdd = async function(targetSlot) {
+    const nameInput = document.getElementById('inline-klasse-name');
+    const name = nameInput ? nameInput.value.trim() : "";
+    if (!name) return alert("Bitte Namen eingeben!");
+
+    // Panel entfernen
+    document.getElementById('inline-input-panel')?.remove();
+    
+    // Lade-Overlay starten
+    if (typeof showLoading === 'function') showLoading('saving');
+
+    try {
+        const dp = document.getElementById('datePicker');
+        const dateVal = dp ? dp.value : new Date().toISOString().split('T')[0];
+        const aktuellesKuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel : "";
+
+        // Supabase Upsert für den neuen Slot (angepasst an 'datum' und 'lehrer')
+        const { error } = await window.supabaseClient
+            .from('buchungen_db')
+            .upsert({
+                datum: dateVal,
+                slot: parseInt(targetSlot),
+                klasse: name,
+                halle: "", 
+                material: "", 
+                kommentar: "", 
+                details: "",
+                typ: "Zusatz",
+                lehrer: aktuellesKuerzel
+            }, { onConflict: 'datum,slot' });
+
+        if (error) throw error;
+
+        // 1. UI-Update für den Slot
+        const box = document.querySelector(`[data-slot="${targetSlot}"]`);
+        if (box) {
+            box.classList.remove('empty', 'not-mine');
+            box.classList.add('is-mine');
+            box.style.cursor = 'pointer';
+            box.innerHTML = `
+                <div class="klasse-label">${name}</div>
+                <div class="lehrer-info">${aktuellesKuerzel}</div>
+                <div class="halle-label"></div>
+            `;
+            if (typeof setBoxClick === 'function') {
+                setBoxClick(box, name, targetSlot, true);
+            }
+        }
+
+        // 2. Modus beenden
+        cancelAddMode(); 
+        
+    } catch (err) {
+        console.error("Fehler beim Hinzufügen (Supabase):", err);
+        alert("Fehler beim Speichern der Lektion: " + (err.message || err));
+    } finally {
+        if (typeof hideLoading === 'function') hideLoading();
+    }
+};
+
+window.cancelAddMode = function() {
+    console.log("Add-Mode wird sauber beendet...");
+
+    // 1. Modus und Sperre zurücksetzen
+    window.addMode = null;
+    window.currentInteractionMode = null; 
+    
+    // 2. UI-Panels entfernen
+    document.getElementById('move-panel-ui')?.remove();
+    document.getElementById('inline-input-panel')?.remove();
+    document.getElementById('move-overlay')?.remove();
+    
+    // 3. CSS-Klassen & Container-Cleanup
+    document.body.classList.remove('move-mode-active');
+    const container = document.getElementById('plan-container');
+    if (container) {
+        container.classList.remove('move-mode-active');
+        container.onclick = null;
+    }
+    
+    // 4. Boxen resetten
+    document.querySelectorAll('.box').forEach(box => {
+        box.classList.remove('is-selectable', 'move-mode-highlight');
+    });
+
+    // 5. Sync erzwingen, um aktuelle Daten zu laden
+    if (typeof window.syncPlan === 'function') {
+        window.syncPlan(); 
+    }
+};
+    
 
 /* ============================================================
-   11.10. PASTE-MODE (Supabase-Version)
+   12. PASTE-MODE
    ============================================================ */
 
 window.createPasteOverlay = function(halleName) {
