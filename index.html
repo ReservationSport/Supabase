@@ -11912,7 +11912,7 @@ window.cancelPasteMode = function() {
     document.querySelectorAll('.box').forEach(box => {
         box.classList.remove('paste-mode-highlight', 'is-being-copied');
         
-        // Klick-Events wiederherstellen (analog zum Verschiebe-Modus)
+        // Klick-Events wiederherstellen
         const slot = box.getAttribute('data-slot');
         if (slot) {
             const klasse = box.querySelector('.klasse-label')?.innerText || "";
@@ -11923,14 +11923,13 @@ window.cancelPasteMode = function() {
         }
     });
 
-    // --- SYNCHRONISATION NACH ABBRUCH ---
     console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
     if (typeof window.syncPlan === 'function') {
         window.syncPlan(); 
     }
 };
 
-// --- HILFSFUNKTION FÜR PASTE (Supabase Integration) ---
+// --- HILFSFUNKTION FÜR PASTE (Supabase & News-Integration) ---
 async function performPaste(targetSlot, data) {
     const dp = document.getElementById('datePicker');
     const box = document.querySelector(`[data-slot="${targetSlot}"]`);
@@ -11943,7 +11942,7 @@ async function performPaste(targetSlot, data) {
         return;
     }
 
-    // 1. Sicherheit: Kollisionsprüfung
+    // 1. Sicherheit: Kollisionsprüfung (Ausfall und Outdoor/Badi verhalten sich flexibel)
     if (data.halle !== "Ausfall") {
         const rowIndex = Math.floor((targetSlot - 1) / 5);
         const startSlot = (rowIndex * 5) + 1;
@@ -11971,7 +11970,7 @@ async function performPaste(targetSlot, data) {
         }
     }
 
-    // 2. Daten für den Ziel-Slot ermitteln (Klasse beibehalten falls vorhanden)
+    // 2. Daten für den Ziel-Slot ermitteln
     const zielSlotData = window.lastPlanData && window.lastPlanData[targetSlot] ? window.lastPlanData[targetSlot] : {};
     const klasseImZiel = zielSlotData.klasse || data.klasse || "";
     const isAusfall = (data.halle === "Ausfall");
@@ -12014,7 +12013,7 @@ async function performPaste(targetSlot, data) {
             }
         }
 
-        // Direkt in die Supabase-Tabelle `buchungen_db` schreiben mit Spalte 'verfasser'
+        // 3. In Supabase-Tabelle `buchungen_db` schreiben
         const { error: upsertError } = await window.supabaseClient
             .from('buchungen_db')
             .upsert([
@@ -12027,14 +12026,28 @@ async function performPaste(targetSlot, data) {
                     typ: data.typ || ""
                 }
             ], {
-                onConflict: 'datum,slot' // Setzt voraus, dass der Unique Constraint auf datum,slot existiert
+                onConflict: 'datum,slot'
             });
 
         if (upsertError) throw upsertError;
 
-        console.log("Paste erfolgreich in buchungen_db gespeichert!");
+        // 4. NEWS-SYSTEMATIK AUSLÖSEN (Greift nun für alle Typen wie Outdoor, Badi, Ausfall, etc.)
+        if (typeof window.sendeNews === 'function') {
+            window.sendeNews({
+                kuerzel: aktuellesKuerzel,
+                halle: data.halle,
+                klasse: klasseImZiel,
+                datum: aktuellesDatum,
+                slot: targetSlot,
+                typ: data.typ || ""
+            });
+        } else if (typeof window.createNewsEntry === 'function') {
+            window.createNewsEntry(aktuellesKuerzel, data.halle, klasseImZiel, aktuellesDatum, targetSlot);
+        }
+
+        console.log("Paste & News erfolgreich verarbeitet!");
         
-        // Nach erfolgreichem Speichern den Plan synchronisieren / neu laden
+        // Nach erfolgreichem Speichern den Plan synchronisieren
         if (typeof window.syncPlan === 'function') {
             window.syncPlan();
         }
@@ -12043,7 +12056,6 @@ async function performPaste(targetSlot, data) {
         console.error("Paste-Aktion fehlgeschlagen:", e);
         alert("Fehler beim Einfügen in die Datenbank: " + (e.message || e));
         
-        // Bei Fehler Plan zurücksetzen/neu laden
         if (typeof window.syncPlan === 'function') {
             window.syncPlan();
         }
