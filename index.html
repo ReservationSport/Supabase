@@ -5030,16 +5030,23 @@ window.loadPlan = async function() {
                 masterData.forEach(row => {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                     let klasseName = "";
+                    let lehrerName = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    if (/\s+\/\s+|\s+\/|\/\s+/.test(roheKlasse)) {
+                    if (roheKlasse.includes("/")) {
                         let teile = roheKlasse.split("/").map(s => s.trim());
                         klasseName = istUngeradeWoche ? (teile[0] || "") : (teile[1] || "");
                     } else {
                         klasseName = roheKlasse;
                     }
+
+                    // Wenn Klasse leer aufgelöst wird, muss auch der Lehrer leer sein!
+                    if (klasseName === "") {
+                        lehrerName = "";
+                    }
+
                     if (temporaerPlan[row.slot]) {
                         temporaerPlan[row.slot].klasse = klasseName;
-                        temporaerPlan[row.slot].lehrer = row.lehrer ? row.lehrer.toString().trim() : "";
+                        temporaerPlan[row.slot].lehrer = lehrerName;
                     }
                 });
             }
@@ -5065,7 +5072,6 @@ window.loadPlan = async function() {
                         typ: "automatisch"
                     };
 
-                    // Ursprünglichen Lehrer als Verfasser mitnehmen, damit die Box-Zugehörigkeit erhalten bleibt
                     if (ursprungsLehrer !== "") {
                         neueBuchung.verfasser = ursprungsLehrer;
                     }
@@ -5095,21 +5101,28 @@ window.loadPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen (mit A/B-Wochen Logik)
+        // 4. Master-Daten eintragen (mit robuster A/B-Wochen Logik)
         if (masterData) {
             masterData.forEach(row => {
                 if (plan[row.slot]) {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
+                    let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    if (roheKlasse.includes(" / ")) {
-                        const teile = roheKlasse.split(" / ");
-                        if (teile.length === 2) {
-                            roheKlasse = istUngeradeWoche ? teile[0].trim() : teile[1].trim();
+                    if (roheKlasse.includes("/")) {
+                        const teile = roheKlasse.split("/").map(s => s.trim());
+                        if (teile.length >= 2) {
+                            roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
                         }
                     }
 
-                    plan[row.slot].klasse = roheKlasse;
-                    plan[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
+                    // Wenn Klasse durch A/B-Aufteilung leer ist, bleibt die Box komplett frei
+                    if (roheKlasse === "") {
+                        plan[row.slot].klasse = "";
+                        plan[row.slot].lehrer = "";
+                    } else {
+                        plan[row.slot].klasse = roheKlasse;
+                        plan[row.slot].lehrer = roherLehrer;
+                    }
                 }
             });
         }
@@ -5348,20 +5361,27 @@ window.syncPlan = async function() {
             };
         }
 
-        // 4. Master-Daten eintragen (mit A/B-Wochen Logik)
+        // 4. Master-Daten eintragen (mit robuster A/B-Wochen Logik)
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
                 let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
+                let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                 
-                if (roheKlasse.includes(" / ")) {
-                    const teile = roheKlasse.split(" / ");
-                    if (teile.length === 2) {
-                        roheKlasse = istUngeradeWoche ? teile[0].trim() : teile[1].trim();
+                if (roheKlasse.includes("/")) {
+                    const teile = roheKlasse.split("/").map(s => s.trim());
+                    if (teile.length >= 2) {
+                        roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
                     }
                 }
 
-                newPlan[row.slot].klasse = roheKlasse;
-                newPlan[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
+                // Wenn Klasse durch A/B-Aufteilung leer ist, bleibt die Box komplett frei
+                if (roheKlasse === "") {
+                    newPlan[row.slot].klasse = "";
+                    newPlan[row.slot].lehrer = "";
+                } else {
+                    newPlan[row.slot].klasse = roheKlasse;
+                    newPlan[row.slot].lehrer = roherLehrer;
+                }
             }
         });
 
