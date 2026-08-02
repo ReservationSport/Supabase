@@ -5701,14 +5701,16 @@ window.showNews = function() {
 
         const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim()); 
         const istGelesen = gelesenListe.includes(aktuellerUser); 
-        const slotNummer = parseInt(news.slot, 10); 
         
-        // Korrekte Zuordnung: Slot 1 = Index 0, Slot 2 = Index 1 usw.
-        const rowIndex = !isNaN(slotNummer) ? (slotNummer - 1) : 0; 
+        // Slot-Nummer über slot_index (Fallback auf slot falls nötig)
+        const slotNummer = parseInt((news.slot_index !== undefined && news.slot_index !== null) ? news.slot_index : news.slot, 10); 
+        
+        // 5 Slots pro Zeitfenster
+        const rowIndex = !isNaN(slotNummer) ? Math.floor((slotNummer - 1) / 5) : 0; 
         const uhrzeit = zeiten[rowIndex] || ""; 
 
-        // Datum bereinigen (ISO-Zeitstempel abschneiden falls vorhanden)
-        let rawDatum = news.datum ? news.datum.toString() : ''; 
+        // Datum aus datum_event auslesen und bereinigen (ISO-Zeitstempel entfernen)
+        let rawDatum = news.datum_event ? news.datum_event.toString() : (news.datum ? news.datum.toString() : ''); 
         if (rawDatum.includes('T')) rawDatum = rawDatum.split('T')[0];
 
         let formatiertesDatum = rawDatum; 
@@ -6032,12 +6034,13 @@ async function markAsReadAndJump(news, event) {
         return; 
     }
 
-    if (news.datum) {
+    // Datum und Sprung über datum_event und slot_index
+    const eventDatum = news.datum_event || news.datum;
+    if (eventDatum) {
         const datePickerEl = document.getElementById('datePicker');
         const pickerValue = datePickerEl ? datePickerEl.value : "";
         
-        // Datum sicher im YYYY-MM-DD Format extrahieren
-        let rawDatum = news.datum.toString();
+        let rawDatum = eventDatum.toString();
         if (rawDatum.includes('T')) rawDatum = rawDatum.split('T')[0];
         const safeNewsDatum = rawDatum;
 
@@ -6048,7 +6051,7 @@ async function markAsReadAndJump(news, event) {
         }
 
         setTimeout(async () => {
-            const safeSlot = (news.slot !== null && news.slot !== undefined) ? news.slot.toString() : "";
+            const safeSlot = (news.slot_index !== undefined && news.slot_index !== null) ? news.slot_index.toString() : (news.slot ? news.slot.toString() : "");
             const box = document.querySelector(`[data-slot="${safeSlot}"]`); 
             if (box) {
                 box.scrollIntoView({ behavior: 'smooth', block: 'center' });
