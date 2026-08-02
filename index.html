@@ -10333,7 +10333,7 @@ window.openNewStellvertretungModal = function() {
 
 
 /* ============================================================
-   11.7.1. Stellvertretung suchen (Supabase-Version)
+   11.7.1. Stellvertretung suchen (Kompensiert mit window.supabaseClient)
    ============================================================ */
    
 // Automatisches Vorbelegen mit dem heutigen Datum beim Öffnen des Hauptmodals
@@ -10438,7 +10438,7 @@ window.updateStvDateText = function(dateValue) {
 };
 
 /**
- * Lädt die bestehenden Stellvertretungen direkt aus Supabase
+ * Lädt die bestehenden Stellvertretungen direkt über window.supabaseClient
  */
 window.renderStellvertretung = async function() {
     const container = document.getElementById('stellvertretung-container');
@@ -10456,12 +10456,12 @@ window.renderStellvertretung = async function() {
     const innerContainer = document.getElementById('stellvertretung-content-inner');
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await window.supabaseClient
             .from('service_db')
             .select('*')
             .eq('typ', 'stv');
 
-        if (error) throw new Error(error.message);
+        if (error) throw error;
 
         if (!data || data.length === 0) {
             innerContainer.innerHTML = "<p style='text-align:center; padding:15px; color:#7f8c8d;'>Keine geplanten Abwesenheiten erfasst.</p>";
@@ -10551,8 +10551,7 @@ window.proceedToStvLessons = function() {
 };
 
 /**
- * Schritt 2: Stundenplan direkt über Supabase abfragen 
- * (Ersetze hier 'stundenplan' bzw. deine Tabellen- & Spaltennamen nach Bedarf)
+ * Schritt 2: Stundenplan direkt über window.supabaseClient abfragen
  */
 async function loadStvStundenplanFromSupabase(dateString) {
     const container = document.getElementById('stv-tagesplan-container');
@@ -10566,20 +10565,16 @@ async function loadStvStundenplanFromSupabase(dateString) {
     try {
         const kuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : '';
         
-        // Supabase Abfrage für den Stundenplan an dem spezifischen Datum
-        const { data, error } = await supabase
-            .from('stundenplan') // Passe diesen Tabellennamen an deine tatsächliche Stundenplan-Tabelle an
+        const { data, error } = await window.supabaseClient
+            .from('stundenplan')
             .select('*')
             .eq('datum', dateString);
 
-        if (error) throw new Error(error.message);
+        if (error) throw error;
 
-        // Falls dein Stundenplan als einzelnes JSON-Objekt pro Tag gespeichert wird, passe dies hier an. 
-        // Wenn es zeilenbasiert ist, wandeln wir es in das erwartete `planObj`-Format um:
         let planObj = {};
         if (Array.isArray(data)) {
             data.forEach(row => {
-                // Beispiel: row.slot_id enthält die Slot-Nummer (1 bis 60)
                 if (row.slot_id) {
                     planObj[row.slot_id] = {
                         klasse: row.klasse,
@@ -10818,9 +10813,7 @@ window.toggleAllStvLessons = function() {
     }
 };
 
-/**
- * Speichern der neuen Stellvertretungen direkt via Supabase-Insert in die service_db
- */
+// Letzter Schritt: Absenden direkt an window.supabaseClient (service_db)
 window.submitStellvertretungWithLessons = async function() {
     let selectedLektionen = [];
     if (currentStvData.allDay) {
@@ -10842,7 +10835,6 @@ window.submitStellvertretungWithLessons = async function() {
 
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "lp";
 
-    // Payload-Struktur exakt passend zur service_db
     let lektionenPayload = selectedLektionen.map(l => {
         return {
             id: 'stv_' + Date.now() + '_' + l.lektionNr,
@@ -10856,7 +10848,7 @@ window.submitStellvertretungWithLessons = async function() {
     });
 
     try {
-        const { error } = await supabase
+        const { error } = await window.supabaseClient
             .from('service_db')
             .insert(lektionenPayload);
 
@@ -10865,9 +10857,7 @@ window.submitStellvertretungWithLessons = async function() {
             saveBtn.innerText = "Speichern"; 
         }
 
-        if (error) {
-            throw new Error(error.message);
-        }
+        if (error) throw error;
 
         closeModal('stv-lektionen-modal');
         const datumField = document.getElementById('stv-datum');
@@ -10883,10 +10873,13 @@ window.submitStellvertretungWithLessons = async function() {
             saveBtn.innerText = "Speichern"; 
         }
         console.error("Fehler beim Speichern:", e);
-        alert("Ein Fehler ist aufgetreten: " + e.message);
+        alert("Ein Fehler ist aufgetreten: " + (e.message || e));
     }
 };
 
+
+
+    
 /* ============================================================
    11.7.2. Stellvertretung übernehmen
    ============================================================ */
