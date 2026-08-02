@@ -8789,7 +8789,6 @@ window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
     
-    // Suche den Primär-Button innerhalb des Modals
     const saveBtn = document.querySelector('#new-meldung-modal .btn-primary');
     
     if (!text) {
@@ -8804,14 +8803,12 @@ window.saveMeldung = async function() {
 
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
-        const meldungId = Date.now(); // Nur eine reine Zahl als ID
-        const datumStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD für saubere Sortierung
+        const datumStr = new Date().toISOString().split('T')[0];
 
-        // In die zentrale service_db speichern (typ: 'meldung' und id als Zahl)
+        // 1. In die service_db speichern (id wird hier weggelassen, da die DB sie automatisch hochzählt)
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
-                id: meldungId,
                 typ: 'meldung',
                 beschreibung: text,
                 verfasser: userKuerzelVal,
@@ -8821,7 +8818,7 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // Gleichzeitig den News-Eintrag erstellen
+        // 2. Gleichzeitig den News-Eintrag erstellen
         const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
@@ -8842,7 +8839,7 @@ window.saveMeldung = async function() {
         }
         
         if (typeof renderMeldungen === 'function') {
-            renderMeldungen(); // Liste neu laden
+            renderMeldungen();
         }
         if (typeof updateG1 === 'function') {
             updateG1();
