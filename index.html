@@ -4408,13 +4408,47 @@ window.fetchKalenderContext = async function(dateObj) {
 };
 
     
+window.sperrzeitenMap = {};
 
+window.initSperrzeitenCache = async function() {
+    try {
+        const { data, error } = await supabaseClient.from('sperrzeiten').select('*');
+        if (!error && data) {
+            window.sperrzeitenMap = {};
+            data.forEach(item => {
+                if (item.datum) {
+                    window.sperrzeitenMap[item.datum.trim()] = item.grund;
+                }
+            });
+        }
+    } catch(e) {
+        // Still abfangen
+    }
+};
+
+    
 /* ============================================================
    3. LOGIN
    ============================================================ */
     
 
-async function handleLogin() {
+// Globale Map für den Sperrzeiten-Cache definieren
+window.sperrzeitenMap = {};
+window.initSperrzeitenCache = async function() {
+    try {
+        const { data, error } = await supabaseClient.from('sperrzeiten').select('*');
+        if (!error && data) {
+            window.sperrzeitenMap = {};
+            data.forEach(item => {
+                if (item.datum) {
+                    window.sperrzeitenMap[item.datum.trim()] = item.grund;
+                }
+            });
+        }
+    } catch(e) {}
+};
+
+window.handleLogin = async function() {
     const btn = document.getElementById('loginBtn');
     const errorDiv = document.getElementById('loginError');
     const dp = document.getElementById('datePicker');
@@ -4429,7 +4463,6 @@ async function handleLogin() {
         return; 
     }
 
-    // --- GEMEINSAMES PASSWORT HIER ANPASSEN ---
     const GEMEINSAMES_PASSWORT = "bbzo";
 
     if (pwVal !== GEMEINSAMES_PASSWORT) {
@@ -4441,17 +4474,10 @@ async function handleLogin() {
     if (errorDiv) errorDiv.innerText = "";
 
     try {
-        // --- DEBUGGING: Prüfen was gesendet wird ---
-        console.log("Suche in master_db nach Spalte 'lehrer' mit Wert:", kuerzelVal);
-
-        // --- PRÜFEN, OB ES DAS KÜRZEL IN DER MASTER_DB GIBT ---
         const { data: userRows, error: userError } = await supabaseClient
             .from('master_db')
             .select('*')
             .eq('lehrer', kuerzelVal);
-
-        console.log("Supabase Fehler (userError):", userError);
-        console.log("Supabase Daten (userRows):", userRows);
 
         if (userError || !userRows || userRows.length === 0) {
             if (errorDiv) errorDiv.innerText = "Unbekanntes Kürzel!";
@@ -4462,27 +4488,22 @@ async function handleLogin() {
         userPw = pwVal;
         userKuerzel = kuerzelVal;
         
-        // --- LINKS VORLADEN AUS SUPABASE ---
-        const { data: linksData, error: linksError } = await supabaseClient
-            .from('links')
-            .select('*');
-            
-        if (!linksError) {
-            window.lastLinks = linksData || [];
-            console.log("Links im Hintergrund geladen.");
+        // --- PARALLELES VORLADEN (Links, Materialien & Sperrzeiten-Cache) ---
+        const linksPromise = supabaseClient.from('links').select('*');
+        const matPromise = supabaseClient.from('materialien').select('*');
+        const sperrzeitPromise = window.initSperrzeitenCache();
+
+        const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
+
+        if (!linksRes.error) {
+            window.lastLinks = linksRes.data || [];
             if (typeof window.renderLinks === 'function') {
                 window.renderLinks();
             }
         }
         
-        // --- MATERIALIEN VORLADEN AUS SUPABASE ---
-        const { data: matData, error: matError } = await supabaseClient
-            .from('materialien')
-            .select('*');
-            
-        if (!matError) {
-            window.verfügbareMaterialien = matData || [];
-            console.log("Materialien geladen:", window.verfügbareMaterialien);
+        if (!matRes.error) {
+            window.verfügbareMaterialien = matRes.data || [];
         }
         
         if (loadingOverlay) loadingOverlay.classList.add('is-visible');
@@ -4493,12 +4514,10 @@ async function handleLogin() {
         const newsContainer = document.getElementById('news-btn-container');
         if (newsContainer) newsContainer.style.display = 'block';
         
-        // Initialer Ladevorgang
         if (typeof initNewsSystem === 'function') await initNewsSystem();
         if (dp && typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
 
         window.lastKnownChange = Number(userRows[0].g1 || 0);
-        console.log("Sync-Startpunkt gesetzt.");
         
         if (loadingOverlay) loadingOverlay.classList.remove('is-visible');
 
@@ -4509,7 +4528,6 @@ async function handleLogin() {
             const datePicker = document.getElementById('datePicker');
             
             if (datePicker && datePicker.value !== localToday && datePicker.value <= localToday) {
-                console.log("Neuer Tag erkannt! Synchronisiere auf: " + localToday);
                 datePicker.value = localToday;
                 if (typeof updateDateText === 'function') updateDateText(localToday);
                 if (typeof updateNavButtons === 'function') updateNavButtons();
@@ -4525,9 +4543,8 @@ async function handleLogin() {
             loginOverlay.classList.remove('fade-out');
             loginOverlay.style.display = 'flex';
         }
-        console.error("Login Error:", e);
     }
-}
+};
 
 
 /* ============================================================
@@ -4992,12 +5009,8 @@ window.loadPlan = async function() {
         const [y, m, d] = dateVal.split('-');
         const dbFormatDate = `${d}.${m}.${y}`;
         
-        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dbFormatDate);
-
-        let sperrzeitGrund = "";
-        if (!sperrzeitRes.error && sperrzeitRes.data && sperrzeitRes.data.length > 0) {
-            sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
-        }
+        // --- SPERRZEITEN-PRÜFUNG AUS DEM LOKALEN CACHE ---
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
@@ -5341,12 +5354,7 @@ window.syncPlan = async function() {
         const [y, m, d] = dateVal.split('-');
         const dbFormatDate = `${d}.${m}.${y}`;
 
-        let sperrzeitGrund = "";
-        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dbFormatDate);
-        
-        if (!sperrzeitRes.error && sperrzeitRes.data && sperrzeitRes.data.length > 0) {
-            sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
-        }
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
@@ -5467,12 +5475,10 @@ window.syncPlan = async function() {
             const isKlasseLeer = (klasse.trim() === "");
             
             const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
-            const isMyClass = !isKlasseLeer && myClasses.some(c => String(c).trim().toLowerCase() === klasse.trim().toLowerCase());
-            
             const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
             const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
             const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
-            
+            const isMyClass = !isKlasseLeer && myClasses.some(c => String(c).trim().toLowerCase() === klasse.trim().toLowerCase());
             const canEdit = isMyClass || isMyBooking;
             
             const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
