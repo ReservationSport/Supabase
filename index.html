@@ -10263,8 +10263,1005 @@ window.resolveApothekeEntry = async function(id, btnElement) {
     
 
 
+/* ============================================================
+   11.7. Stellvertretung 
+   ============================================================ */
+
+// Globaler Zwischenspeicher für den aktuellen Erfassungs-Vorgang und geladene Abwesenheiten
+let currentStvData = {
+    datum: '',
+    grund: '',
+    selectedSlots: [],
+    allDay: false
+};
+
+let loadedStellvertretungen = [];
+let currentDetailData = {
+    datum: '',
+    verfasser: '',
+    originalItems: [],
+    workingItems: []
+};
+
+// 1. Haupt-Overlay öffnen und Stellvertretungen aus Supabase laden
+window.openStellvertretung = function() {
+    console.log("Starte openStellvertretung...");
+    
+    const extraMenu = document.getElementById('extra-menu');
+    if (extraMenu) {
+        extraMenu.style.display = 'none';
+    }
+
+    const overlay = document.getElementById('stellvertretung-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        
+        // Funktion zum Rendern/Laden der Stellvertretungen aufrufen
+        if (typeof renderStellvertretung === 'function') {
+            renderStellvertretung(); 
+        } else {
+            console.error("Funktion renderStellvertretung ist noch nicht definiert!");
+        }
+    } else {
+        console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!");
+    }
+};
+
+// 2. Modal für neue Abwesenheit öffnen (Schritt 1: Datum & Grund)
+window.openNewStellvertretungModal = function() {
+    const modal = document.getElementById('new-stellvertretung-modal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+
+    // Felder zurücksetzen
+    const datumInput = document.getElementById('stv-datum');
+    const datumText = document.getElementById('stv-date-text');
+    const grundInput = document.getElementById('stv-grund');
+
+    if (datumInput) datumInput.value = '';
+    if (datumText) datumText.innerText = 'Bitte Datum wählen...';
+    if (grundInput) grundInput.value = '';
+
+    currentStvData = {
+        datum: '',
+        grund: '',
+        selectedSlots: [],
+        allDay: false
+    };
+};
 
 
+/* ============================================================
+   11.7.1. Stellvertretung suchen
+   ============================================================ */
+    
+// Automatisches Vorbelegen mit dem heutigen Datum beim Öffnen des Hauptmodals
+window.openNewStellvertretungModal = function() {
+    const modal = document.getElementById('new-stellvertretung-modal');
+    const dp = document.getElementById('stv-datum');
+    const grundInput = document.getElementById('stv-grund');
+    
+    if (grundInput) grundInput.value = '';
+
+    if (dp) {
+        const now = new Date();
+        const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        dp.value = localToday;
+        updateStvDateText(localToday);
+    }
+
+    if (modal) modal.style.display = 'flex';
+};
+
+window.openStvCalendar = function(offset = 0) {
+    const modal = document.getElementById('stv-calendar-modal');
+    const nav = document.getElementById('stvcal-nav');
+    const grid = document.getElementById('stvcal-grid');
+    const dp = document.getElementById('stv-datum');
+    
+    if (!modal || !nav || !grid || !dp) return;
+    
+    modal.style.display = 'flex';
+    nav.innerHTML = '';
+    grid.innerHTML = ''; 
+
+    const now = new Date();
+    const getLocalStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    const heuteStr = getLocalStr(now);
+    const gewähltesDatumStr = dp.value;
+    
+    let baseDate = dp.value ? new Date(dp.value + 'T12:00:00') : now;
+    let d = new Date(baseDate.getFullYear(), baseDate.getMonth() + offset, 1);
+    
+    const monatsName = d.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+    
+    nav.innerHTML = `
+        <button onclick="openStvCalendar(${offset - 1})">❮</button>
+        <span class="stvcal-month-title">${monatsName}</span>
+        <button onclick="openStvCalendar(${offset + 1})">❯</button>
+    `;
+    
+    const tage = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    tage.forEach(t => grid.insertAdjacentHTML('beforeend', `<div class="stvcal-weekday">${t}</div>`));
+
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    let startDay = (d.getDay() === 0 ? 6 : d.getDay() - 1);
+
+    for (let i = 0; i < startDay; i++) {
+        grid.insertAdjacentHTML('beforeend', `<div class="stvcal-day empty"></div>`);
+    }
+
+    for (let i = 1; i <= lastDay; i++) {
+        let dateObj = new Date(d.getFullYear(), d.getMonth(), i, 12, 0, 0);
+        let dateStr = getLocalStr(dateObj);
+        
+        const dayBtn = document.createElement('div');
+        dayBtn.className = 'stvcal-day';
+        dayBtn.innerText = i;
+        
+        if (dateStr === heuteStr) dayBtn.classList.add('today');
+        if (dateStr === gewähltesDatumStr) dayBtn.classList.add('selected');
+        if (dateObj.getDay() === 0 || dateObj.getDay() === 6) dayBtn.classList.add('weekend');
+
+        // Vergangene Tage ausgrauen und sperren
+        if (dateStr < heuteStr) {
+            dayBtn.classList.add('disabled');
+            dayBtn.style.opacity = '0.3';
+            dayBtn.style.pointerEvents = 'none';
+            dayBtn.style.cursor = 'default';
+        } else {
+            dayBtn.onclick = () => {
+                dp.value = dateStr;
+                updateStvDateText(dateStr);
+                window.closeStvCalendar();
+            };
+        }
+        
+        grid.appendChild(dayBtn);
+    }
+};
+
+window.closeStvCalendar = function() {
+    const modal = document.getElementById('stv-calendar-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.updateStvDateText = function(dateValue) {
+    const textSpan = document.getElementById('stv-date-text');
+    if (textSpan && dateValue) {
+        const [y, m, d] = dateValue.split('-');
+        textSpan.innerText = `${d}.${m}.${y}`;
+        textSpan.style.color = '#fff';
+    }
+};
+
+window.renderStellvertretung = function() {
+    const container = document.getElementById('stellvertretung-container');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div id="stellvertretung-content-inner">
+            <div class="loader-container">
+                <div class="littlespinner"></div>
+                <span>Abwesenheiten werden geladen...</span>
+            </div>
+        </div>
+    `;
+
+    const innerContainer = document.getElementById('stellvertretung-content-inner');
+
+    fetch(`${url}?action=getStellvertretungen&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                innerContainer.innerHTML = "<p style='text-align:center; padding:15px; color:#7f8c8d;'>Keine geplanten Abwesenheiten erfasst.</p>";
+                return;
+            }
+            
+            // Global speichern
+            loadedStellvertretungen = data;
+
+            // Einträge nach Datum + Verfasser gruppieren (Abgleich mit DB-Spalten datum, verfasser, beschreibung)
+            const groupedMap = new Map();
+
+            data.forEach(item => {
+                const groupKey = `${item.datum}_${item.verfasser}`;
+                if (!groupedMap.has(groupKey)) {
+                    groupedMap.set(groupKey, {
+                        datum: item.datum,
+                        verfasser: item.verfasser.toLowerCase(),
+                        beschreibung: item.beschreibung, // Aus Datenbankspalte beschreibung
+                        lektionen: []
+                    });
+                }
+                groupedMap.get(groupKey).lektionen.push(item);
+            });
+
+            innerContainer.innerHTML = Array.from(groupedMap.values()).map(group => {
+                const dateObj = new Date(group.datum);
+                const options = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' };
+                const formattedDate = dateObj.toLocaleDateString('de-DE', options);
+
+                const lektionenText = group.lektionen.length === 1 ? '1 Lektion' : `${group.lektionen.length} Lektionen`;
+
+                return `
+                    <div class="stellvertretung-item" onclick="openStellvertretungDetailModal('${group.datum}', '${group.verfasser}')" style="display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #f39c12; background: #2c2c2c; border-top: 1px solid #444; border-right: 1px solid #444; border-bottom: 1px solid #444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
+                        <div>
+                            <strong style="color: #fff;">${formattedDate} – ${group.verfasser.toLowerCase()}</strong>
+                            <span class="stellvertretung-meta" style="display: block; font-size: 12px; color: #aaa; margin-top: 2px;">${group.beschreibung || 'Kein Grund angegeben'} (${lektionenText})</span>
+                        </div>
+                        <span class="material-symbols-outlined" style="color: #f39c12;">chevron_right</span>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch(e => {
+            innerContainer.innerHTML = "<p style='color:#e74c3c; text-align:center;'>Fehler beim Laden.</p>";
+            console.error(e);
+        });
+};
+
+/**
+ * Schritt 1: Vom Basis-Modal zum Lektionen-Modal wechseln
+ */
+window.proceedToStvLessons = function() {
+    const datumInput = document.getElementById('stv-datum');
+    const grundInput = document.getElementById('stv-grund');
+
+    currentStvData.datum = datumInput.value;
+    currentStvData.grund = grundInput.value.trim();
+    currentStvData.selectedSlots = [];
+    currentStvData.allDay = false;
+
+    if (!currentStvData.datum) {
+        alert("Bitte ein Datum auswählen.");
+        return;
+    }
+
+    const btnAll = document.getElementById('btn-toggle-all-lessons');
+    if (btnAll) {
+        btnAll.style.background = ""; 
+        btnAll.innerText = "Alle Lektionen markieren";
+    }
+
+    closeModal('new-stellvertretung-modal');
+    
+    const lektionenModal = document.getElementById('stv-lektionen-modal');
+    if (lektionenModal) {
+        lektionenModal.style.display = 'flex';
+    }
+    
+    const dateObj = new Date(currentStvData.datum);
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const dateInfo = document.getElementById('stv-selected-date-info');
+    if (dateInfo) {
+        dateInfo.innerHTML = `Für welche Lektionen vom <strong>${dateObj.toLocaleDateString('de-DE', options)}</strong> wird eine Stellvertretung gesucht?`;
+    }
+
+    loadStvStundenplanFromBackend(currentStvData.datum);
+};
+
+/**
+ * Schritt 2: Backend-Abfrage ausführen
+ */
+async function loadStvStundenplanFromBackend(dateString) {
+    const container = document.getElementById('stv-tagesplan-container');
+    container.innerHTML = `
+        <div class="loader-container" style="padding: 20px; text-align: center;">
+            <div class="littlespinner"></div>
+            <span style="color: #aaa; font-size: 13px; margin-top: 5px; display: block;">Lektionen werden geladen...</span>
+        </div>
+    `;
+
+    try {
+        const kuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : '';
+        const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
+        
+        const response = await fetch(`${targetUrl}?userKuerzel=${encodeURIComponent(kuerzel)}&date=${dateString}&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`);
+        
+        if (!response.ok) {
+            throw new Error('Netzwerkfehler beim Laden des Plans');
+        }
+
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.plan) {
+            parseAndFilterUserLektionen(data.plan, kuerzel);
+        } else {
+            throw new Error('Ungültige Daten vom Server');
+        }
+
+    } catch (error) {
+        console.error('Stundenplan-Fehler:', error);
+        container.innerHTML = '<p style="color: #e74c3c; text-align: center; padding: 20px;">Fehler beim Laden des Stundenplans.</p>';
+    }
+}
+
+/**
+ * Globaler Zwischenspeicher für alle 12 Tageslektionen
+ */
+let fetchedStvLektionen = [];
+
+/**
+ * Schritt 3: Alle 12 Lektionen des Tages vorbereiten
+ */
+function parseAndFilterUserLektionen(planObj, kuerzel) {
+    fetchedStvLektionen = [];
+    const lowerKuerzel = kuerzel ? kuerzel.toLowerCase().trim() : '';
+
+    for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
+        let startSlot = (lektionNr - 1) * 5 + 1;
+        let endSlot = lektionNr * 5;
+        
+        let lektionEintraege = [];
+
+        for (let s = startSlot; s <= endSlot; s++) {
+            let slotData = planObj[s];
+            if (slotData && slotData.klasse && slotData.klasse.trim() !== "") {
+                let slotLehrer = slotData.lehrer ? slotData.lehrer.toLowerCase().trim() : "";
+                
+                if (slotLehrer === lowerKuerzel || !lowerKuerzel) {
+                    lektionEintraege.push({
+                        slotId: s,
+                        klasse: slotData.klasse,
+                        lehrer: slotData.lehrer.toLowerCase().trim()
+                    });
+                }
+            }
+        }
+
+        let zeitString = getLektionZeit(lektionNr);
+
+        fetchedStvLektionen.push({
+            lektionNr: lektionNr,
+            zeit: zeitString,
+            eintraege: lektionEintraege,
+            selected: false,
+            hasLesson: lektionEintraege.length > 0
+        });
+    }
+
+    renderStvLektionenList();
+}
+
+/**
+ * Hilfsfunktion für ungefähre Lektionenzeiten
+ */
+function getLektionZeit(nr) {
+    const zeiten = {
+        1: "07:15 - 08:00",
+        2: "08:05 - 08:50",
+        3: "08:55 - 09:40",
+        4: "10:00 - 10:45",
+        5: "10:50 - 11:35",
+        6: "11:40 - 12:25",
+        7: "12:50 - 13:35",
+        8: "13:40 - 14:25",
+        9: "14:30 - 15:15",
+        10: "15:35 - 16:20",
+        11: "16:25 - 17:10",
+        12: "17:15 - 18:00"
+    };
+    return zeiten[nr] || `Lektion ${nr}`;
+}
+
+/**
+ * Schritt 4: Alle 12 Lektionen kompakt als Zeilen rendern
+ */
+function renderStvLektionenList() {
+    const container = document.getElementById('stv-tagesplan-container');
+    container.innerHTML = '';
+
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '6px';
+
+    fetchedStvLektionen.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = `stv-lektion-card ${item.selected ? 'selected' : ''} ${!item.hasLesson ? 'empty-lesson' : ''}`;
+        
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+        card.style.padding = '8px 12px';
+        card.style.borderRadius = '6px';
+        card.style.background = item.hasLesson ? (item.selected ? '#2d2318' : '#2c2c2c') : '#2c2c2c';
+        card.style.border = item.selected ? '1px solid #e67e22' : '1px solid #444';
+        card.style.borderLeft = item.selected ? '4px solid #e67e22' : (item.hasLesson ? '4px solid #e67e22' : '4px solid #444');
+        card.style.cursor = item.hasLesson ? 'pointer' : 'default';
+        card.style.opacity = item.hasLesson ? '1' : '0.4';
+
+        let klassenText = item.hasLesson ? item.eintraege.map(e => e.klasse).join(', ') : '';
+
+        card.innerHTML = `
+            <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">
+                ${item.zeit}
+            </div>
+            <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff; font-weight: ${item.hasLesson ? '600' : 'normal'};">
+                ${klassenText}
+            </div>
+            <div style="display: flex; align-items: center;">
+                ${item.hasLesson ? `
+                    <span class="material-symbols-outlined" style="font-size: 20px; color: ${item.selected ? '#e67e22' : '#666'};">
+                        ${item.selected ? 'check_circle' : 'radio_button_unchecked'}
+                    </span>
+                ` : ''}
+            </div>
+        `;
+
+        if (item.hasLesson) {
+            card.onclick = () => toggleStvLektionSelection(index, card);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+window.toggleStvLektionSelection = function(index, cardElement) {
+    if (!fetchedStvLektionen[index].hasLesson) return;
+
+    fetchedStvLektionen[index].selected = !fetchedStvLektionen[index].selected;
+    
+    const lessonsWithContent = fetchedStvLektionen.filter(l => l.hasLesson);
+    const allAreSelected = lessonsWithContent.length > 0 && lessonsWithContent.every(l => l.selected);
+
+    currentStvData.allDay = allAreSelected;
+
+    const btn = document.getElementById('btn-toggle-all-lessons');
+    if (btn) {
+        if (allAreSelected) {
+            btn.style.background = "#b95c00";
+            btn.innerText = "Alle Markierungen entfernen";
+        } else {
+            btn.style.background = ""; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+    }
+
+    const iconSpan = cardElement.querySelector('.material-symbols-outlined');
+
+    if (fetchedStvLektionen[index].selected) {
+        cardElement.classList.add('selected');
+        cardElement.style.background = '#2d2318';
+        cardElement.style.border = '1px solid #e67e22';
+        cardElement.style.borderLeft = '4px solid #e67e22';
+        if (iconSpan) {
+            iconSpan.innerText = 'check_circle';
+            iconSpan.style.color = '#e67e22';
+        }
+    } else {
+        cardElement.classList.remove('selected');
+        cardElement.style.background = '#2c2c2c';
+        cardElement.style.border = '1px solid #444';
+        cardElement.style.borderLeft = '4px solid #e67e22';
+        if (iconSpan) {
+            iconSpan.innerText = 'radio_button_unchecked';
+            iconSpan.style.color = '#666';
+        }
+    }
+};
+
+window.toggleAllStvLessons = function() {
+    currentStvData.allDay = !currentStvData.allDay;
+    
+    const cards = document.querySelectorAll('#stv-tagesplan-container > div');
+    const btn = document.getElementById('btn-toggle-all-lessons');
+
+    if (currentStvData.allDay) {
+        if (btn) {
+            btn.style.background = "#b95c00";
+            btn.innerText = "Alle Markierungen entfernen";
+        }
+        
+        fetchedStvLektionen.forEach(l => {
+            if (l.hasLesson) l.selected = true;
+        });
+
+        cards.forEach((card, index) => {
+            if (fetchedStvLektionen[index] && fetchedStvLektionen[index].hasLesson) {
+                card.classList.add('selected');
+                card.style.background = '#2d2318';
+                card.style.border = '1px solid #e67e22';
+                card.style.borderLeft = '4px solid #e67e22';
+                const icon = card.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.innerText = "check_circle";
+                    icon.style.color = "#e67e22";
+                }
+            }
+        });
+    } else {
+        if (btn) {
+            btn.style.background = ""; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+        
+        fetchedStvLektionen.forEach(l => {
+            if (l.hasLesson) l.selected = false;
+        });
+
+        cards.forEach((card, index) => {
+            if (fetchedStvLektionen[index] && fetchedStvLektionen[index].hasLesson) {
+                card.classList.remove('selected');
+                card.style.background = '#2c2c2c';
+                card.style.border = '1px solid #444';
+                card.style.borderLeft = '4px solid #e67e22';
+                const icon = card.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.innerText = "radio_button_unchecked";
+                    icon.style.color = "#666";
+                }
+            }
+        });
+    }
+};
+
+// Letzter Schritt: Absenden an das Backend – Mapping für die service_db (id, typ, datum, verfasser, beschreibung, klasse, bereitschaft)
+window.submitStellvertretungWithLessons = function() {
+    let selectedLektionen = [];
+    if (currentStvData.allDay) {
+        selectedLektionen = fetchedStvLektionen.filter(l => l.hasLesson);
+    } else {
+        selectedLektionen = fetchedStvLektionen.filter(l => l.selected && l.hasLesson);
+    }
+
+    if (!currentStvData.allDay && selectedLektionen.length === 0) {
+        alert("Bitte wähle mindestens eine Lektion aus oder entscheide dich für den ganzen Tag.");
+        return;
+    }
+
+    const saveBtn = document.querySelector('#stv-lektionen-modal .modal-actions .btn-primary');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Wird gesendet...";
+    }
+
+    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "lp";
+
+    // Mappe die Objekte auf die verlangte DB-Struktur (inkl. typ = 'stv' und beschreibung statt grund)
+    let lektionenPayload = selectedLektionen.map(l => {
+        return {
+            id: 'stv_' + Date.now() + '_' + l.lektionNr,
+            typ: 'stv',
+            datum: currentStvData.datum,
+            verfasser: aktuellerUser,
+            beschreibung: currentStvData.grund, // Angabe des Grundes wandert in die DB-Spalte 'beschreibung'
+            klasse: l.eintraege.map(e => e.klasse).join(', '),
+            bereitschaft: '' // Initial leer
+        };
+    });
+
+    fetch(targetUrl, {
+        method: "POST",
+        body: JSON.stringify({ 
+            action: "saveStellvertretungMulti", 
+            lektionen: lektionenPayload,
+            anzahlLektionen: selectedLektionen.length,
+            pw: userPw 
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (saveBtn) { 
+            saveBtn.disabled = false; 
+            saveBtn.innerText = "Speichern"; 
+        }
+        
+        if (data.status === "success") {
+            closeModal('stv-lektionen-modal');
+            const datumField = document.getElementById('stv-datum');
+            const grundField = document.getElementById('stv-grund');
+            if (datumField) datumField.value = '';
+            if (grundField) grundField.value = '';
+            
+            renderStellvertretung();
+        } else {
+            alert("Fehler: " + (data.msg || "Unbekannter Fehler"));
+        }
+    })
+    .catch(e => {
+        if (saveBtn) { 
+            saveBtn.disabled = false; 
+            saveBtn.innerText = "Speichern"; 
+        }
+        console.error("Fehler:", e);
+        alert("Ein Netzwerkfehler ist aufgetreten.");
+    });
+};
+    
+
+/* ============================================================
+   24-2. Stellvertretung übernehmen
+   ============================================================ */
+
+window.openStellvertretungDetailModal = function(datum, verfasser) {
+    const modal = document.getElementById('stv-detail-modal');
+    const titleEl = document.getElementById('stv-detail-title');
+    const deleteBtnContainer = document.getElementById('stv-delete-container');
+
+    if (!modal) {
+        console.error("Modal 'stv-detail-modal' nicht gefunden!");
+        return;
+    }
+
+    const cleanVerfasser = verfasser.toLowerCase().trim();
+    const items = loadedStellvertretungen.filter(i => i.datum === datum && i.verfasser.toLowerCase().trim() === cleanVerfasser);
+    if (items.length === 0) return;
+
+    currentDetailData.datum = datum;
+    currentDetailData.verfasser = cleanVerfasser;
+    currentDetailData.originalItems = items;
+    currentDetailData.workingItems = JSON.parse(JSON.stringify(items));
+    
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
+
+    // Prüfen, ob beim Öffnen bereits alle gültigen Lektionen markiert sind
+    const validItems = [];
+    for (let l = 1; l <= 12; l++) {
+        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
+        if (dbItem) validItems.push(dbItem);
+    }
+
+    const allAreChecked = validItems.length > 0 && validItems.every(i => {
+        const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+        return bList.includes(aktuellerUser);
+    });
+
+    currentDetailData.allSelected = allAreChecked;
+
+    const dateObj = new Date(datum);
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const formattedDate = dateObj.toLocaleDateString('de-DE', options);
+
+    if (titleEl) {
+        titleEl.innerText = "Stellvertretung übernehmen";
+    }
+
+    const dateInfo = document.getElementById('stv-detail-date-info');
+    if (dateInfo) {
+        dateInfo.innerHTML = `Welche Lektionen könnten am <strong>${formattedDate}</strong> übernommen werden?`;
+    }
+
+    // Unterscheidung: Eigene Abwesenheit (Löschen) vs. Fremde Abwesenheit (Alle Bereitschaften markieren)
+    if (deleteBtnContainer) {
+        deleteBtnContainer.style.display = 'block';
+        if (aktuellerUser === cleanVerfasser) {
+            deleteBtnContainer.innerHTML = `<button onclick="deleteStellvertretungTag('${datum}', '${cleanVerfasser}')" class="btn-stv-loeschen-hover" style="background: #e67e22; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 10px;">Diese Abwesenheit löschen</button>`;
+        } else {
+            // Button-Design wird dynamisch je nach 'allAreChecked' beim Öffnen gesetzt
+            const btnBg = allAreChecked ? "#b95c00" : "#e67e22";
+            const btnText = allAreChecked ? "Alle Markierungen entfernen" : "Alle Lektionen markieren";
+
+            deleteBtnContainer.innerHTML = `<button type="button" id="btn-toggle-all-detail" class="btn-action stv-toggle-btn" onclick="toggleAllDetailStvLessons()" style="background: ${btnBg}; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100% !important; margin-bottom: 10px;">${btnText}</button>`;
+        }
+    }
+    
+    renderStvDetailLektionenList();
+    modal.style.display = 'flex';
+};
+    
+/**
+ * Rendert die 12 Lektionen im Detail-Modal (mit Braun/Orange-Design für Bereitschaft)
+ */
+function renderStvDetailLektionenList() {
+    const container = document.getElementById('stv-detail-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '6px';
+
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
+
+    for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
+        const zeitString = getLektionZeit(lektionNr);
+        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + lektionNr));
+
+        const card = document.createElement('div');
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+        card.style.padding = '8px 12px';
+        card.style.borderRadius = '6px';
+
+        if (!dbItem) {
+            card.style.background = '#2c2c2c';
+            card.style.border = '1px solid #444';
+            card.style.opacity = '0.4';
+            card.style.cursor = 'default';
+            card.innerHTML = `
+                <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">${zeitString}</div>
+                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;"></div>
+            `;
+        } else {
+            let bereitschaftList = dbItem.bereitschaft ? dbItem.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+            let isUserBereit = bereitschaftList.includes(aktuellerUser);
+
+            card.style.background = isUserBereit ? '#2d2318' : '#2c2c2c';
+            card.style.border = isUserBereit ? '1px solid #e67e22' : '1px solid #444';
+            card.style.borderLeft = '4px solid #e67e22';
+            card.style.cursor = 'pointer';
+
+            card.innerHTML = `
+                <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">
+                    ${zeitString}
+                </div>
+                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff;">
+                    <strong>${dbItem.klasse}</strong><br>
+                    <span style="font-size: 12px; color: #888;">Bereitschaft: ${bereitschaftList.length > 0 ? bereitschaftList.join(', ') : 'Noch niemand'}</span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <span class="material-symbols-outlined" style="font-size: 20px; color: ${isUserBereit ? '#e67e22' : '#666'};">
+                        ${isUserBereit ? 'check_circle' : 'radio_button_unchecked'}
+                    </span>
+                </div>
+            `;
+
+            card.onclick = () => toggleLocalBereitschaft(dbItem.id);
+        }
+
+        container.appendChild(card);
+    }
+}
+
+/**
+ * Lokales Umschalten der Bereitschaft im Arbeits-Array (Einzelklick)
+ */
+function toggleLocalBereitschaft(itemId) {
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
+    if (!aktuellerUser) {
+        alert("Benutzerkürzel nicht erkannt.");
+        return;
+    }
+
+    const item = currentDetailData.workingItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+
+    if (list.includes(aktuellerUser)) {
+        list = list.filter(u => u !== aktuellerUser);
+    } else {
+        list.push(aktuellerUser);
+    }
+
+    item.bereitschaft = list.join(', ');
+
+    // Prüfen, ob durch diesen Einzelklick nun alle vorhandenen Lektionen markiert sind
+    const validItems = [];
+    for (let l = 1; l <= 12; l++) {
+        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
+        if (dbItem) validItems.push(dbItem);
+    }
+
+    const allAreChecked = validItems.length > 0 && validItems.every(i => {
+        const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+        return bList.includes(aktuellerUser);
+    });
+
+    currentDetailData.allSelected = allAreChecked;
+
+    const deleteBtnContainer = document.getElementById('stv-delete-container');
+    const btn = deleteBtnContainer ? deleteBtnContainer.querySelector('button') : null;
+    if (btn) {
+        if (allAreChecked) {
+            btn.style.background = "#b95c00"; 
+            btn.innerText = "Alle Markierungen entfernen";
+        } else {
+            btn.style.background = "#e67e22"; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+    }
+
+    renderStvDetailLektionenList();
+}
+
+/**
+ * Alle Bereitschaften auf einmal umschalten (Sammel-Button)
+ */
+window.toggleAllDetailStvLessons = function() {
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
+    if (!aktuellerUser) {
+        alert("Benutzerkürzel nicht erkannt.");
+        return;
+    }
+
+    currentDetailData.allSelected = !currentDetailData.allSelected;
+    
+    const deleteBtnContainer = document.getElementById('stv-delete-container');
+    const btn = deleteBtnContainer ? deleteBtnContainer.querySelector('button') : null;
+
+    if (currentDetailData.allSelected) {
+        if (btn) {
+            btn.style.background = "#b95c00"; 
+            btn.innerText = "Alle Markierungen entfernen";
+        }
+        currentDetailData.workingItems.forEach(item => {
+            let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+            if (!list.includes(aktuellerUser)) {
+                list.push(aktuellerUser);
+                item.bereitschaft = list.join(', ');
+            }
+        });
+    } else {
+        if (btn) {
+            btn.style.background = "#e67e22"; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+        currentDetailData.workingItems.forEach(item => {
+            let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
+            list = list.filter(u => u !== aktuellerUser);
+            item.bereitschaft = list.join(', ');
+        });
+    }
+
+    renderStvDetailLektionenList();
+};
+
+/**
+ * Änderungen im Detail-Modal speichern und ans Backend senden
+ */
+window.saveStellvertretungBereitschaften = function() {
+    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
+    const saveBtn = document.querySelector('#stv-detail-modal .btn-primary');
+    
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Wird gespeichert...";
+    }
+
+    fetch(targetUrl, {
+        method: "POST",
+        body: JSON.stringify({
+            action: "updateStellvertretungBereitschaftMulti",
+            items: currentDetailData.workingItems, // Enthält nun korrekte Spaltenstruktur (inkl. id, typ, datum, verfasser, beschreibung, klasse, bereitschaft)
+            pw: userPw
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
+
+        if (data.status === "success") {
+            closeModal('stv-detail-modal');
+            renderStellvertretung();
+        } else {
+            alert("Fehler beim Speichern: " + (data.msg || "Unbekannter Fehler"));
+        }
+    })
+    .catch(e => {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
+        console.error("Netzwerkfehler:", e);
+        alert("Ein Netzwerkfehler ist aufgetreten.");
+    });
+};
+
+
+/* ============================================================
+   24-3. Stellvertretung löschen
+   ============================================================ */
+    
+// Globale Variablen zum Zwischenspeichern für den Löschvorgang
+let stvToDeleteDatum = null;
+let stvToDeleteVerfasser = null;
+
+/**
+ * 1. Schritt: Öffnet das eigene Bestätigungs-Modal (ersetzt das alte confirm)
+ */
+window.deleteStellvertretungTag = function(datum, verfasser) {
+    stvToDeleteDatum = datum;
+    stvToDeleteVerfasser = verfasser;
+
+    const overlay = document.getElementById('stv-loesch-confirm-overlay');
+    if (overlay) {
+        // Spinner verstecken, Buttons anzeigen
+        const spinner = document.getElementById('stv-loesch-spinner');
+        const actions = document.getElementById('stv-loesch-actions');
+        
+        if (spinner) spinner.style.display = 'none';
+        if (actions) actions.style.display = 'flex';
+        
+        overlay.style.display = 'flex';
+    } else {
+        console.error("Fehler: Element mit ID 'stv-loesch-confirm-overlay' existiert nicht!");
+    }
+};
+
+/**
+ * 2. Schritt: Wird ausgeführt, wenn der User im Modal auf "OK" klickt
+ */
+async function executeStvLoeschEcht() {
+    if (!stvToDeleteDatum || !stvToDeleteVerfasser) return;
+
+    const spinner = document.getElementById('stv-loesch-spinner');
+    const actions = document.getElementById('stv-loesch-actions');
+
+    if (spinner) spinner.style.display = 'block';
+    if (actions) actions.style.display = 'none';
+
+    const cleanVerfasser = stvToDeleteVerfasser.toLowerCase().trim();
+    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
+    
+    // IDs aus der geladenen Datenbank-Struktur ermitteln
+    const itemsToDelete = loadedStellvertretungen.filter(i => i.datum === stvToDeleteDatum && i.verfasser.toLowerCase().trim() === cleanVerfasser);
+    const ids = itemsToDelete.map(i => i.id);
+
+    try {
+        const response = await fetch(targetUrl, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "deleteStellvertretungTag",
+                ids: ids,
+                pw: userPw
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.status === "success") {
+            // 1. Bestätigungs-Modal schließen
+            closeStvLoeschConfirm();
+
+            // 2. Detail-Modal schließen
+            const detailModal = document.getElementById('stv-detail-modal');
+            if (detailModal) detailModal.style.display = 'none';
+
+            // 3. Hauptfenster der Stellvertretung öffnen & neu laden
+            const stvOverlay = document.getElementById('stellvertretung-overlay');
+            if (stvOverlay) {
+                stvOverlay.style.display = 'flex';
+                if (typeof renderStellvertretung === 'function') {
+                    renderStellvertretung();
+                }
+            }
+        } else {
+            alert("Fehler beim Löschen: " + (data.msg || "Unbekannter Fehler"));
+            if (spinner) spinner.style.display = 'none';
+            if (actions) actions.style.display = 'flex';
+        }
+    } catch (e) {
+        console.error("Netzwerkfehler:", e);
+        alert("Ein Netzwerkfehler ist aufgetreten.");
+        if (spinner) spinner.style.display = 'none';
+        if (actions) actions.style.display = 'flex';
+    } finally {
+        // Variablen zurücksetzen
+        stvToDeleteDatum = null;
+        stvToDeleteVerfasser = null;
+    }
+}
+
+/**
+ * Abbrechen im Detail-Modal
+ */
+window.closeStvDetailModal = function() {
+    closeModal('stv-detail-modal');
+};
+
+/**
+ * Lösch-Bestätigung abbrechen
+ */
+window.closeStvLoeschConfirm = function() {
+    const overlay = document.getElementById('stv-loesch-confirm-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+};
+
+
+
+
+    
 
     
 
@@ -10848,994 +11845,7 @@ window.startNeueZahlungsrunde = function() {
 
 
 
-/* ============================================================
-    24. Stellvertretung 
-    ============================================================ */
 
-// Globaler Zwischenspeicher für den aktuellen Erfassungs-Vorgang und geladene Abwesenheiten
-let currentStvData = {
-    datum: '',
-    grund: '',
-    selectedSlots: [],
-    allDay: false
-};
-
-let loadedStellvertretungen = [];
-let currentDetailData = {
-    datum: '',
-    verfasser: '',
-    originalItems: [],
-    workingItems: []
-};
-
-window.openStellvertretung = function() {
-    console.log("Starte openStellvertretung...");
-    
-    const extraMenu = document.getElementById('extra-menu');
-    if (extraMenu) {
-        extraMenu.style.display = 'none';
-    }
-
-    const overlay = document.getElementById('stellvertretung-overlay');
-    if (overlay) {
-        overlay.style.display = 'flex';
-        renderStellvertretung(); 
-    } else {
-        console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!");
-    }
-};
-
-
-/* ============================================================
-    24-1. Stellvertretung suchen
-    ============================================================ */
-    
-// Automatisches Vorbelegen mit dem heutigen Datum beim Öffnen des Hauptmodals
-window.openNewStellvertretungModal = function() {
-    const modal = document.getElementById('new-stellvertretung-modal');
-    const dp = document.getElementById('stv-datum');
-    const grundInput = document.getElementById('stv-grund');
-    
-    if (grundInput) grundInput.value = '';
-
-    if (dp) {
-        const now = new Date();
-        const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        dp.value = localToday;
-        updateStvDateText(localToday);
-    }
-
-    if (modal) modal.style.display = 'flex';
-};
-
-
-    
-window.openStvCalendar = function(offset = 0) {
-    const modal = document.getElementById('stv-calendar-modal');
-    const nav = document.getElementById('stvcal-nav');
-    const grid = document.getElementById('stvcal-grid');
-    const dp = document.getElementById('stv-datum');
-    
-    if (!modal || !nav || !grid || !dp) return;
-    
-    modal.style.display = 'flex';
-    nav.innerHTML = '';
-    grid.innerHTML = ''; 
-
-    const now = new Date();
-    const getLocalStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    
-    const heuteStr = getLocalStr(now);
-    const gewähltesDatumStr = dp.value;
-    
-    let baseDate = dp.value ? new Date(dp.value + 'T12:00:00') : now;
-    let d = new Date(baseDate.getFullYear(), baseDate.getMonth() + offset, 1);
-    
-    const monatsName = d.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
-    
-    nav.innerHTML = `
-        <button onclick="openStvCalendar(${offset - 1})">❮</button>
-        <span class="stvcal-month-title">${monatsName}</span>
-        <button onclick="openStvCalendar(${offset + 1})">❯</button>
-    `;
-    
-    const tage = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-    tage.forEach(t => grid.insertAdjacentHTML('beforeend', `<div class="stvcal-weekday">${t}</div>`));
-
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    let startDay = (d.getDay() === 0 ? 6 : d.getDay() - 1);
-
-    for (let i = 0; i < startDay; i++) {
-        grid.insertAdjacentHTML('beforeend', `<div class="stvcal-day empty"></div>`);
-    }
-
-    for (let i = 1; i <= lastDay; i++) {
-        let dateObj = new Date(d.getFullYear(), d.getMonth(), i, 12, 0, 0);
-        let dateStr = getLocalStr(dateObj);
-        
-        const dayBtn = document.createElement('div');
-        dayBtn.className = 'stvcal-day';
-        dayBtn.innerText = i;
-        
-        if (dateStr === heuteStr) dayBtn.classList.add('today');
-        if (dateStr === gewähltesDatumStr) dayBtn.classList.add('selected');
-        if (dateObj.getDay() === 0 || dateObj.getDay() === 6) dayBtn.classList.add('weekend');
-
-        // Vergangene Tage ausgrauen und sperren
-        if (dateStr < heuteStr) {
-            dayBtn.classList.add('disabled');
-            dayBtn.style.opacity = '0.3';
-            dayBtn.style.pointerEvents = 'none';
-            dayBtn.style.cursor = 'default';
-        } else {
-            dayBtn.onclick = () => {
-                dp.value = dateStr;
-                updateStvDateText(dateStr);
-                window.closeStvCalendar();
-            };
-        }
-        
-        grid.appendChild(dayBtn);
-    }
-};
-
-window.closeStvCalendar = function() {
-    const modal = document.getElementById('stv-calendar-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.updateStvDateText = function(dateValue) {
-    const textSpan = document.getElementById('stv-date-text');
-    if (textSpan && dateValue) {
-        const [y, m, d] = dateValue.split('-');
-        textSpan.innerText = `${d}.${m}.${y}`;
-        textSpan.style.color = '#fff';
-    }
-};
-
-    
-
-window.renderStellvertretung = function() {
-    const container = document.getElementById('stellvertretung-container');
-    if (!container) return;
-    
-    // Nur noch den Loader direkt in den Container setzen (Untertitel ist nun fix im HTML)
-    container.innerHTML = `
-        <div id="stellvertretung-content-inner">
-            <div class="loader-container">
-                <div class="littlespinner"></div>
-                <span>Abwesenheiten werden geladen...</span>
-            </div>
-        </div>
-    `;
-
-    const innerContainer = document.getElementById('stellvertretung-content-inner');
-
-    fetch(`${url}?action=getStellvertretungen&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                innerContainer.innerHTML = "<p style='text-align:center; padding:15px; color:#7f8c8d;'>Keine geplanten Abwesenheiten erfasst.</p>";
-                return;
-            }
-            
-            // Global speichern
-            loadedStellvertretungen = data;
-
-            // Einträge nach Datum + Verfasser gruppieren für die Übersicht im Startmodul
-            const groupedMap = new Map();
-
-            data.forEach(item => {
-                const groupKey = `${item.datum}_${item.verfasser}`;
-                if (!groupedMap.has(groupKey)) {
-                    groupedMap.set(groupKey, {
-                        datum: item.datum,
-                        verfasser: item.verfasser.toLowerCase(),
-                        grund: item.grund,
-                        lektionen: []
-                    });
-                }
-                groupedMap.get(groupKey).lektionen.push(item);
-            });
-
-            innerContainer.innerHTML = Array.from(groupedMap.values()).map(group => {
-                const dateObj = new Date(group.datum);
-                const options = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' };
-                const formattedDate = dateObj.toLocaleDateString('de-DE', options);
-
-                const lektionenText = group.lektionen.length === 1 ? '1 Lektion' : `${group.lektionen.length} Lektionen`;
-
-                return `
-                    <div class="stellvertretung-item" onclick="openStellvertretungDetailModal('${group.datum}', '${group.verfasser}')" style="display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #f39c12; background: #2c2c2c; border-top: 1px solid #444; border-right: 1px solid #444; border-bottom: 1px solid #444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
-                        <div>
-                            <strong style="color: #fff;">${formattedDate} – ${group.verfasser.toLowerCase()}</strong>
-                            <span class="stellvertretung-meta" style="display: block; font-size: 12px; color: #aaa; margin-top: 2px;">${group.grund || 'Kein Grund angegeben'} (${lektionenText})</span>
-                        </div>
-                        <span class="material-symbols-outlined" style="color: #f39c12;">chevron_right</span>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            innerContainer.innerHTML = "<p style='color:#e74c3c; text-align:center;'>Fehler beim Laden.</p>";
-            console.error(e);
-        });
-};
-
-
-/**
- * Schritt 1: Vom Basis-Modal zum Lektionen-Modal wechseln
- */
-window.proceedToStvLessons = function() {
-    const datumInput = document.getElementById('stv-datum');
-    const grundInput = document.getElementById('stv-grund');
-
-    currentStvData.datum = datumInput.value;
-    currentStvData.grund = grundInput.value.trim();
-    currentStvData.selectedSlots = [];
-    currentStvData.allDay = false;
-
-    if (!currentStvData.datum) {
-        alert("Bitte ein Datum auswählen.");
-        return;
-    }
-
-    const btnAll = document.getElementById('btn-toggle-all-lessons');
-    if (btnAll) {
-        btnAll.style.background = ""; // Standard-Primärfarbe (Orange) wiederherstellen
-        btnAll.innerText = "Alle Lektionen markieren";
-    }
-
-    closeModal('new-stellvertretung-modal');
-    
-    const lektionenModal = document.getElementById('stv-lektionen-modal');
-    if (lektionenModal) {
-        lektionenModal.style.display = 'flex';
-    }
-    
-    const dateObj = new Date(currentStvData.datum);
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const dateInfo = document.getElementById('stv-selected-date-info');
-    if (dateInfo) {
-        dateInfo.innerHTML = `Für welche Lektionen vom <strong>${dateObj.toLocaleDateString('de-DE', options)}</strong> wird eine Stellvertretung gesucht?`;
-    }
-
-    loadStvStundenplanFromBackend(currentStvData.datum);
-};
-
-
-
-/**
- * Schritt 2: Backend-Abfrage ausführen
- */
-async function loadStvStundenplanFromBackend(dateString) {
-    const container = document.getElementById('stv-tagesplan-container');
-    container.innerHTML = `
-        <div class="loader-container" style="padding: 20px; text-align: center;">
-            <div class="littlespinner"></div>
-            <span style="color: #aaa; font-size: 13px; margin-top: 5px; display: block;">Lektionen werden geladen...</span>
-        </div>
-    `;
-
-    try {
-        const kuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : '';
-        const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
-        
-        const response = await fetch(`${targetUrl}?userKuerzel=${encodeURIComponent(kuerzel)}&date=${dateString}&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`);
-        
-        if (!response.ok) {
-            throw new Error('Netzwerkfehler beim Laden des Plans');
-        }
-
-        const data = await response.json();
-        
-        if (data.status === 'success' && data.plan) {
-            parseAndFilterUserLektionen(data.plan, kuerzel);
-        } else {
-            throw new Error('Ungültige Daten vom Server');
-        }
-
-    } catch (error) {
-        console.error('Stundenplan-Fehler:', error);
-        container.innerHTML = '<p style="color: #e74c3c; text-align: center; padding: 20px;">Fehler beim Laden des Stundenplans.</p>';
-    }
-}
-
-/**
- * Globaler Zwischenspeicher für alle 12 Tageslektionen
- */
-let fetchedStvLektionen = [];
-
-/**
- * Schritt 3: Alle 12 Lektionen des Tages vorbereiten (auch leere)
- */
-function parseAndFilterUserLektionen(planObj, kuerzel) {
-    fetchedStvLektionen = [];
-    const lowerKuerzel = kuerzel ? kuerzel.toLowerCase().trim() : '';
-
-    for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
-        let startSlot = (lektionNr - 1) * 5 + 1;
-        let endSlot = lektionNr * 5;
-        
-        let lektionEintraege = [];
-
-        for (let s = startSlot; s <= endSlot; s++) {
-            let slotData = planObj[s];
-            if (slotData && slotData.klasse && slotData.klasse.trim() !== "") {
-                let slotLehrer = slotData.lehrer ? slotData.lehrer.toLowerCase().trim() : "";
-                
-                if (slotLehrer === lowerKuerzel || !lowerKuerzel) {
-                    lektionEintraege.push({
-                        slotId: s,
-                        klasse: slotData.klasse,
-                        lehrer: slotData.lehrer.toLowerCase().trim()
-                    });
-                }
-            }
-        }
-
-        let zeitString = getLektionZeit(lektionNr);
-
-        fetchedStvLektionen.push({
-            lektionNr: lektionNr,
-            zeit: zeitString,
-            eintraege: lektionEintraege,
-            selected: false,
-            hasLesson: lektionEintraege.length > 0
-        });
-    }
-
-    renderStvLektionenList();
-}
-
-/**
- * Hilfsfunktion für ungefähre Lektionenzeiten
- */
-function getLektionZeit(nr) {
-    const zeiten = {
-        1: "07:15 - 08:00",
-        2: "08:05 - 08:50",
-        3: "08:55 - 09:40",
-        4: "10:00 - 10:45",
-        5: "10:50 - 11:35",
-        6: "11:40 - 12:25",
-        7: "12:50 - 13:35",
-        8: "13:40 - 14:25",
-        9: "14:30 - 15:15",
-        10: "15:35 - 16:20",
-        11: "16:25 - 17:10",
-        12: "17:15 - 18:00"
-    };
-    return zeiten[nr] || `Lektion ${nr}`;
-}
-
-/**
- * Schritt 4: Alle 12 Lektionen kompakt als Zeilen rendern
- */
-function renderStvLektionenList() {
-    const container = document.getElementById('stv-tagesplan-container');
-    container.innerHTML = '';
-
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '6px';
-
-    fetchedStvLektionen.forEach((item, index) => {
-        const card = document.createElement('div');
-        card.className = `stv-lektion-card ${item.selected ? 'selected' : ''} ${!item.hasLesson ? 'empty-lesson' : ''}`;
-        
-        card.style.display = 'flex';
-        card.style.justifyContent = 'space-between';
-        card.style.alignItems = 'center';
-        card.style.padding = '8px 12px';
-        card.style.borderRadius = '6px';
-        card.style.background = item.hasLesson ? (item.selected ? '#2d2318' : '#2c2c2c') : '#2c2c2c';
-        card.style.border = item.selected ? '1px solid #e67e22' : '1px solid #444';
-        card.style.borderLeft = item.selected ? '4px solid #e67e22' : (item.hasLesson ? '4px solid #e67e22' : '4px solid #444');
-        card.style.cursor = item.hasLesson ? 'pointer' : 'default';
-        card.style.opacity = item.hasLesson ? '1' : '0.4';
-
-        let klassenText = item.hasLesson ? item.eintraege.map(e => e.klasse).join(', ') : '';
-
-        card.innerHTML = `
-            <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">
-                ${item.zeit}
-            </div>
-            <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff; font-weight: ${item.hasLesson ? '600' : 'normal'};">
-                ${klassenText}
-            </div>
-            <div style="display: flex; align-items: center;">
-                ${item.hasLesson ? `
-                    <span class="material-symbols-outlined" style="font-size: 20px; color: ${item.selected ? '#e67e22' : '#666'};">
-                        ${item.selected ? 'check_circle' : 'radio_button_unchecked'}
-                    </span>
-                ` : ''}
-            </div>
-        `;
-
-        if (item.hasLesson) {
-            card.onclick = () => toggleStvLektionSelection(index, card);
-        }
-
-        container.appendChild(card);
-    });
-}
-
-
-window.toggleStvLektionSelection = function(index, cardElement) {
-    if (!fetchedStvLektionen[index].hasLesson) return;
-
-    // Status umklicken
-    fetchedStvLektionen[index].selected = !fetchedStvLektionen[index].selected;
-    
-    // Prüfen, ob jetzt alle Lektionen mit Unterricht ausgewählt sind
-    const lessonsWithContent = fetchedStvLektionen.filter(l => l.hasLesson);
-    const allAreSelected = lessonsWithContent.length > 0 && lessonsWithContent.every(l => l.selected);
-
-    currentStvData.allDay = allAreSelected;
-
-    // Button entsprechend anpassen
-    const btn = document.getElementById('btn-toggle-all-lessons');
-    if (btn) {
-        if (allAreSelected) {
-            btn.style.background = "#b95c00";
-            btn.innerText = "Alle Markierungen entfernen";
-        } else {
-            btn.style.background = ""; // Standard-Orange aus CSS
-            btn.innerText = "Alle Lektionen markieren";
-        }
-    }
-
-    // Visuelle Darstellung der geklickten Karte aktualisieren
-    const iconSpan = cardElement.querySelector('.material-symbols-outlined');
-
-    if (fetchedStvLektionen[index].selected) {
-        cardElement.classList.add('selected');
-        cardElement.style.background = '#2d2318';
-        cardElement.style.border = '1px solid #e67e22';
-        cardElement.style.borderLeft = '4px solid #e67e22';
-        if (iconSpan) {
-            iconSpan.innerText = 'check_circle';
-            iconSpan.style.color = '#e67e22';
-        }
-    } else {
-        cardElement.classList.remove('selected');
-        cardElement.style.background = '#2c2c2c';
-        cardElement.style.border = '1px solid #444';
-        cardElement.style.borderLeft = '4px solid #e67e22';
-        if (iconSpan) {
-            iconSpan.innerText = 'radio_button_unchecked';
-            iconSpan.style.color = '#666';
-        }
-    }
-};
-
-window.toggleAllStvLessons = function() {
-    // Zustand umkehren
-    currentStvData.allDay = !currentStvData.allDay;
-    
-    const cards = document.querySelectorAll('#stv-tagesplan-container > div');
-    const btn = document.getElementById('btn-toggle-all-lessons');
-
-    if (currentStvData.allDay) {
-        if (btn) {
-            btn.style.background = "#b95c00";
-            btn.innerText = "Alle Markierungen entfernen";
-        }
-        
-        fetchedStvLektionen.forEach(l => {
-            if (l.hasLesson) l.selected = true;
-        });
-
-        cards.forEach((card, index) => {
-            if (fetchedStvLektionen[index] && fetchedStvLektionen[index].hasLesson) {
-                card.classList.add('selected');
-                card.style.background = '#2d2318';
-                card.style.border = '1px solid #e67e22';
-                card.style.borderLeft = '4px solid #e67e22';
-                const icon = card.querySelector('.material-symbols-outlined');
-                if (icon) {
-                    icon.innerText = "check_circle";
-                    icon.style.color = "#e67e22";
-                }
-            }
-        });
-    } else {
-        if (btn) {
-            btn.style.background = ""; // Zurück zum Standard-Orange
-            btn.innerText = "Alle Lektionen markieren";
-        }
-        
-        fetchedStvLektionen.forEach(l => {
-            if (l.hasLesson) l.selected = false;
-        });
-
-        cards.forEach((card, index) => {
-            if (fetchedStvLektionen[index] && fetchedStvLektionen[index].hasLesson) {
-                card.classList.remove('selected');
-                card.style.background = '#2c2c2c';
-                card.style.border = '1px solid #444';
-                card.style.borderLeft = '4px solid #e67e22';
-                const icon = card.querySelector('.material-symbols-outlined');
-                if (icon) {
-                    icon.innerText = "radio_button_unchecked";
-                    icon.style.color = "#666";
-                }
-            }
-        });
-    }
-};
-
-
-// Letzter Schritt: Absenden an das Backend (Multi-Datensatz pro Lektion für die neue DB-Struktur)
-window.submitStellvertretungWithLessons = function() {
-    let selectedLektionen = [];
-    if (currentStvData.allDay) {
-        selectedLektionen = fetchedStvLektionen.filter(l => l.hasLesson);
-    } else {
-        selectedLektionen = fetchedStvLektionen.filter(l => l.selected && l.hasLesson);
-    }
-
-    if (!currentStvData.allDay && selectedLektionen.length === 0) {
-        alert("Bitte wähle mindestens eine Lektion aus oder entscheide dich für den ganzen Tag.");
-        return;
-    }
-
-    // Präziserer Selektor, damit nur der "Speichern"-Button im Modal-Footer angesprochen wird
-    const saveBtn = document.querySelector('#stv-lektionen-modal .modal-actions .btn-primary');
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerText = "Wird gesendet...";
-    }
-
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "lp";
-
-    let lektionenPayload = selectedLektionen.map(l => {
-        return {
-            id: 'stv_' + Date.now() + '_' + l.lektionNr,
-            datum: currentStvData.datum,
-            verfasser: aktuellerUser,
-            grund: currentStvData.grund,
-            klasse: l.eintraege.map(e => e.klasse).join(', '),
-            bereitschaft: ''
-        };
-    });
-
-    fetch(targetUrl, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveStellvertretungMulti", 
-            lektionen: lektionenPayload,
-            anzahlLektionen: selectedLektionen.length, // <--- HIER ERGÄNZEN
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (saveBtn) { 
-            saveBtn.disabled = false; 
-            saveBtn.innerText = "Speichern"; 
-        }
-        
-        if (data.status === "success") {
-            closeModal('stv-lektionen-modal');
-            const datumField = document.getElementById('stv-datum');
-            const grundField = document.getElementById('stv-grund');
-            if (datumField) datumField.value = '';
-            if (grundField) grundField.value = '';
-            
-            renderStellvertretung();
-            // Erfolgs-Alert entfernt
-        } else {
-            alert("Fehler: " + (data.msg || "Unbekannter Fehler"));
-        }
-    })
-    .catch(e => {
-        if (saveBtn) { 
-            saveBtn.disabled = false; 
-            saveBtn.innerText = "Speichern"; 
-        }
-        console.error("Fehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
-    });
-};
-    
-
-/* ============================================================
-    24-2. Stellvertretung übernehmen
-    ============================================================ */
-
-window.openStellvertretungDetailModal = function(datum, verfasser) {
-    const modal = document.getElementById('stv-detail-modal');
-    const titleEl = document.getElementById('stv-detail-title');
-    const deleteBtnContainer = document.getElementById('stv-delete-container');
-
-    if (!modal) {
-        console.error("Modal 'stv-detail-modal' nicht gefunden!");
-        return;
-    }
-
-    const cleanVerfasser = verfasser.toLowerCase().trim();
-    const items = loadedStellvertretungen.filter(i => i.datum === datum && i.verfasser.toLowerCase().trim() === cleanVerfasser);
-    if (items.length === 0) return;
-
-    currentDetailData.datum = datum;
-    currentDetailData.verfasser = cleanVerfasser;
-    currentDetailData.originalItems = items;
-    currentDetailData.workingItems = JSON.parse(JSON.stringify(items));
-    
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
-
-    // Prüfen, ob beim Öffnen bereits alle gültigen Lektionen markiert sind
-    const validItems = [];
-    for (let l = 1; l <= 12; l++) {
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
-        if (dbItem) validItems.push(dbItem);
-    }
-
-    const allAreChecked = validItems.length > 0 && validItems.every(i => {
-        const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-        return bList.includes(aktuellerUser);
-    });
-
-    currentDetailData.allSelected = allAreChecked;
-
-    const dateObj = new Date(datum);
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const formattedDate = dateObj.toLocaleDateString('de-DE', options);
-
-    if (titleEl) {
-        titleEl.innerText = "Stellvertretung übernehmen";
-    }
-
-    const dateInfo = document.getElementById('stv-detail-date-info');
-    if (dateInfo) {
-        dateInfo.innerHTML = `Welche Lektionen könnten am <strong>${formattedDate}</strong> übernommen werden?`;
-    }
-
-// Unterscheidung: Eigene Abwesenheit (Löschen) vs. Fremde Abwesenheit (Alle Bereitschaften markieren)
-    if (deleteBtnContainer) {
-        deleteBtnContainer.style.display = 'block';
-        if (aktuellerUser === cleanVerfasser) {
-            deleteBtnContainer.innerHTML = `<button onclick="deleteStellvertretungTag('${datum}', '${cleanVerfasser}')" class="btn-stv-loeschen-hover" style="background: #e67e22; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 10px;">Diese Abwesenheit löschen</button>`;
-        } else {
-            // Button-Design wird dynamisch je nach 'allAreChecked' beim Öffnen gesetzt
-            const btnBg = allAreChecked ? "#b95c00" : "#e67e22";
-            const btnText = allAreChecked ? "Alle Markierungen entfernen" : "Alle Lektionen markieren";
-
-            deleteBtnContainer.innerHTML = `<button type="button" id="btn-toggle-all-detail" class="btn-action stv-toggle-btn" onclick="toggleAllDetailStvLessons()" style="background: ${btnBg}; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100% !important; margin-bottom: 10px;">${btnText}</button>`;
-        }
-    }
-    
-    renderStvDetailLektionenList();
-    modal.style.display = 'flex';
-};
-    
-/**
- * Rendert die 12 Lektionen im Detail-Modal (angepasst: mit Braun/Orange-Design für Bereitschaft)
- */
-function renderStvDetailLektionenList() {
-    const container = document.getElementById('stv-detail-container');
-    if (!container) return;
-
-    container.innerHTML = '';
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '6px';
-
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
-
-    for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
-        const zeitString = getLektionZeit(lektionNr);
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + lektionNr));
-
-        const card = document.createElement('div');
-        card.style.display = 'flex';
-        card.style.justifyContent = 'space-between';
-        card.style.alignItems = 'center';
-        card.style.padding = '8px 12px';
-        card.style.borderRadius = '6px';
-
-        if (!dbItem) {
-            card.style.background = '#2c2c2c';
-            card.style.border = '1px solid #444';
-            card.style.opacity = '0.4';
-            card.style.cursor = 'default';
-            card.innerHTML = `
-                <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">${zeitString}</div>
-                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #888;"></div>
-            `;
-        } else {
-            let bereitschaftList = dbItem.bereitschaft ? dbItem.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-            let isUserBereit = bereitschaftList.includes(aktuellerUser);
-
-            // Angepasst auf das Braun/Orange-Design (analog zum Erfassungs-Modal)
-            card.style.background = isUserBereit ? '#2d2318' : '#2c2c2c';
-            card.style.border = isUserBereit ? '1px solid #e67e22' : '1px solid #444';
-            card.style.borderLeft = '4px solid #e67e22';
-            card.style.cursor = 'pointer';
-
-            card.innerHTML = `
-                <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">
-                    ${zeitString}
-                </div>
-                <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff;">
-                    <strong>${dbItem.klasse}</strong><br>
-                    <span style="font-size: 12px; color: #888;">Bereitschaft: ${bereitschaftList.length > 0 ? bereitschaftList.join(', ') : 'Noch niemand'}</span>
-                </div>
-                <div style="display: flex; align-items: center;">
-                    <span class="material-symbols-outlined" style="font-size: 20px; color: ${isUserBereit ? '#e67e22' : '#666'};">
-                        ${isUserBereit ? 'check_circle' : 'radio_button_unchecked'}
-                    </span>
-                </div>
-            `;
-
-            card.onclick = () => toggleLocalBereitschaft(dbItem.id);
-        }
-
-        container.appendChild(card);
-    }
-}
-
-
-
-/**
- * Lokales Umschalten der Bereitschaft im Arbeits-Array (Einzelklick)
- */
-function toggleLocalBereitschaft(itemId) {
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
-    if (!aktuellerUser) {
-        alert("Benutzerkürzel nicht erkannt.");
-        return;
-    }
-
-    const item = currentDetailData.workingItems.find(i => i.id === itemId);
-    if (!item) return;
-
-    let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-
-    if (list.includes(aktuellerUser)) {
-        list = list.filter(u => u !== aktuellerUser);
-    } else {
-        list.push(aktuellerUser);
-    }
-
-    item.bereitschaft = list.join(', ');
-
-    // Prüfen, ob durch diesen Einzelklick nun alle vorhandenen Lektionen markiert sind
-    const validItems = [];
-    for (let l = 1; l <= 12; l++) {
-        const dbItem = currentDetailData.workingItems.find(i => i.id.endsWith('_' + l));
-        if (dbItem) validItems.push(dbItem);
-    }
-
-    const allAreChecked = validItems.length > 0 && validItems.every(i => {
-        const bList = i.bereitschaft ? i.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-        return bList.includes(aktuellerUser);
-    });
-
-    currentDetailData.allSelected = allAreChecked;
-
-    const deleteBtnContainer = document.getElementById('stv-delete-container');
-    const btn = deleteBtnContainer ? deleteBtnContainer.querySelector('button') : null;
-    if (btn) {
-        if (allAreChecked) {
-            btn.style.background = "#b95c00"; // Dunkleres Orange, da nun alle ausgewählt sind
-            btn.innerText = "Alle Markierungen entfernen";
-        } else {
-            btn.style.background = "#e67e22"; // Zurück zum anfänglichen Orange
-            btn.innerText = "Alle Lektionen markieren";
-        }
-    }
-
-    renderStvDetailLektionenList();
-}
-
-
-/**
- * Alle Bereitschaften auf einmal umschalten (Sammel-Button)
- */
-window.toggleAllDetailStvLessons = function() {
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
-    if (!aktuellerUser) {
-        alert("Benutzerkürzel nicht erkannt.");
-        return;
-    }
-
-    currentDetailData.allSelected = !currentDetailData.allSelected;
-    
-    const deleteBtnContainer = document.getElementById('stv-delete-container');
-    const btn = deleteBtnContainer ? deleteBtnContainer.querySelector('button') : null;
-
-    if (currentDetailData.allSelected) {
-        if (btn) {
-            btn.style.background = "#b95c00"; // Dunkleres Orange im aktivierten Zustand
-            btn.innerText = "Alle Markierungen entfernen";
-        }
-        // Für alle Items den aktuellen User zur Bereitschaft hinzufügen (falls noch nicht drin)
-        currentDetailData.workingItems.forEach(item => {
-            let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-            if (!list.includes(aktuellerUser)) {
-                list.push(aktuellerUser);
-                item.bereitschaft = list.join(', ');
-            }
-        });
-    } else {
-        if (btn) {
-            btn.style.background = "#e67e22"; // Wieder das anfängliche Orange
-            btn.innerText = "Alle Lektionen markieren";
-        }
-        // Für alle Items den aktuellen User aus der Bereitschaft entfernen
-        currentDetailData.workingItems.forEach(item => {
-            let list = item.bereitschaft ? item.bereitschaft.split(',').map(s => s.toLowerCase().trim()).filter(Boolean) : [];
-            list = list.filter(u => u !== aktuellerUser);
-            item.bereitschaft = list.join(', ');
-        });
-    }
-
-    // Nach Änderung der Daten einfach die Liste neu rendern lassen, 
-    // dann stimmen die visuellen Checkboxen/Cards automatisch mit den Daten überein!
-    renderStvDetailLektionenList();
-};
-
-
-
-
-/**
- * Änderungen im Detail-Modal speichern und ans Backend senden
- */
-window.saveStellvertretungBereitschaften = function() {
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
-    const saveBtn = document.querySelector('#stv-detail-modal .btn-primary');
-    
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerText = "Wird gespeichert...";
-    }
-
-    fetch(targetUrl, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "updateStellvertretungBereitschaftMulti",
-            items: currentDetailData.workingItems,
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerText = "Speichern";
-        }
-
-        if (data.status === "success") {
-            closeModal('stv-detail-modal');
-            renderStellvertretung();
-        } else {
-            alert("Fehler beim Speichern: " + (data.msg || "Unbekannter Fehler"));
-        }
-    })
-    .catch(e => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerText = "Speichern";
-        }
-        console.error("Netzwerkfehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
-    });
-};
-
-
-/* ============================================================
-    24-3. Stellvertretung löschen
-    ============================================================ */
-    
-
-// Globale Variablen zum Zwischenspeichern für den Löschvorgang
-let stvToDeleteDatum = null;
-let stvToDeleteVerfasser = null;
-
-/**
- * 1. Schritt: Öffnet dein eigenes Bestätigungs-Modal (ersetzt das alte confirm)
- */
-window.deleteStellvertretungTag = function(datum, verfasser) {
-    stvToDeleteDatum = datum;
-    stvToDeleteVerfasser = verfasser;
-
-    const overlay = document.getElementById('stv-loesch-confirm-overlay');
-    if (overlay) {
-        // Spinner verstecken, Buttons anzeigen
-        document.getElementById('stv-loesch-spinner').style.display = 'none';
-        document.getElementById('stv-loesch-actions').style.display = 'flex';
-        overlay.style.display = 'flex';
-    } else {
-        console.error("Fehler: Element mit ID 'stv-loesch-confirm-overlay' existiert nicht!");
-    }
-};
-
-/**
- * 2. Schritt: Wird ausgeführt, wenn der User im Modal auf "OK" klickt
- */
-async function executeStvLoeschEcht() {
-    if (!stvToDeleteDatum || !stvToDeleteVerfasser) return;
-
-    // Spinner an, Buttons weg
-    document.getElementById('stv-loesch-spinner').style.display = 'block';
-    document.getElementById('stv-loesch-actions').style.display = 'none';
-
-    const cleanVerfasser = stvToDeleteVerfasser.toLowerCase().trim();
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
-    
-    // IDs ermitteln
-    const itemsToDelete = loadedStellvertretungen.filter(i => i.datum === stvToDeleteDatum && i.verfasser.toLowerCase().trim() === cleanVerfasser);
-    const ids = itemsToDelete.map(i => i.id);
-
-    try {
-        const response = await fetch(targetUrl, {
-            method: "POST",
-            body: JSON.stringify({
-                action: "deleteStellvertretungTag",
-                ids: ids,
-                pw: userPw
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.status === "success") {
-            // 1. Bestätigungs-Modal schließen
-            closeStvLoeschConfirm();
-
-            // 2. Eventuelle Detail-Modale oder alte Overlays schließen
-            const detailModal = document.getElementById('stv-detail-modal');
-            if (detailModal) detailModal.style.display = 'none';
-
-            // 3. Hauptfenster der Stellvertretung ('stellvertretung-overlay') öffnen & neu laden
-            const stvOverlay = document.getElementById('stellvertretung-overlay');
-            if (stvOverlay) {
-                stvOverlay.style.display = 'flex';
-                if (typeof renderStellvertretung === 'function') {
-                    renderStellvertretung();
-                }
-            }
-        } else {
-            alert("Fehler beim Löschen: " + (data.msg || "Unbekannter Fehler"));
-            // Bei Fehler Spinner wieder ausblenden
-            document.getElementById('stv-loesch-spinner').style.display = 'none';
-            document.getElementById('stv-loesch-actions').style.display = 'flex';
-        }
-    } catch (e) {
-        console.error("Netzwerkfehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
-        // Bei Fehler Spinner wieder ausblenden
-        document.getElementById('stv-loesch-spinner').style.display = 'none';
-        document.getElementById('stv-loesch-actions').style.display = 'flex';
-    } finally {
-        // Variablen zurücksetzen
-        stvToDeleteDatum = null;
-        stvToDeleteVerfasser = null;
-    }
-}
-    
-
-
-/**
- * Abbrechen im Detail-Modal
- */
-window.closeStvDetailModal = function() {
-    closeModal('stv-detail-modal');
-};
-
-
-
-// Löschen abbrechen
-function closeStvLoeschConfirm() {
-    const overlay = document.getElementById('stv-loesch-confirm-overlay');
-    if (overlay) {
-        overlay.style.display = 'none';
-    }
-}
 
 
 
