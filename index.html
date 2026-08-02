@@ -5536,7 +5536,7 @@ function updateNewsDot() {
 
 
 /* ============================================================
-   9.1. NEWS AUSLÖSEN
+   9.1. NEWS AUSLÖSEN (Nur bei Specials & Freien Hallen)
    ============================================================ */
 
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
@@ -5560,6 +5560,13 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     
     const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
     const isFreieHalle = (isAusfall || isAbkleben || isOutdoor || isBadi);
+
+    // 🛑 WICHTIG: Wenn es sich weder um eine Sonder-Aktion (Special) noch um eine Freie Halle handelt 
+    // (also eine ganz normale Hallen-Reservierung oder normale Änderung), wird KEINE News verschickt!
+    if (!isSpecial && !isFreieHalle) {
+        console.log("ℹ️ Normale Hallen-Reservierung/-Änderung: Es wird keine News verschickt.");
+        return;
+    }
 
     // 1. Identifikation der handelnden Lehrperson
     let handelndeLP = "";
@@ -5634,7 +5641,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
     
-    // 4. TITEL-, TEXT- UND ZEITFENSTER-LOGIK (Entspricht genau der Newszentrale)
+    // 4. TITEL-, TEXT- UND ZEITFENSTER-LOGIK
     let displayHeader = "";
     let newsText = "";
     const payloadText = payload.text ? payload.text.toString() : "";
@@ -5683,12 +5690,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     } else if (isAusfall) {
         displayHeader = "Halle frei!";
         newsText = `Die Klasse ${kl} fällt aus!`;
-    } else {
-        displayHeader = "Info:";
-        newsText = "Änderung: " + kl + " -> " + (payload.halle || "");
     }
 
-    // Zeitfenster-Berechnung (z.B. 04.08.2026 / 08:05-08:50)
+    // Zeitfenster-Berechnung
     const zeiten = [
         "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
         "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
@@ -5760,7 +5764,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
     }
 };
-
     
 /* ============================================================
    9.2. NEWS ANZEIGEN
