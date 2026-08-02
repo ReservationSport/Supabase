@@ -10966,24 +10966,17 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 
     currentDetailData.allSelected = allAreChecked;
 
-    // Robustes Parsen des Datums (unterstützt YYYY-MM-DD und DD.MM.YYYY)
+    // Datum exakt in das Format DD.MM.YYYY (xx.xx.xxxx) umwandeln
     let formattedDate = datum;
     try {
-        let dObj;
-        if (datum && datum.includes('.')) {
-            const parts = datum.split('.');
+        if (datum && datum.includes('-')) {
+            const parts = datum.split('-'); // Erwartet YYYY-MM-DD
             if (parts.length === 3) {
-                dObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
             }
-        } else if (datum) {
-            dObj = new Date(datum.replace(/-/g, "/"));
-        }
-        
-        if (dObj && !isNaN(dObj.getTime())) {
-            formattedDate = dObj.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         }
     } catch (err) {
-        console.warn("Konnte Datum nicht parsen:", datum);
+        console.warn("Konnte Datum nicht formatieren:", datum);
     }
 
     if (titleEl) {
