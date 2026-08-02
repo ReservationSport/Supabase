@@ -5511,8 +5511,11 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const isStv = (rawHalle === "stellvertretung");
     const isAusfall = (rawHalle === "" || rawHalle === "ausfall");
     const isAbkleben = (rawHalle === "beendet" || rawHalle === "abgeklebt");
+    const isOutdoor = rawHalle.includes("outdoor");
+    const isBadi = rawHalle.includes("badi");
     
     const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
+    const isFreieHalle = (isAusfall || isAbkleben || isOutdoor || isBadi);
 
     // 1. Identifikation der handelnden Lehrperson
     let handelndeLP = "";
@@ -5532,7 +5535,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
     if (isStv) {
         newsId = "STV_" + stvDatum + "_" + handelndeLP;
-    } else if (isSpecial || isAusfall || isAbkleben || rawHalle.includes("outdoor") || rawHalle.includes("badi")) {
+    } else if (isSpecial || isFreieHalle) {
         newsId += "_" + Date.now(); // Verhindert Überschreibung, damit jede Aktion als eigene News ankommt
     }
 
@@ -5544,7 +5547,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 3. Empfänger-Berechnung (Jetzt absolut fehlerfrei ohne Abbruch)
+    // 3. Empfänger-Berechnung
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5555,6 +5558,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     } else if (isDefekt || isMaterial || isIdee || isApothekeMeldung || isStv) {
         empfaenger = "alle";
     } else {
+        // Logik für freie Hallen & Standard-Slot-Änderungen: Parallelslots im 5er-Block filtern
         const currentSlot = parseInt(payload.slot, 10);
         if (!isNaN(currentSlot) && currentSlot > 0) {
             const rowIndex = Math.floor((currentSlot - 1) / 5);
@@ -5570,6 +5574,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                     let sheetSlot = row.slot ? row.slot.toString().trim() : "";
                     let lehrerKuerzel = row.verfasser || row.lehrer ? (row.verfasser || row.lehrer).toString().trim() : "";
 
+                    // Prüfen ob Tag, Slot im selben 5er-Block und ob es nicht der Verfasser selbst ist
                     if (sheetTag === (zielTag || "").toLowerCase() && targetSlots.includes(sheetSlot) && lehrerKuerzel !== "") {
                         if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel)) {
                             gefundeneLehrer.push(lehrerKuerzel);
@@ -5579,9 +5584,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             }
         }
 
-        // FALLBACK: Wenn keine anderen Lehrer im Block gefunden wurden, geht die Info an "alle" 
+        // FALLBACK: Wenn keine anderen Lehrer im Block gefunden wurden, geht die Info an "alle" (bzw. leer lassen nach Wunsch, hier beibehalten)
         if (gefundeneLehrer.length === 0) {
-            empfaenger = "alle";
+            empfaenger = isFreieHalle ? "" : "alle"; // Bei freien Hallen leer lassen, wenn niemand im Block ist
         } else {
             empfaenger = gefundeneLehrer.join(",");
         }
@@ -5591,9 +5596,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let newsText = "";
     if (isAbkleben) {
         newsText = `${handelndeLP} hat die Klasse ${payload.klasse} abgeklebt!`;
-    } else if (rawHalle.includes("outdoor")) {
+    } else if (isOutdoor) {
         newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} "outdoor"!`;
-    } else if (rawHalle.includes("badi")) {
+    } else if (isBadi) {
         newsText = `${handelndeLP} ist mit der Klasse ${payload.klasse} in der "Badi"!`;
     } else if (isDefekt) {
         newsText = `NEUER DEFEKT: ${payload.text} (Gemeldet von: ${handelndeLP})`;
@@ -5625,7 +5630,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         newsText = "Änderung: " + payload.klasse + " -> " + payload.halle;
     }
 
-    // 5. Sicherer Speichervorgang (Ohne Abhängigkeit von Supabase-Constraints)
+    // 5. Sicherer Speichervorgang
     try {
         const newsData = {
             id: newsId,
