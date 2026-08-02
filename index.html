@@ -8755,38 +8755,6 @@ window.cancelAddMode = function() {
    11.1. MELDUNGEN (DEFEKTE)
    ============================================================ */
 
-window.openMeldungen = function() {
-    // 1. Zusatzmenü schließen (ID anpassen, falls dein Menü anders heißt)
-    const extraMenu = document.getElementById('extra-menu');
-    if (extraMenu) {
-        extraMenu.style.display = 'none';
-    }
-
-    // 2. Haupt-Overlay öffnen
-    const overlay = document.getElementById('meldungen-overlay');
-    if (overlay) {
-        overlay.style.display = 'flex';
-        // 3. Liste vom Server laden
-        renderMeldungen(); 
-    } else {
-        console.error("Meldungen-Overlay nicht gefunden!");
-    }
-};
-
-    
-window.openNewMeldungModal = function() {
-    const modal = document.getElementById('new-meldung-modal');
-    const input = document.getElementById('meldung-text');
-    
-    // Modal anzeigen
-    modal.style.display = 'flex';
-    
-    // Kleiner Timeout, damit der Fokus gesetzt wird, sobald das Modal sichtbar ist
-    setTimeout(() => {
-        input.focus();
-    }, 100);
-};
-
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input.value.trim();
@@ -8809,7 +8777,7 @@ window.saveMeldung = async function() {
         const datumStr = new Date().toLocaleDateString();
 
         // 1. In die zentrale service_db speichern
-        const { error: dbError } = await supabase
+        const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
                 id: meldungId,
@@ -8822,8 +8790,8 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Gleichzeitig den News-Eintrag erstellen (analog zu deinem alten System)
-        const { error: newsError } = await supabase
+        // 2. Gleichzeitig den News-Eintrag erstellen
+        const { error: newsError } = await window.supabaseClient
             .from('news_db')
             .insert([{
                 date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
@@ -8861,7 +8829,7 @@ window.saveMeldung = async function() {
 window.markResolved = async function(id) {
     try {
         // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
-        const { data: record, error: fetchError } = await supabase
+        const { data: record, error: fetchError } = await window.supabaseClient
             .from('service_db')
             .select('beschreibung')
             .eq('id', id)
@@ -8871,7 +8839,7 @@ window.markResolved = async function(id) {
         const ursprungsText = record ? record.beschreibung : "";
 
         // 2. Status in der service_db auf "behoben" aktualisieren
-        const { error: updateError } = await supabase
+        const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
             .eq('id', id);
@@ -8880,7 +8848,7 @@ window.markResolved = async function(id) {
 
         // 3. News-Eintrag für "Defekt behoben" erstellen
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "System";
-        await supabase
+        await window.supabaseClient
             .from('news_db')
             .insert([{
                 date: new Date().toISOString().split('T')[0],
