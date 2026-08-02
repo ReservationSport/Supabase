@@ -9980,6 +9980,288 @@ window.renderIdeen = async function() {
 };
 
 
+/* ============================================================
+   11.6. APOTHEKE
+   ============================================================ */
+
+window.openApotheke = function() {
+    // 1. Zusatzmenü schließen
+    const extraMenu = document.getElementById('extra-menu');
+    if (extraMenu) {
+        extraMenu.style.display = 'none';
+    }
+
+    // 2. Haupt-Overlay öffnen
+    const overlay = document.getElementById('apotheke-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // 3. Offene Bestellungen aus Supabase laden
+        renderApothekeBestellungen(); 
+    } else {
+        console.error("Apotheke-Overlay nicht gefunden!");
+    }
+};
+
+window.openNewApothekeModal = async function() {
+    const modal = document.getElementById('new-apotheke-modal');
+    const container = document.getElementById('apotheke-db-list');
+    
+    // Modal anzeigen
+    if (modal) modal.style.display = 'flex';
+    if (!container) return;
+    
+    // Lade-Zustand im Checkbox-Container anzeigen
+    container.innerHTML = `
+        <div class="loader-container">
+            <div class="littlespinner"></div>
+            <span>Artikel werden geladen...</span>
+        </div>
+    `;
+
+    try {
+        // Artikel direkt aus der 'material'-Tabelle laden, bei denen apotheke = true ist
+        const { data: items, error } = await window.supabaseClient
+            .from('material')
+            .select('*')
+            .eq('apotheke', true)
+            .order('material', { ascending: true });
+
+        if (error) throw error;
+
+        // Freestyle-Eintrag ganz oben einfügen
+        let htmlContent = `
+            <div class="apotheke-checkbox-item" style="border-bottom: 1px dashed #555; padding-bottom: 8px; margin-bottom: 8px;">
+                <input type="checkbox" id="apo-item-freestyle" value="" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;" onchange="updateFreestyleValue(this)">
+                <input type="text" id="apo-freestyle-text" placeholder="Eigenen Artikel eingeben..." style="flex: 1; background: #2a2a2a; border: 1px solid #555; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.95rem;" oninput="handleFreestyleInput(this)">
+            </div>
+        `;
+
+        if (items && items.length > 0) {
+            htmlContent += items.map((item, index) => `
+                <div class="apotheke-checkbox-item" style="margin-bottom: 6px;">
+                    <input type="checkbox" id="apo-item-${index}" value="${item.material}" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;">
+                    <label for="apo-item-${index}" style="color: #fff; cursor: pointer; font-size: 0.95rem; margin-left: 8px;">${item.material}</label>
+                </div>
+            `).join('');
+        } else {
+            htmlContent += "<p style='color: #aaa; font-size: 0.9rem;'>Keine Artikel mit Apotheke = true gefunden.</p>";
+        }
+        
+        container.innerHTML = htmlContent;
+    } catch (e) {
+        container.innerHTML = "<p style='color: #ff5252; text-align: center;'>Fehler beim Laden der Artikel.</p>";
+        console.error(e);
+    }
+};
+
+// Hilfsfunktionen für das Freestyle-Feld
+window.updateFreestyleValue = function(checkbox) {
+    const textInput = document.getElementById('apo-freestyle-text');
+    if (!checkbox.checked && textInput) {
+        textInput.value = "";
+    }
+    if (textInput) checkbox.value = textInput.value;
+};
+
+window.handleFreestyleInput = function(textInput) {
+    const checkbox = document.getElementById('apo-item-freestyle');
+    const val = textInput.value.trim();
+    if (checkbox) {
+        checkbox.value = val;
+        checkbox.checked = val !== "";
+    }
+};
+
+window.saveApothekeBestellung = async function() {
+    const checkboxes = document.querySelectorAll('#apotheke-db-list input[type="checkbox"]:checked');
+    
+    // Werte extrahieren und leere Freestyle-Einträge herausfiltern
+    const selectedItems = Array.from(checkboxes)
+        .map(cb => cb.value.trim())
+        .filter(val => val !== "");
+
+    if (selectedItems.length === 0) {
+        alert("Bitte wähle mindestens ein Element aus oder gib einen Artikel ein.");
+        return;
+    }
+
+    const saveBtn = document.querySelector('#new-apotheke-modal .btn-primary');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Wird gesendet...";
+    }
+
+    const userVal = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
+    const beschreibungText = selectedItems.join(', ');
+    const datumIso = new Date().toISOString();
+    const datumDateOnly = datumIso.split('T')[0];
+
+    try {
+        // 1. In die service_db speichern (typ: 'apotheke')
+        const { error: dbError } = await window.supabaseClient
+            .from('service_db')
+            .insert([{
+                typ: 'apotheke',
+                beschreibung: beschreibungText,
+                verfasser: userVal,
+                datum: datumIso,
+                status: 'offen'
+            }]);
+
+        if (dbError) throw dbError;
+
+        // 2. News-Eintrag erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: datumDateOnly,
+                slot: "0",
+                klasse: "Apotheke",
+                halle: "apotheke",
+                user: userVal,
+                text: `Apotheken-Bestellung: ${beschreibungText}`
+            }]);
+
+        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+
+        if (typeof closeModal === 'function') {
+            closeModal('new-apotheke-modal');
+        }
+        
+        renderApothekeBestellungen(); // Liste neu laden
+
+        if (typeof refreshNews === 'function') {
+            refreshNews(); 
+        }
+
+    } catch (e) {
+        console.error("Fehler beim Senden:", e);
+        alert("Fehler beim Speichern: " + (e.message || e));
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
+    }
+};
+
+// Lädt die offenen Apotheken-Bestellungen direkt aus der service_db
+window.renderApothekeBestellungen = async function() {
+    const container = document.getElementById('apotheke-container');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="loader-container">
+            <div class="littlespinner"></div>
+            <span>Bestellungen werden geladen...</span>
+        </div>
+    `;
+
+    try {
+        const { data: entries, error } = await window.supabaseClient
+            .from('service_db')
+            .select('*')
+            .eq('typ', 'apotheke')
+            .eq('status', 'offen')
+            .order('datum', { ascending: false });
+
+        if (error) throw error;
+
+        if (!entries || entries.length === 0) {
+            container.innerHTML = "<p style='text-align: center; color: #aaa; padding: 20px;'>Keine offenen Apotheken-Bestellungen.</p>";
+            return;
+        }
+        
+        container.innerHTML = entries.map(entry => {
+            let formattedDate = '';
+            if (entry.datum) {
+                const dateObj = new Date(entry.datum);
+                if (!isNaN(dateObj)) {
+                    formattedDate = dateObj.toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+                }
+            }
+
+            const verfasserKlein = (entry.verfasser || 'unbekannt').toLowerCase();
+
+            return `
+                <div class="meldung-item">
+                    <div>
+                        <strong>${entry.beschreibung}</strong>
+                        <span class="meldung-meta">${verfasserKlein} | ${formattedDate}</span>
+                    </div>
+                    <button class="btn-erledigt" onclick="resolveApothekeEntry(${entry.id}, this)" title="Erledigt">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = "<p style='text-align: center; color: #ff5252;'>Fehler beim Laden.</p>";
+        console.error(e);
+    }
+};
+
+window.resolveApothekeEntry = async function(id, btnElement) {
+    if (btnElement) btnElement.classList.add('is-success');
+    
+    const userVal = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "system";
+
+    try {
+        // Beschreibung für den News-Eintrag auslesen
+        const { data: record, error: fetchError } = await window.supabaseClient
+            .from('service_db')
+            .select('beschreibung')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+        const beschreibungText = record ? record.beschreibung : "";
+
+        // Status auf 'behoben' setzen
+        const { error: updateError } = await window.supabaseClient
+            .from('service_db')
+            .update({ status: 'behoben' })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // News-Eintrag für "Erledigt" erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: new Date().toISOString().split('T')[0],
+                slot: "0",
+                klasse: "Apotheke",
+                halle: "apotheke",
+                user: userVal,
+                text: `Apotheken-Bestellung erledigt: ${beschreibungText}`
+            }]);
+
+        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
+
+        setTimeout(() => {
+            renderApothekeBestellungen(); 
+            
+            if (typeof refreshNews === 'function') {
+                refreshNews(); 
+            }
+        }, 300); 
+
+    } catch (e) {
+        console.error("Error beim Beheben:", e);
+        alert("Fehler beim Aktualisieren: " + (e.message || e));
+        if (btnElement) btnElement.classList.remove('is-success');
+    }
+};
+    
+
+
+
 
 
     
@@ -10560,231 +10842,7 @@ window.startNeueZahlungsrunde = function() {
 
 
 
-/* ============================================================
-   23. Apotheke (Server-Synchronisiert mit Google Sheet)
-   ============================================================ */
 
-window.openApotheke = function() {
-    // 1. Zusatzmenü schließen
-    const extraMenu = document.getElementById('extra-menu');
-    if (extraMenu) {
-        extraMenu.style.display = 'none';
-    }
-
-    // 2. Haupt-Overlay öffnen
-    const overlay = document.getElementById('apotheke-overlay');
-    if (overlay) {
-        overlay.style.display = 'flex';
-        // 3. Offene Bestellungen vom Server laden
-        renderApothekeBestellungen(); 
-    } else {
-        console.error("Apotheke-Overlay nicht gefunden!");
-    }
-};
-
-window.openNewApothekeModal = function() {
-    const modal = document.getElementById('new-apotheke-modal');
-    const container = document.getElementById('apotheke-db-list');
-    
-    // Modal anzeigen
-    modal.style.display = 'flex';
-    
-    // Lade-Zustand im Checkbox-Container anzeigen
-    container.innerHTML = `
-        <div class="loader-container">
-            <div class="littlespinner"></div>
-            <span>Artikel werden geladen...</span>
-        </div>
-    `;
-
-    // Artikel aus Spalte G via doGet abrufen
-    fetch(`${url}?action=getApothekeItemsFromSheet&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(items => {
-            // Freestyle-Eintrag ganz oben einfügen (mit verbesserter Input-Logik)
-            let htmlContent = `
-                <div class="apotheke-checkbox-item" style="border-bottom: 1px dashed #555; padding-bottom: 8px; margin-bottom: 8px;">
-                    <input type="checkbox" id="apo-item-freestyle" value="" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;" onchange="updateFreestyleValue(this)">
-                    <input type="text" id="apo-freestyle-text" placeholder="Eigenen Artikel eingeben..." style="flex: 1; background: #2a2a2a; border: 1px solid #555; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.95rem;" oninput="handleFreestyleInput(this)">
-                </div>
-            `;
-
-            if (items && items.length > 0) {
-                htmlContent += items.map((item, index) => `
-                    <div class="apotheke-checkbox-item">
-                        <input type="checkbox" id="apo-item-${index}" value="${item}" style="accent-color: #e67e22; width: 18px; height: 18px; cursor: pointer;">
-                        <label for="apo-item-${index}" style="color: #fff; cursor: pointer; font-size: 0.95rem;">${item}</label>
-                    </div>
-                `).join('');
-            }
-            
-            container.innerHTML = htmlContent;
-        })
-        .catch(e => {
-            container.innerHTML = "<p style='color: #ff5252; text-align: center;'>Fehler beim Laden der Artikel.</p>";
-            console.error(e);
-        });
-};
-
-// Hilfsfunktionen für das Freestyle-Feld
-window.updateFreestyleValue = function(checkbox) {
-    const textInput = document.getElementById('apo-freestyle-text');
-    if (!checkbox.checked) {
-        textInput.value = "";
-    }
-    checkbox.value = textInput.value;
-};
-
-window.handleFreestyleInput = function(textInput) {
-    const checkbox = document.getElementById('apo-item-freestyle');
-    const val = textInput.value.trim();
-    checkbox.value = val;
-    // Haken setzen, wenn Text da ist – Haken entfernen, wenn leer
-    checkbox.checked = val !== "";
-};
-
-window.saveApothekeBestellung = function() {
-    const checkboxes = document.querySelectorAll('#apotheke-db-list input[type="checkbox"]:checked');
-    
-    // Werte extrahieren und leere Freestyle-Einträge herausfiltern
-    const selectedItems = Array.from(checkboxes)
-        .map(cb => cb.value.trim())
-        .filter(val => val !== "");
-
-    if (selectedItems.length === 0) {
-        alert("Bitte wähle mindestens ein Element aus oder gib einen Artikel ein.");
-        return;
-    }
-
-    const saveBtn = document.querySelector('#new-apotheke-modal .btn-primary');
-    
-    // Button deaktivieren und Text ändern, um Mehrfach-Klicks zu verhindern
-    saveBtn.disabled = true;
-    saveBtn.innerText = "Wird gesendet...";
-
-    // Kürzel in Kleinbuchstaben umwandeln
-    const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
-
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveApothekeBestellung", 
-            items: selectedItems, 
-            user: user,
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        // Button-Zustand zurücksetzen
-        saveBtn.disabled = false;
-        saveBtn.innerText = "Speichern";
-        
-        if(data.status === "success") {
-            closeModal('new-apotheke-modal');
-            renderApothekeBestellungen(); // Liste neu laden
-            
-            // Falls News-Sidebar offen ist, aktualisieren
-            if (typeof refreshNews === 'function') {
-                refreshNews(); 
-            }
-        } else {
-            alert("Fehler beim Speichern: " + data.msg);
-        }
-    })
-    .catch(e => {
-        saveBtn.disabled = false;
-        saveBtn.innerText = "Speichern";
-        console.error("Fehler beim Senden:", e);
-    });
-};
-
-// Lädt die offenen Apotheken-Bestellungen aus dem Sheet
-window.renderApothekeBestellungen = function() {
-    const container = document.getElementById('apotheke-container');
-    
-    container.innerHTML = `
-        <div class="loader-container">
-            <div class="littlespinner"></div>
-            <span>Bestellungen werden geladen...</span>
-        </div>
-    `;
-
-    fetch(`${url}?action=getApothekeBestellungen&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(entries => {
-            if (!entries || entries.length === 0) {
-                container.innerHTML = "<p style='text-align: center; color: #aaa; padding: 20px;'>Keine offenen Apotheken-Bestellungen.</p>";
-                return;
-            }
-            
-            container.innerHTML = entries.map(entry => {
-                const dateObj = new Date(entry.datum);
-                const formattedDate = !isNaN(dateObj) ? dateObj.toLocaleDateString('de-DE', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric'
-                }) : entry.datum;
-
-                // Verfasser in Kleinbuchstaben anzeigen
-                const verfasserKlein = (entry.verfasser || 'unbekannt').toLowerCase();
-
-                return `
-                    <div class="meldung-item">
-                        <div>
-                            <strong>${entry.text}</strong>
-                            <span class="meldung-meta">${verfasserKlein} | ${formattedDate}</span>
-                        </div>
-                        <button class="btn-erledigt" onclick="resolveApothekeEntry('${entry.id}', this)" title="Erledigt">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            container.innerHTML = "<p style='text-align: center; color: #ff5252;'>Fehler beim Laden.</p>";
-            console.error(e);
-        });
-};
-
-window.resolveApothekeEntry = function(id, btnElement) {
-    // 1. Button sofort grün färben für direktes Feedback
-    btnElement.classList.add('is-success');
-    
-    // Kürzel in Kleinbuchstaben umwandeln
-    const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "system";
-
-    fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({
-            action: 'resolveApothekeEntry',
-            id: id,
-            user: user,
-            pw: userPw
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            setTimeout(() => {
-                renderApothekeBestellungen(); // Aktualisiert die Liste
-                
-                if (typeof refreshNews === 'function') {
-                    refreshNews(); 
-                }
-            }, 300); 
-        } else {
-            alert("Fehler: " + data.msg);
-            btnElement.classList.remove('is-success');
-        }
-    })
-    .catch(e => {
-        console.error("Error:", e);
-        btnElement.classList.remove('is-success');
-    });
-};
-    
 
 
 
