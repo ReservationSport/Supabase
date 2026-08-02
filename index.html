@@ -11849,8 +11849,9 @@ window.cancelAddMode = function() {
 };
     
 
+    
 /* ============================================================
-   12. PASTE-MODE
+   12. PASTE-MODE (Supabase-Version)
    ============================================================ */
 
 window.createPasteOverlay = function(halleName) {
@@ -11922,7 +11923,7 @@ window.cancelPasteMode = function() {
         }
     });
 
-    // --- DER FIX: Daten neu laden ---
+    // --- SYNCHRONISATION NACH ABBRUCH ---
     console.log("Abbruch erfolgt, starte sofortigen Sync für aktuelle Daten...");
     if (typeof window.syncPlan === 'function') {
         window.syncPlan(); 
@@ -11970,9 +11971,9 @@ async function performPaste(targetSlot, data) {
         }
     }
 
-    // 2. Daten für den Ziel-Slot
+    // 2. Daten für den Ziel-Slot ermitteln (Klasse beibehalten falls vorhanden)
     const zielSlotData = window.lastPlanData && window.lastPlanData[targetSlot] ? window.lastPlanData[targetSlot] : {};
-    const klasseImZiel = zielSlotData.klasse || "";
+    const klasseImZiel = zielSlotData.klasse || data.klasse || "";
     const isAusfall = (data.halle === "Ausfall");
 
     try {
@@ -11983,6 +11984,7 @@ async function performPaste(targetSlot, data) {
             ...zielSlotData, 
             halle: data.halle, 
             typ: data.typ,
+            klasse: klasseImZiel,
             verfasser: aktuellesKuerzel 
         };
 
@@ -12012,20 +12014,20 @@ async function performPaste(targetSlot, data) {
             }
         }
 
-        // Direkt in die Supabase-Tabelle `buchungen_db` schreiben (Upsert, um bestehende Buchungen für Datum+Slot zu überschreiben)
+        // Direkt in die Supabase-Tabelle `buchungen_db` schreiben mit Spalte 'verfasser'
         const { error: upsertError } = await window.supabaseClient
             .from('buchungen_db')
             .upsert([
                 {
                     datum: aktuellesDatum,
                     slot: parseInt(targetSlot),
-                    lehrer: aktuellesKuerzel,
+                    verfasser: aktuellesKuerzel,
                     halle: data.halle,
                     klasse: klasseImZiel,
                     typ: data.typ || ""
                 }
             ], {
-                onConflict: 'datum,slot' // Nimmt an, dass es einen Unique-Constraint auf datum+slot gibt
+                onConflict: 'datum,slot' // Setzt voraus, dass der Unique Constraint auf datum,slot existiert
             });
 
         if (upsertError) throw upsertError;
@@ -12040,6 +12042,7 @@ async function performPaste(targetSlot, data) {
     } catch (e) {
         console.error("Paste-Aktion fehlgeschlagen:", e);
         alert("Fehler beim Einfügen in die Datenbank: " + (e.message || e));
+        
         // Bei Fehler Plan zurücksetzen/neu laden
         if (typeof window.syncPlan === 'function') {
             window.syncPlan();
