@@ -5733,20 +5733,23 @@ function updateNewsDot() {
    ============================================================ */
 
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
-    if (!supabaseClient) {
+    const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
+    if (!client) {
         console.error("❌ Supabase Client fehlt für News-Speicherung.");
         return;
     }
 
     const rawHalle = (payload.halle || "").toString().toLowerCase().trim();
+    const klasseVal = (payload.klasse || "").toString().toLowerCase().trim();
+
     const isZahlungsrunde = (rawHalle === "zahlungsrunde");
     const isApotheke = (rawHalle === "apotheke_bestellung");
-    const isDefekt = (rawHalle === "defekt_meldung");
+    const isDefekt = (rawHalle === "defekt_meldung" || klasseVal === "defekt");
     const isMaterial = (rawHalle === "material_wunsch");
     const isIdee = (rawHalle === "ideenbrett");
     const isApothekeMeldung = (rawHalle === "apotheke_meldung");
     const isStv = (rawHalle === "stellvertretung");
-    const isAusfall = (rawHalle === "" || rawHalle === "ausfall");
+    const isAusfall = (rawHalle === "ausfall"); // Nur bei explizitem Ausfall greifen lassen!
     const isAbkleben = (rawHalle === "beendet" || rawHalle === "abgeklebt");
     const isOutdoor = rawHalle.includes("outdoor");
     const isBadi = rawHalle.includes("badi");
@@ -5754,8 +5757,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const isSpecial = (isDefekt || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
     const isFreieHalle = (isAusfall || isAbkleben || isOutdoor || isBadi);
 
-    // 🛑 WICHTIG: Wenn es sich weder um eine Sonder-Aktion (Special) noch um eine Freie Halle handelt 
-    // (also eine ganz normale Hallen-Reservierung oder normale Änderung), wird KEINE News verschickt!
+    // 🛑 WICHTIG: Wenn weder Special noch Freie Halle, wird keine News verschickt
     if (!isSpecial && !isFreieHalle) {
         console.log("ℹ️ Normale Hallen-Reservierung/-Änderung: Es wird keine News verschickt.");
         return;
@@ -5770,10 +5772,10 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     } else if (isApothekeMeldung) {
         handelndeLP = "System";
     } else {
-        handelndeLP = (payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
+        handelndeLP = (payload.verfasser || payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
     }
     
-    const stvDatum = payload.date || payload.datum || new Date().toISOString().split('T')[0];
+    const stvDatum = payload.datum || payload.date || new Date().toISOString().split('T')[0];
 
     // 2. ID-Logik
     let newsId = stvDatum + "_" + (payload.slot || "0") + "_" + (payload.klasse || "apo");
@@ -5787,11 +5789,11 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let zielTag = payload.wochentag;
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
     if (!zielTag && stvDatum) {
-        zielTag = wochentage[new Date(stvDatum).getDay()];
+        zielTag = wochentage[new Date(stvDatum.replace(/-/g, "/")).getDay()];
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 3. Empfänger-Berechnung direkt über window.lastPlanData (5er-Block)
+    // 3. Empfänger-Berechnung über window.lastPlanData (5er-Block)
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5803,13 +5805,14 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaenger = "alle";
     } else {
         const currentSlot = parseInt(payload.slot, 10);
+        const planData = currentMasterData || window.lastPlanData;
         
-        if (!isNaN(currentSlot) && currentSlot > 0 && window.lastPlanData) {
+        if (!isNaN(currentSlot) && currentSlot > 0 && planData) {
             const rowIndex = Math.floor((currentSlot - 1) / 5);
             const rowStartSlot = (rowIndex * 5) + 1;
 
             for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
-                const slotData = window.lastPlanData[s];
+                const slotData = planData[s];
                 if (!slotData) continue;
 
                 let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
@@ -5910,7 +5913,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
 
-    // 5. Sicherer Speichervorgang
+    // 5. Sicherer Speichervorgang in Supabase (news_db)
     try {
         const newsData = {
             id: newsId,
@@ -5928,7 +5931,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             geloescht: "" 
         };
 
-        const { data: existingNews, error: fetchError } = await supabaseClient
+        const { data: existingNews, error: fetchError } = await client
             .from('news_db')
             .select('id')
             .eq('id', newsId)
@@ -5938,13 +5941,13 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         let error;
         if (existingNews && existingNews.id) {
-            const res = await supabaseClient
+            const res = await client
                 .from('news_db')
                 .update(newsData)
                 .eq('id', newsId);
             error = res.error;
         } else {
-            const res = await supabaseClient
+            const res = await client
                 .from('news_db')
                 .insert([newsData]);
             error = res.error;
@@ -8870,6 +8873,10 @@ window.openNewMeldungModal = function() {
 };
 
 // 3. Speichert die neue Meldung direkt in Supabase (service_db mit typ 'meldung' und automatischer ID)
+/* ============================================================
+    MELDUNGEN SPEICHERN & BEHEBEN (Mit saveNewsToDBFrontend)
+    ============================================================ */
+
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
     const text = input ? input.value.trim() : '';
@@ -8904,19 +8911,17 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Gleichzeitig den News-Eintrag erstellen (mit 'datum_event' und 'verfasser')
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                datum_event: datumDateOnly,
+        // 2. News-Eintrag sauber über die zentrale Wrapper-Funktion erstellen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                halle: "defekt_meldung",
+                datum: datumDateOnly,
                 slot: "0",
                 klasse: "Defekt",
-                halle: "defekt_meldung",
                 verfasser: userKuerzelVal,
                 text: text
-            }]);
-
-        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+            });
+        }
 
         // UI aufräumen
         if (input) input.value = '';
@@ -8942,7 +8947,8 @@ window.saveMeldung = async function() {
     }
 };
 
-// 4. Markiert eine Meldung als behoben (in service_db & generiert News)
+
+// Markiert eine Meldung als behoben (in service_db & generiert News)
 window.markAsResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
     
@@ -8967,19 +8973,17 @@ window.markAsResolved = async function(id, btnElement) {
 
         if (updateError) throw updateError;
 
-        // News-Eintrag für "Defekt behoben" erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: new Date().toISOString().split('T')[0],
+        // News-Eintrag für "Defekt behoben" über die zentrale Funktion erstellen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                halle: "defekt_behoben",
+                datum: new Date().toISOString().split('T')[0],
                 slot: "0",
                 klasse: "Info",
-                halle: "defekt_meldung",
-                user: userVal,
+                verfasser: userVal,
                 text: `Defekt behoben: ${ursprungsText}`
-            }]);
-
-        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
+            });
+        }
 
         setTimeout(() => {
             if (typeof renderMeldungen === 'function') {
