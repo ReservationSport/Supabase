@@ -10333,9 +10333,9 @@ window.openNewStellvertretungModal = function() {
 
 
 /* ============================================================
-   11.7.1. Stellvertretung suchen
+   11.7.1. Stellvertretung suchen (Supabase-Version)
    ============================================================ */
-    
+   
 // Automatisches Vorbelegen mit dem heutigen Datum beim Öffnen des Hauptmodals
 window.openNewStellvertretungModal = function() {
     const modal = document.getElementById('new-stellvertretung-modal');
@@ -10437,7 +10437,10 @@ window.updateStvDateText = function(dateValue) {
     }
 };
 
-window.renderStellvertretung = function() {
+/**
+ * Lädt die bestehenden Stellvertretungen direkt aus Supabase
+ */
+window.renderStellvertretung = async function() {
     const container = document.getElementById('stellvertretung-container');
     if (!container) return;
     
@@ -10452,55 +10455,59 @@ window.renderStellvertretung = function() {
 
     const innerContainer = document.getElementById('stellvertretung-content-inner');
 
-    fetch(`${url}?action=getStellvertretungen&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                innerContainer.innerHTML = "<p style='text-align:center; padding:15px; color:#7f8c8d;'>Keine geplanten Abwesenheiten erfasst.</p>";
-                return;
+    try {
+        const { data, error } = await supabase
+            .from('service_db')
+            .select('*')
+            .eq('typ', 'stv');
+
+        if (error) throw new Error(error.message);
+
+        if (!data || data.length === 0) {
+            innerContainer.innerHTML = "<p style='text-align:center; padding:15px; color:#7f8c8d;'>Keine geplanten Abwesenheiten erfasst.</p>";
+            return;
+        }
+        
+        // Global speichern
+        loadedStellvertretungen = data;
+
+        // Einträge nach Datum + Verfasser gruppieren
+        const groupedMap = new Map();
+
+        data.forEach(item => {
+            const groupKey = `${item.datum}_${item.verfasser}`;
+            if (!groupedMap.has(groupKey)) {
+                groupedMap.set(groupKey, {
+                    datum: item.datum,
+                    verfasser: item.verfasser.toLowerCase(),
+                    beschreibung: item.beschreibung,
+                    lektionen: []
+                });
             }
-            
-            // Global speichern
-            loadedStellvertretungen = data;
-
-            // Einträge nach Datum + Verfasser gruppieren (Abgleich mit DB-Spalten datum, verfasser, beschreibung)
-            const groupedMap = new Map();
-
-            data.forEach(item => {
-                const groupKey = `${item.datum}_${item.verfasser}`;
-                if (!groupedMap.has(groupKey)) {
-                    groupedMap.set(groupKey, {
-                        datum: item.datum,
-                        verfasser: item.verfasser.toLowerCase(),
-                        beschreibung: item.beschreibung, // Aus Datenbankspalte beschreibung
-                        lektionen: []
-                    });
-                }
-                groupedMap.get(groupKey).lektionen.push(item);
-            });
-
-            innerContainer.innerHTML = Array.from(groupedMap.values()).map(group => {
-                const dateObj = new Date(group.datum);
-                const options = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' };
-                const formattedDate = dateObj.toLocaleDateString('de-DE', options);
-
-                const lektionenText = group.lektionen.length === 1 ? '1 Lektion' : `${group.lektionen.length} Lektionen`;
-
-                return `
-                    <div class="stellvertretung-item" onclick="openStellvertretungDetailModal('${group.datum}', '${group.verfasser}')" style="display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #f39c12; background: #2c2c2c; border-top: 1px solid #444; border-right: 1px solid #444; border-bottom: 1px solid #444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
-                        <div>
-                            <strong style="color: #fff;">${formattedDate} – ${group.verfasser.toLowerCase()}</strong>
-                            <span class="stellvertretung-meta" style="display: block; font-size: 12px; color: #aaa; margin-top: 2px;">${group.beschreibung || 'Kein Grund angegeben'} (${lektionenText})</span>
-                        </div>
-                        <span class="material-symbols-outlined" style="color: #f39c12;">chevron_right</span>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            innerContainer.innerHTML = "<p style='color:#e74c3c; text-align:center;'>Fehler beim Laden.</p>";
-            console.error(e);
+            groupedMap.get(groupKey).lektionen.push(item);
         });
+
+        innerContainer.innerHTML = Array.from(groupedMap.values()).map(group => {
+            const dateObj = new Date(group.datum);
+            const options = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' };
+            const formattedDate = dateObj.toLocaleDateString('de-DE', options);
+
+            const lektionenText = group.lektionen.length === 1 ? '1 Lektion' : `${group.lektionen.length} Lektionen`;
+
+            return `
+                <div class="stellvertretung-item" onclick="openStellvertretungDetailModal('${group.datum}', '${group.verfasser}')" style="display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #f39c12; background: #2c2c2c; border-top: 1px solid #444; border-right: 1px solid #444; border-bottom: 1px solid #444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
+                    <div>
+                        <strong style="color: #fff;">${formattedDate} – ${group.verfasser.toLowerCase()}</strong>
+                        <span class="stellvertretung-meta" style="display: block; font-size: 12px; color: #aaa; margin-top: 2px;">${group.beschreibung || 'Kein Grund angegeben'} (${lektionenText})</span>
+                    </div>
+                    <span class="material-symbols-outlined" style="color: #f39c12;">chevron_right</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        innerContainer.innerHTML = "<p style='color:#e74c3c; text-align:center;'>Fehler beim Laden.</p>";
+        console.error("Fehlerdetails:", e);
+    }
 };
 
 /**
@@ -10540,13 +10547,14 @@ window.proceedToStvLessons = function() {
         dateInfo.innerHTML = `Für welche Lektionen vom <strong>${dateObj.toLocaleDateString('de-DE', options)}</strong> wird eine Stellvertretung gesucht?`;
     }
 
-    loadStvStundenplanFromBackend(currentStvData.datum);
+    loadStvStundenplanFromSupabase(currentStvData.datum);
 };
 
 /**
- * Schritt 2: Backend-Abfrage ausführen
+ * Schritt 2: Stundenplan direkt über Supabase abfragen 
+ * (Ersetze hier 'stundenplan' bzw. deine Tabellen- & Spaltennamen nach Bedarf)
  */
-async function loadStvStundenplanFromBackend(dateString) {
+async function loadStvStundenplanFromSupabase(dateString) {
     const container = document.getElementById('stv-tagesplan-container');
     container.innerHTML = `
         <div class="loader-container" style="padding: 20px; text-align: center;">
@@ -10557,21 +10565,33 @@ async function loadStvStundenplanFromBackend(dateString) {
 
     try {
         const kuerzel = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : '';
-        const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
         
-        const response = await fetch(`${targetUrl}?userKuerzel=${encodeURIComponent(kuerzel)}&date=${dateString}&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`);
-        
-        if (!response.ok) {
-            throw new Error('Netzwerkfehler beim Laden des Plans');
+        // Supabase Abfrage für den Stundenplan an dem spezifischen Datum
+        const { data, error } = await supabase
+            .from('stundenplan') // Passe diesen Tabellennamen an deine tatsächliche Stundenplan-Tabelle an
+            .select('*')
+            .eq('datum', dateString);
+
+        if (error) throw new Error(error.message);
+
+        // Falls dein Stundenplan als einzelnes JSON-Objekt pro Tag gespeichert wird, passe dies hier an. 
+        // Wenn es zeilenbasiert ist, wandeln wir es in das erwartete `planObj`-Format um:
+        let planObj = {};
+        if (Array.isArray(data)) {
+            data.forEach(row => {
+                // Beispiel: row.slot_id enthält die Slot-Nummer (1 bis 60)
+                if (row.slot_id) {
+                    planObj[row.slot_id] = {
+                        klasse: row.klasse,
+                        lehrer: row.lehrer
+                    };
+                }
+            });
+        } else if (data && data.plan) {
+            planObj = data.plan;
         }
 
-        const data = await response.json();
-        
-        if (data.status === 'success' && data.plan) {
-            parseAndFilterUserLektionen(data.plan, kuerzel);
-        } else {
-            throw new Error('Ungültige Daten vom Server');
-        }
+        parseAndFilterUserLektionen(planObj, kuerzel);
 
     } catch (error) {
         console.error('Stundenplan-Fehler:', error);
@@ -10798,8 +10818,10 @@ window.toggleAllStvLessons = function() {
     }
 };
 
-// Letzter Schritt: Absenden an das Backend – Mapping für die service_db (id, typ, datum, verfasser, beschreibung, klasse, bereitschaft)
-window.submitStellvertretungWithLessons = function() {
+/**
+ * Speichern der neuen Stellvertretungen direkt via Supabase-Insert in die service_db
+ */
+window.submitStellvertretungWithLessons = async function() {
     let selectedLektionen = [];
     if (currentStvData.allDay) {
         selectedLektionen = fetchedStvLektionen.filter(l => l.hasLesson);
@@ -10818,63 +10840,55 @@ window.submitStellvertretungWithLessons = function() {
         saveBtn.innerText = "Wird gesendet...";
     }
 
-    const targetUrl = typeof API_URL !== 'undefined' ? API_URL : url;
     const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "lp";
 
-    // Mappe die Objekte auf die verlangte DB-Struktur (inkl. typ = 'stv' und beschreibung statt grund)
+    // Payload-Struktur exakt passend zur service_db
     let lektionenPayload = selectedLektionen.map(l => {
         return {
             id: 'stv_' + Date.now() + '_' + l.lektionNr,
             typ: 'stv',
             datum: currentStvData.datum,
             verfasser: aktuellerUser,
-            beschreibung: currentStvData.grund, // Angabe des Grundes wandert in die DB-Spalte 'beschreibung'
+            beschreibung: currentStvData.grund,
             klasse: l.eintraege.map(e => e.klasse).join(', '),
-            bereitschaft: '' // Initial leer
+            bereitschaft: ''
         };
     });
 
-    fetch(targetUrl, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveStellvertretungMulti", 
-            lektionen: lektionenPayload,
-            anzahlLektionen: selectedLektionen.length,
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
+    try {
+        const { error } = await supabase
+            .from('service_db')
+            .insert(lektionenPayload);
+
         if (saveBtn) { 
             saveBtn.disabled = false; 
             saveBtn.innerText = "Speichern"; 
         }
+
+        if (error) {
+            throw new Error(error.message);
+        }
+
+        closeModal('stv-lektionen-modal');
+        const datumField = document.getElementById('stv-datum');
+        const grundField = document.getElementById('stv-grund');
+        if (datumField) datumField.value = '';
+        if (grundField) grundField.value = '';
         
-        if (data.status === "success") {
-            closeModal('stv-lektionen-modal');
-            const datumField = document.getElementById('stv-datum');
-            const grundField = document.getElementById('stv-grund');
-            if (datumField) datumField.value = '';
-            if (grundField) grundField.value = '';
-            
-            renderStellvertretung();
-        } else {
-            alert("Fehler: " + (data.msg || "Unbekannter Fehler"));
-        }
-    })
-    .catch(e => {
+        renderStellvertretung();
+
+    } catch (e) {
         if (saveBtn) { 
             saveBtn.disabled = false; 
             saveBtn.innerText = "Speichern"; 
         }
-        console.error("Fehler:", e);
-        alert("Ein Netzwerkfehler ist aufgetreten.");
-    });
+        console.error("Fehler beim Speichern:", e);
+        alert("Ein Fehler ist aufgetreten: " + e.message);
+    }
 };
-    
 
 /* ============================================================
-   24-2. Stellvertretung übernehmen
+   11.7.2. Stellvertretung übernehmen
    ============================================================ */
 
 window.openStellvertretungDetailModal = function(datum, verfasser) {
@@ -11148,7 +11162,7 @@ window.saveStellvertretungBereitschaften = function() {
 
 
 /* ============================================================
-   24-3. Stellvertretung löschen
+   11.7.3 Stellvertretung löschen
    ============================================================ */
     
 // Globale Variablen zum Zwischenspeichern für den Löschvorgang
