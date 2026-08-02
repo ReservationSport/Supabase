@@ -4989,27 +4989,34 @@ window.loadPlan = async function() {
     }
 
     try {
-        // --- SPERRZEITEN PRÜFUNG (Robust gegen Datums-/Timestamp-Formate) ---
-        let sperrzeitGrund = "";
-        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        // --- SPERRZEITEN PRÜFUNG (Mit Debug-Logs für Text-Spalten) ---
+        console.log("--- DEBUG SPERRZEITEN ---");
+        console.log("Gesuchtes Datum:", dateVal);
         
+        let sperrzeitRes = await supabaseClient.from('sperrzeiten').select('*').eq('datum', dateVal);
+        console.log("Supabase Antwort Sperrzeiten:", sperrzeitRes);
+
+        let sperrzeitGrund = "";
         if (sperrzeitRes.error) {
-            console.error("Sperrzeiten-Fehler:", sperrzeitRes.error);
+            console.error("Sperrzeiten-Fehler (Evtl. RLS-Richtlinie in Supabase prüfen!):", sperrzeitRes.error);
         } else if (sperrzeitRes.data && sperrzeitRes.data.length > 0) {
             sperrzeitGrund = sperrzeitRes.data.map(s => s.grund).filter(Boolean).join(" | ");
         } else {
-            // Fallback: Falls in Supabase ein Timestamp statt reinem Datum gespeichert ist
-            let sperrzeitLikeRes = await supabaseClient.from('sperrzeiten').select('*').like('datum', `${dateVal}%`);
+            // Fallback falls Textspalte z.B. Leerzeichen enthält oder ein Like benötigt
+            let sperrzeitLikeRes = await supabaseClient.from('sperrzeiten').select('*').like('datum', `%${dateVal}%`);
             if (sperrzeitLikeRes.data && sperrzeitLikeRes.data.length > 0) {
                 sperrzeitGrund = sperrzeitLikeRes.data.map(s => s.grund).filter(Boolean).join(" | ");
             }
         }
 
         if (sperrzeitGrund) {
+            console.log("Sperrzeit gefunden! Grund:", sperrzeitGrund);
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Sperrzeit: ${sperrzeitGrund}</div>`;
             return;
+        } else {
+            console.log("Keine Sperrzeit für dieses Datum gefunden.");
         }
-        // -----------------------------------------------------------------
+        console.log("-------------------------");
 
         // Hallen- und Material-Konfigurationen parallel laden
         const configPromises = [];
