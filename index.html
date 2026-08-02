@@ -10966,11 +10966,13 @@ window.openStellvertretungDetailModal = function(datum, verfasser) {
 
     currentDetailData.allSelected = allAreChecked;
 
-    // Datum exakt in das Format DD.MM.YYYY (xx.xx.xxxx) umwandeln
+    // Datum sicher extrahieren (schneidet Zeitstempel wie T00:00:00 ab) und in DD.MM.YYYY umwandeln
     let formattedDate = datum;
     try {
-        if (datum && datum.includes('-')) {
-            const parts = datum.split('-'); // Erwartet YYYY-MM-DD
+        if (datum) {
+            // Nur den Datenteil vor dem 'T' nehmen (falls vorhanden)
+            const dateOnly = datum.split('T')[0];
+            const parts = dateOnly.split('-'); // Erwartet YYYY-MM-DD
             if (parts.length === 3) {
                 formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
             }
