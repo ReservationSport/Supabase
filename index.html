@@ -4337,14 +4337,74 @@ input.stellvertretung-input {
 
 
 /**
- * Berechnet die ISO-8601 Kalenderwoche eines Datums.
+ * Lädt und berechnet alle Kalender- und Wochen-Kontexte für ein gegebenes Datum.
  */
-window.getWeekNumber = function(d) {
-    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+window.fetchKalenderContext = async function(dateObj) {
+    // 1. ISO-Kalenderwoche berechnen
+    const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    return weekNo;
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+
+    // 2. Kalender-Daten aus Supabase laden
+    let kalenderData = null;
+    try {
+        const { data, error } = await supabaseClient
+            .from('kalender')
+            .select('*')
+            .eq('kalenderwoche', weekNo)
+            .maybeSingle();
+        
+        if (!error) kalenderData = data;
+    } catch (e) {
+        console.error("Fehler beim Laden der Kalender-Tabelle:", e);
+    }
+
+    // 3. Werte auswerten
+    let aktuelleSchulwoche = 1;
+    let u21SlotIdx = null;
+    let isEvenWeek = false;
+
+    if (kalenderData) {
+        const schul = kalenderData.schulwoche !== undefined && kalenderData.schulwoche !== null ? kalenderData.schulwoche.toString().trim() : "";
+        const u21 = kalenderData.u21_woche !== undefined && kalenderData.u21_woche !== null ? kalenderData.u21_woche.toString().trim() : "";
+
+        // Schulwoche ermitteln
+        if (schul !== "" && !isNaN(schul)) {
+            aktuelleSchulwoche = parseInt(schul);
+        } else if (u21 !== "" && !isNaN(u21) && parseInt(u21) <= 10) {
+            aktuelleSchulwoche = parseInt(u21);
+        }
+
+        // U21 Slot-Index aus u21_woche ermitteln (falls dort eine Slot-Nummer 1-5 steht)
+        if (u21 !== "" && !isNaN(u21)) {
+            const val = parseInt(u21);
+            if (val >= 1 && val <= 5) {
+                u21SlotIdx = val;
+            }
+        }
+
+        // A/B bzw. Gerade/Ungerade Logik
+        const schulUpper = schul.toUpperCase();
+        const u21Upper = u21.toUpperCase();
+
+        if (u21Upper === 'B' || u21Upper === '2' || u21Upper === 'EVEN') {
+            isEvenWeek = true;
+        } else if (schulUpper === 'B' || schulUpper === '2' || schulUpper === 'EVEN') {
+            isEvenWeek = true;
+        } else if (!isNaN(schul)) {
+            isEvenWeek = (parseInt(schul) % 2 === 0);
+        }
+    }
+
+    return {
+        weekNo,
+        schulwoche: aktuelleSchulwoche,
+        targetSlotIdx: u21SlotIdx,
+        isEvenWeek,
+        istUngeradeWoche: !isEvenWeek,
+        kalenderData
+    };
 };
 
     
@@ -4920,60 +4980,102 @@ window.loadPlan = async function() {
     if (typeof updateNavButtons === 'function') updateNavButtons();
 
     const dateObj = new Date(dateVal.replace(/-/g, "/")); 
+    const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    const aktuellerWochentag = wtArr[dateObj.getDay()];
+
     if (dateObj.getDay() === 0 || dateObj.getDay() === 6) { 
         container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">Mach mal Pause! Es ist Wochenende...</div>`; 
         return; 
     }
 
     try {
+        // Hallen- und Material-Konfigurationen parallel laden
         const configPromises = [];
-
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
             const initHallen = window.initHallenConfig || (typeof initHallenConfig === 'function' ? initHallenConfig : null);
             if (initHallen) configPromises.push(initHallen());
         }
-
         if (!window.materialConfig || Object.keys(window.materialConfig).length === 0) {
             const initMaterial = window.initMaterialConfig || (typeof initMaterialConfig === 'function' ? initMaterialConfig : null);
             if (initMaterial) configPromises.push(initMaterial());
         }
+        if (configPromises.length > 0) await Promise.all(configPromises);
 
-        if (configPromises.length > 0) {
-            await Promise.all(configPromises);
-        }
+        // 1. Kalender-Kontext über die neue Hilfsfunktion laden (inkl. A/B & U21-Slot)
+        const calContext = typeof fetchKalenderContext === 'function' 
+            ? await fetchKalenderContext(dateObj) 
+            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
 
-        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-        const aktuellerWochentag = wtArr[dateObj.getDay()];
+        const istUngeradeWoche = calContext.istUngeradeWoche;
+        const targetSlotIdx = calContext.targetSlotIdx;
 
-        // 1. Kalenderwoche für das Datum berechnen
-        const currentWeekNo = typeof getWeekNumber === 'function' ? getWeekNumber(dateObj) : 1;
-
-        // 2. Daten parallel aus Supabase laden (Master, Buchungen & Kalender-Tabelle)
+        // 2. Master-Daten & Buchungen parallel aus Supabase laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
-        const kalenderPromise = supabaseClient.from('kalender').select('*').eq('kalenderwoche', currentWeekNo).maybeSingle();
 
-        const [masterRes, buchungenRes, kalenderRes] = await Promise.all([masterPromise, buchungenPromise, kalenderPromise]);
+        const [masterRes, buchungenRes] = await Promise.all([masterPromise, buchungenPromise]);
 
         if (masterRes.error) throw masterRes.error;
         if (buchungenRes.error) throw buchungenRes.error;
 
         const masterData = masterRes.data;
-        const buchungenData = buchungenRes.data;
-        const kalenderData = kalenderRes.data;
+        let buchungenData = buchungenRes.data;
 
-        // A/B-Wochen-Logik über u21_woche oder schulwoche aus der kalender-Tabelle ermitteln
-        let isEvenWeek = false;
-        if (kalenderData) {
-            const u21 = kalenderData.u21_woche ? kalenderData.u21_woche.toString().toUpperCase() : "";
-            const schul = kalenderData.schulwoche ? kalenderData.schulwoche.toString().toUpperCase() : "";
-            
-            if (u21 === 'B' || u21 === '2' || u21 === 'EVEN') {
-                isEvenWeek = true;
-            } else if (schul === 'B' || schul === '2' || schul === 'EVEN') {
-                isEvenWeek = true;
-            } else if (!isNaN(schul)) {
-                isEvenWeek = (parseInt(schul) % 2 === 0);
+        // --- AUTOMATISCHE U21-ERSTBUCHUNG ---
+        if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
+            let temporaerPlan = {};
+            for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "" };
+
+            if (masterData) {
+                masterData.forEach(row => {
+                    let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
+                    let klasseName = "";
+                    
+                    if (/\s+\/\s+|\s+\/|\/\s+/.test(roheKlasse)) {
+                        let teile = roheKlasse.split("/").map(s => s.trim());
+                        klasseName = istUngeradeWoche ? (teile[0] || "") : (teile[1] || "");
+                    } else {
+                        klasseName = roheKlasse;
+                    }
+                    if (temporaerPlan[row.slot]) temporaerPlan[row.slot].klasse = klasseName;
+                });
+            }
+
+            let neueEintraege = [];
+            for (let lektion = 0; lektion < 12; lektion++) {
+                let klassenInLektion = 0;
+                for (let h = 1; h <= 5; h++) {
+                    let sId = (lektion * 5) + h;
+                    if (temporaerPlan[sId] && temporaerPlan[sId].klasse !== "") klassenInLektion++;
+                }
+
+                if (klassenInLektion === 5) {
+                    let u21SlotId = (lektion * 5) + targetSlotIdx;
+                    let betroffeneKlasse = temporaerPlan[u21SlotId] ? temporaerPlan[u21SlotId].klasse : "";
+                    let timestamp = new Date().toISOString();
+
+                    neueEintraege.push({
+                        datum: dateVal,
+                        slot: u21SlotId,
+                        klasse: betroffeneKlasse,
+                        halle: "U21",
+                        typ: "automatisch",
+                        verfasser: "System",
+                        kommentar: "Automatische U21 Buchung",
+                        details: timestamp
+                    });
+                }
+            }
+
+            if (neueEintraege.length > 0) {
+                const { data: insertedBuchungen, error: insertError } = await supabaseClient
+                    .from('buchungen_db')
+                    .insert(neueEintraege)
+                    .select('*');
+
+                if (!insertError && insertedBuchungen) {
+                    buchungenData = insertedBuchungen;
+                }
             }
         }
 
@@ -4986,16 +5088,16 @@ window.loadPlan = async function() {
             };
         }
 
-        // 4. Master-Daten in den Plan schreiben (A/B-Logik NUR bei " / ")
+        // 4. Master-Daten eintragen (mit A/B-Wochen Logik)
         if (masterData) {
             masterData.forEach(row => {
                 if (plan[row.slot]) {
-                    let roheKlasse = row.klasse ? row.klasse.toString() : "";
+                    let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                     
                     if (roheKlasse.includes(" / ")) {
                         const teile = roheKlasse.split(" / ");
                         if (teile.length === 2) {
-                            roheKlasse = isEvenWeek ? teile[1].trim() : teile[0].trim();
+                            roheKlasse = istUngeradeWoche ? teile[0].trim() : teile[1].trim();
                         }
                     }
 
@@ -5067,7 +5169,6 @@ window.loadPlan = async function() {
 
                 const isAusfall = (halle === "Ausfall");
                 const isKlasseLeer = (klasse.trim() === "");
-                
                 const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
                 
                 const isMyClass = !isKlasseLeer && window.myClasses.some(c => 
@@ -5083,13 +5184,11 @@ window.loadPlan = async function() {
                 }
 
                 const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
-                
                 const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
                 const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
                 const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
                 
                 const canEdit = isMyClass || isMyBooking;
-
                 const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
                 const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
                 
@@ -5214,35 +5313,26 @@ window.syncPlan = async function() {
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
-        const currentWeekNo = typeof getWeekNumber === 'function' ? getWeekNumber(dateObj) : 1;
+        // 1. Kalender-Kontext über die zentrale Hilfsfunktion laden
+        const calContext = typeof fetchKalenderContext === 'function' 
+            ? await fetchKalenderContext(dateObj) 
+            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
 
+        const istUngeradeWoche = calContext.istUngeradeWoche;
+
+        // 2. Daten parallel aus Supabase laden
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
-        const kalenderPromise = supabaseClient.from('kalender').select('*').eq('kalenderwoche', currentWeekNo).maybeSingle();
 
-        const [masterRes, buchungenRes, kalenderRes] = await Promise.all([masterPromise, buchungenPromise, kalenderPromise]);
+        const [masterRes, buchungenRes] = await Promise.all([masterPromise, buchungenPromise]);
 
         if (masterRes.error || !masterRes.data) return;
         if (buchungenRes.error) return;
 
         const masterData = masterRes.data;
         const buchungenData = buchungenRes.data;
-        const kalenderData = kalenderRes.data;
 
-        let isEvenWeek = false;
-        if (kalenderData) {
-            const u21 = kalenderData.u21_woche ? kalenderData.u21_woche.toString().toUpperCase() : "";
-            const schul = kalenderData.schulwoche ? kalenderData.schulwoche.toString().toUpperCase() : "";
-            
-            if (u21 === 'B' || u21 === '2' || u21 === 'EVEN') {
-                isEvenWeek = true;
-            } else if (schul === 'B' || schul === '2' || schul === 'EVEN') {
-                isEvenWeek = true;
-            } else if (!isNaN(schul)) {
-                isEvenWeek = (parseInt(schul) % 2 === 0);
-            }
-        }
-
+        // 3. Plan-Objekt initialisieren
         const newPlan = {};
         for (let i = 1; i <= 60; i++) {
             newPlan[i] = { 
@@ -5251,14 +5341,15 @@ window.syncPlan = async function() {
             };
         }
 
+        // 4. Master-Daten eintragen (mit A/B-Wochen Logik)
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
-                let roheKlasse = row.klasse ? row.klasse.toString() : "";
+                let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                 
                 if (roheKlasse.includes(" / ")) {
                     const teile = roheKlasse.split(" / ");
                     if (teile.length === 2) {
-                        roheKlasse = isEvenWeek ? teile[1].trim() : teile[0].trim();
+                        roheKlasse = istUngeradeWoche ? teile[0].trim() : teile[1].trim();
                     }
                 }
 
@@ -5267,6 +5358,7 @@ window.syncPlan = async function() {
             }
         });
 
+        // 5. Tagesbuchungen darüberlegen
         if (buchungenData) {
             buchungenData.forEach(row => {
                 const slot = row.slot;
