@@ -9238,79 +9238,63 @@ if (wunschInputEl) {
 
 
 /* ============================================================
-   18. Krücken
+   11.3. KRÜCKEN
    ============================================================ */
 
+// 1. Wird im Menü geklickt: Öffnet das Haupt-Overlay und lädt die Daten
 window.openKruecken = function() {
     console.log("Starte openKruecken...");
     
-    // 1. Menü schließen
+    // Menü schließen (falls vorhanden)
     const extraMenu = document.getElementById('extra-menu');
     if (extraMenu) {
         extraMenu.style.display = 'none';
+        console.log("Menü geschlossen");
     }
 
-    // 2. Overlay suchen
+    // Overlay suchen
     const overlay = document.getElementById('kruecken-overlay');
     if (overlay) {
         overlay.style.display = 'flex';
-        renderKruecken(); 
+        console.log("Krücken-Overlay auf display: flex gesetzt");
+        
+        // Daten aus der service_db laden und rendern
+        if (typeof renderKruecken === 'function') {
+            renderKruecken();
+        } else {
+            console.error("Funktion renderKruecken ist nicht definiert!");
+        }
     } else {
         console.error("Fehler: Element mit ID 'kruecken-overlay' existiert nicht!");
     }
 };
 
+// 2. Öffnet das Eingabe-Modal ("Krücke erfassen") über den Button im Haupt-Overlay
 window.openNewKrueckenModal = function() {
-    const modal = document.getElementById('new-kruecken-modal');
-    const input = document.getElementById('kruecken-schueler'); // Fokus auf erstes Feld
-    modal.style.display = 'flex';
-    setTimeout(() => input.focus(), 100);
-};
-
-window.renderKruecken = function() {
-    const container = document.getElementById('kruecken-container');
+    const inputSchueler = document.getElementById('kruecken-schueler');
+    const inputKlasse = document.getElementById('kruecken-klasse');
     
-    container.innerHTML = `
-        <div class="loader-container">
-            <div class="littlespinner"></div>
-            <span>Krücken werden geladen...</span>
-        </div>
-    `;
-
-    fetch(`${url}?action=getKruecken&pw=${encodeURIComponent(userPw)}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                container.innerHTML = "<p>Keine Krücken ausgegeben.</p>";
-                return;
-            }
-            
-            container.innerHTML = data.map(k => {
-                const dateObj = new Date(k.datum);
-                const formattedDate = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-                return `
-                    <div class="kruecken-item">
-                        <div>
-                            <strong>${k.schueler} (${k.klasse})</strong>
-                            <span class="kruecken-meta">${k.verfasser} | ${formattedDate}</span>
-                        </div>
-                        <button class="btn-erledigt" onclick="markKrueckeResolved('${k.id}', this)" title="Erledigt">
-                            <span class="material-symbols-outlined">check</span>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        })
-        .catch(e => {
-            container.innerHTML = "Fehler beim Laden.";
-            console.error(e);
-        });
+    if (inputSchueler) inputSchueler.value = '';
+    if (inputKlasse) inputKlasse.value = '';
+    
+    const modal = document.getElementById('new-kruecken-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+    
+    setTimeout(() => {
+        if (inputSchueler) inputSchueler.focus();
+    }, 100);
 };
 
-window.saveKruecke = function() {
-    const schueler = document.getElementById('kruecken-schueler').value.trim();
-    const klasse = document.getElementById('kruecken-klasse').value.trim();
+// 3. Speichert die Krückenausgabe direkt in Supabase (service_db & news_db)
+window.saveKruecke = async function() {
+    const schuelerInput = document.getElementById('kruecken-schueler');
+    const klasseInput = document.getElementById('kruecken-klasse');
+    
+    const schueler = schuelerInput ? schuelerInput.value.trim() : '';
+    const klasse = klasseInput ? klasseInput.value.trim() : '';
+    
     const saveBtn = document.querySelector('#new-kruecken-modal .btn-primary');
     
     if (!schueler || !klasse) {
@@ -9323,52 +9307,193 @@ window.saveKruecke = function() {
         saveBtn.innerText = "Wird gesendet...";
     }
 
-    fetch(url, {
-        method: "POST",
-        body: JSON.stringify({ 
-            action: "saveKruecke", 
-            schueler: schueler,
-            klasse: klasse,
-            user: typeof userKuerzel !== 'undefined' ? userKuerzel : "LP", 
-            pw: userPw 
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Speichern"; }
+    try {
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
+        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
+
+        // In die service_db speichern (typ: 'kruecken' inklusive der gewünschten Spalten)
+        const { error: dbError } = await window.supabaseClient
+            .from('service_db')
+            .insert([{
+                typ: 'kruecken',
+                schueler: schueler,
+                klasse: klasse,
+                verfasser: userKuerzelVal,
+                datum: datumIso,
+                status: 'offen'
+            }]);
+
+        if (dbError) throw dbError;
+
+        // Gleichzeitig den News-Eintrag erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: datumDateOnly,
+                slot: "0",
+                klasse: klasse,
+                halle: "kruecken_ausgabe",
+                user: userKuerzelVal,
+                text: `Krücken ausgegeben an ${schueler} (${klasse})`
+            }]);
+
+        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+
+        // UI aufräumen
+        if (schuelerInput) schuelerInput.value = '';
+        if (klasseInput) klasseInput.value = '';
         
-        if(data.status === "success") {
-            document.getElementById('kruecken-schueler').value = '';
-            document.getElementById('kruecken-klasse').value = '';
+        if (typeof closeModal === 'function') {
             closeModal('new-kruecken-modal');
-            renderKruecken();
-        } else {
-            alert("Fehler: " + data.msg);
         }
-    })
-    .catch(e => {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Speichern"; }
-        console.error("Fehler:", e);
-    });
+        
+        if (typeof renderKruecken === 'function') {
+            renderKruecken(); // Liste neu laden
+        }
+        if (typeof updateG1 === 'function') {
+            updateG1();
+        }
+
+    } catch (e) {
+        console.error("Fehler beim Senden:", e);
+        alert("Fehler beim Speichern: " + (e.message || e));
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "Speichern";
+        }
+    }
 };
 
-window.markKrueckeResolved = function(id, btnElement) {
-    btnElement.classList.add('is-success');
-    fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'markKrueckeResolved', id: id, pw: userPw })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            setTimeout(() => renderKruecken(), 300);
-        } else {
-            alert("Fehler: " + data.msg);
-            btnElement.classList.remove('is-success');
-        }
-    });
+// 4. Markiert eine Krückenausgabe als zurückgebracht/erledigt (in service_db & generiert News)
+window.markKrueckeResolved = async function(id, btnElement) {
+    if (btnElement) btnElement.classList.add('is-success');
+    
+    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
+
+    try {
+        // Zuerst Schüler und Klasse auslesen (für die News)
+        const { data: record, error: fetchError } = await window.supabaseClient
+            .from('service_db')
+            .select('schueler, klasse')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+        const schuelerName = record ? record.schueler : "";
+        const klasseName = record ? record.klasse : "";
+
+        // Status in der service_db auf "behoben" aktualisieren
+        const { error: updateError } = await window.supabaseClient
+            .from('service_db')
+            .update({ status: 'behoben' })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // News-Eintrag für "Krücken zurückgebracht" erstellen
+        const { error: newsError } = await window.supabaseClient
+            .from('news_db')
+            .insert([{
+                date: new Date().toISOString().split('T')[0],
+                slot: "0",
+                klasse: klasseName || "Info",
+                halle: "kruecken_ausgabe",
+                user: userVal,
+                text: `Krücken zurückgebracht von ${schuelerName} (${klasseName})`
+            }]);
+
+        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
+
+        setTimeout(() => {
+            if (typeof renderKruecken === 'function') {
+                renderKruecken();
+            }
+            if (typeof refreshNews === 'function') {
+                refreshNews(); 
+            }
+            if (typeof updateG1 === 'function') {
+                updateG1();
+            }
+        }, 300);
+
+    } catch (e) {
+        console.error("Error beim Beheben:", e);
+        alert("Fehler beim Aktualisieren: " + (e.message || e));
+        if (btnElement) btnElement.classList.remove('is-success');
+    }
 };
 
+// 5. Lädt die offene Krücken-Liste direkt aus der service_db (filtert nach typ 'kruecken')
+window.renderKruecken = async function() {
+    const container = document.getElementById('kruecken-container');
+    if (!container) return;
+    
+    // Lade-Zustand mit littlespinner
+    container.innerHTML = `
+        <div class="loader-container">
+            <div class="littlespinner"></div>
+            <span>Krücken werden geladen...</span>
+        </div>
+    `;
+
+    try {
+        const { data: kruecken, error } = await window.supabaseClient
+            .from('service_db')
+            .select('*')
+            .eq('typ', 'kruecken') // Gezielt nach typ 'kruecken' gefiltert
+            .eq('status', 'offen') // Nur offene anzeigen
+            .order('datum', { ascending: false }); // Sortierung über das Datum
+
+        if (error) throw error;
+
+        if (!kruecken || kruecken.length === 0) {
+            container.innerHTML = "<p>Keine Krücken ausgegeben.</p>";
+            return;
+        }
+        
+        container.innerHTML = kruecken.map(k => {
+            let formattedDate = '';
+            if (k.datum) {
+                const dateObj = new Date(k.datum);
+                if (!isNaN(dateObj)) {
+                    formattedDate = dateObj.toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+                }
+            }
+
+            return `
+                <div class="kruecken-item">
+                    <div>
+                        <strong>${k.schueler} (${k.klasse})</strong>
+                        <span class="kruecken-meta">${k.verfasser} | ${formattedDate}</span>
+                    </div>
+                    <button class="btn-erledigt" onclick="markKrueckeResolved(${k.id}, this)" title="Erledigt">
+                        <span class="material-symbols-outlined">check</span>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = "<p>Fehler beim Laden.</p>";
+        console.error(e);
+    }
+};
+
+// 6. Registriert den Enter-Listener für das Krücken-Eingabefeld sicher
+const krueckenInputEl = document.getElementById('kruecken-klasse');
+if (krueckenInputEl) {
+    krueckenInputEl.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            saveKruecke();
+        }
+    });
+}
 /* ============================================================
    19. Bannermeldungen
    ============================================================ */
