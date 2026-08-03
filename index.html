@@ -6049,15 +6049,15 @@ window.showNews = function() {
 
 /**
  * Löscht eine Nachricht für den aktuellen User (fügt Kürzel zur 'geloescht'-Spalte hinzu).
- * Sofortiges visuelles und logisches Entfernen ohne Neuladen.
+ * Sofortiges visuelles und logisches Entfernen der gesamten Card.
  */
 window.deleteNews = async function(newsId, btnElement) {
     const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
     if (!user) return;
 
-    // 1. Visuelles Ausblenden der spezifischen Card
+    // 1. Visuelles Ausblenden der GANZEN Card (.news-item)
     if (btnElement && typeof btnElement.closest === 'function') {
-        const cardElement = btnElement.closest('.news-item, .news-card, .card, tr, article, div');
+        const cardElement = btnElement.closest('.news-item');
         if (cardElement) {
             cardElement.style.transition = 'all 0.2s ease';
             cardElement.style.transform = 'scale(0.95)';
@@ -6066,12 +6066,11 @@ window.deleteNews = async function(newsId, btnElement) {
         }
     }
 
-    // 2. Lokales Array SOFORT typsicher filtern (String-Konvertierung verhindert den ID-Fehler)
+    // 2. Lokales Array SOFORT typsicher filtern
     if (Array.isArray(meineRelevanteNews)) {
         meineRelevanteNews = meineRelevanteNews.filter(n => String(n.id) !== String(newsId));
     }
 
-    // News-Punkt (Badge) direkt aktualisieren
     if (typeof updateNewsDot === 'function') {
         updateNewsDot();
     }
@@ -6106,7 +6105,7 @@ window.deleteNews = async function(newsId, btnElement) {
         console.error("Fehler beim Löschen in der Datenbank:", e);
     }
 };
-
+    
 
 window.refreshAndShowNews = async function() {
     showNews();
