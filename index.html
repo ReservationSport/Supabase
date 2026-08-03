@@ -10157,10 +10157,11 @@ window.saveApothekeBestellung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
+        // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen und beschreibungText übergeben
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                typ: 'apotheke'
+                typ: 'apotheke',
+                text: beschreibungText
             });
         }
 
