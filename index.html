@@ -5743,7 +5743,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
 
     // =========================================================================
-    // VERFASSER BOMBENFEST EXTRAHIEREN (Nutzt direkt die globale userKuerzel Variable)
+    // VERFASSER EXTRAHIEREN
     // =========================================================================
     let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || (typeof userKuerzel !== 'undefined' ? userKuerzel : null) || window.userKuerzel || "LP";
     if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
@@ -5774,6 +5774,29 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let payloadText = payload.text ? payload.text.toString() : "";
     let empfaenger = "alle";
     let zeitfensterString = "";
+
+    // Hilfsfunktion: Alle anderen Lehrer im System ermitteln (für "alle_ausser_verfasser")
+    const getAlleAusserVerfasser = () => {
+        let gefundeneLehrer = [];
+        const planData = currentMasterData || window.lastPlanData;
+        
+        if (planData) {
+            Object.values(planData).forEach(slotData => {
+                if (!slotData) return;
+                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
+                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
+                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
+                }
+                lehrerKuerzel = lehrerKuerzel.toString().trim();
+                if (lehrerKuerzel !== "") {
+                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
+                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
+                    }
+                }
+            });
+        }
+        return gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : "alle";
+    };
 
     // =========================================================================
     // 1. STUNDENPLAN-RELEVANTE TYPEN
@@ -5857,34 +5880,36 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Meldung, Wunsch, Banner etc.)
         // =========================================================================
         
+        const alleAusserMir = getAlleAusserVerfasser();
+
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
-                empfaenger: "alle_ausser_verfasser",
+                empfaenger: alleAusserMir,
                 text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
                 verfasser: handelndeLP
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
-                empfaenger: "alle_ausser_verfasser", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
-                empfaenger: "alle_ausser_verfasser", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
-                empfaenger: "alle_ausser_verfasser", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
                 verfasser: handelndeLP 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",        text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
         };
 
         const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle", text: "", verfasser: handelndeLP };
@@ -5893,23 +5918,23 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaenger = payload.empfaenger || regel.empfaenger;
         payloadText = regel.text;
         handelndeLP = regel.verfasser || handelndeLP;
-        zeitfensterString = ""; // Bleibt bei Meldungen leer
+        zeitfensterString = ""; 
     }
 
     // In Supabase speichern
     try {
         const newsData = {
             typ: rawTyp,
-            datum_event: eventDatum !== "" ? eventDatum : null, // Bleibt bei Meldung leer/null
+            datum_event: eventDatum !== "" ? eventDatum : null, 
             tag_index: tagIndex !== -1 ? tagIndex : null,
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
-            zeitfenster: payload.zeitfenster || zeitfensterString, // Bleibt bei Meldung leer
-            datum: new Date().toISOString(), // Erfassungsdatum
+            zeitfenster: payload.zeitfenster || zeitfensterString, 
+            datum: new Date().toISOString(), 
             titel: titelVal,                 
             text: payloadText,               
             klasse: klasse,
-            verfasser: handelndeLP,          // Schreibt nun sauber das echte Kürzel aus userKuerzel hinein
-            empfaenger: empfaenger,          // "alle_ausser_verfasser"
+            verfasser: handelndeLP,          
+            empfaenger: empfaenger,          // Enthält nun die konkreten Kürzel aller anderen Lehrpersonen
             gelesen: "",
             geloescht: "" 
         };
