@@ -5747,12 +5747,11 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
         const rawTyp = newsPayload.typ || newsPayload.halle || "";
         const typ = rawTyp.toString().toLowerCase().trim();
         
-        const slot = newsPayload.slot;
         const klasse = newsPayload.klasse || "";
         const verfasser = newsPayload.verfasser || newsPayload.kuerzel || window.userKuerzel || "System";
         const datum = newsPayload.datum || new Date().toISOString().split('T')[0];
 
-        // 1. Nur die definierten Spezial-Fälle erlauben, alles andere (normale Reservationen) ignorieren
+        // 1. Nur die definierten Spezial-Fälle erlauben, normale Reservationen ignorieren
         const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet"];
         if (!erlaubteTypen.includes(typ)) {
             return; 
@@ -5777,12 +5776,11 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
                 return;
         }
 
-        // 3. In die News-Datenbank schreiben
+        // 3. In die News-Datenbank schreiben (ohne 'slot', da die Spalte in news_db nicht existiert)
         const dbPayload = {
             titel: "Halle frei!",        // <--- Fixer Titel
             text: nachrichtenText,       // <--- Exakter Text nach Vorgabe
             datum: datum,
-            slot: slot,
             klasse: klasse,
             verfasser: verfasser,
             typ: typ
