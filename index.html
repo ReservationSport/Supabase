@@ -5729,12 +5729,9 @@ function updateNewsDot() {
 
 
 /* ============================================================
-   9.1. NEWS AUSLÖSEN (Nur bei Specials & Freien Hallen)
+   9.1. NEWS AUSLÖSEN
    ============================================================ */
 
-/* ============================================================
-    ZENTRALE NEWS-SPEICHERUNG (Einheitlicher Payload)
-    ============================================================ */
 
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
@@ -8973,14 +8970,18 @@ window.saveMeldung = async function() {
 };
 
 
-// Markiert eine Meldung als behoben (in service_db & generiert News)
+/* ============================================================
+    MARK AS RESOLVED (Gesteuert über das neue News-Payload-System)
+    ============================================================ */
+
 window.markAsResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
     
     const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
+    const datumDateOnly = new Date().toISOString().split('T')[0];
 
     try {
-        // Zuerst den Beschreibungstext des Defekts auslesen (für die News)
+        // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
         const { data: record, error: fetchError } = await window.supabaseClient
             .from('service_db')
             .select('beschreibung')
@@ -8990,7 +8991,7 @@ window.markAsResolved = async function(id, btnElement) {
         if (fetchError) throw fetchError;
         const ursprungsText = record ? record.beschreibung : "";
 
-        // Status in der service_db auf "behoben" aktualisieren
+        // 2. Status in der service_db auf "behoben" aktualisieren
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
@@ -8998,18 +8999,18 @@ window.markAsResolved = async function(id, btnElement) {
 
         if (updateError) throw updateError;
 
-        // News-Eintrag für "Defekt behoben" über die zentrale Funktion erstellen
+        // 3. News-Eintrag für "Defekt behoben" über den sauberen Direkt-Payload erstellen
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                halle: "defekt_behoben",
-                datum: new Date().toISOString().split('T')[0],
-                slot: "0",
-                klasse: "Info",
-                verfasser: userVal,
-                text: `Defekt behoben: ${ursprungsText}`
+                typ: "meldung",                  // Typ der News (wie bei Defektmeldungen)
+                titel: "DEFEKT BEHOBEN",         // Titel der Karte
+                text: `${ursprungsText}`,         // Inhalt
+                datum: datumDateOnly,            // Erstellungsdatum
+                verfasser: userVal               // Wer hat es behoben
             });
         }
 
+        // 4. UI aktualisieren
         setTimeout(() => {
             if (typeof renderMeldungen === 'function') {
                 renderMeldungen();
