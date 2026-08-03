@@ -5732,6 +5732,10 @@ function updateNewsDot() {
    9.1. NEWS AUSLÖSEN (Nur bei Specials & Freien Hallen)
    ============================================================ */
 
+/* ============================================================
+    ZENTRALE NEWS-SPEICHERUNG (Einheitlicher Payload)
+    ============================================================ */
+
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
     if (!client) {
@@ -5747,6 +5751,39 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return `${year}-${month}-${day}`;
     };
 
+    // 1. Wenn der Payload bereits das neue, einheitliche Format nutzt (typ, titel, text etc.),
+    //    schreiben wir ihn direkt 1:1 in die Datenbank, ohne Umwege.
+    if (payload && payload.typ && payload.titel && payload.text) {
+        try {
+            const newsData = {
+                typ: payload.typ.toString().toLowerCase().trim(),
+                titel: payload.titel.toString().trim(),
+                text: payload.text.toString().trim(),
+                datum: payload.datum || getLocalIsoDate(), // Erstellungsdatum
+                zeitfenster: payload.zeitfenster || "",    // Optional (z.B. für Zusatzinfos)
+                verfasser: (payload.verfasser || "System").toString().trim(),
+                empfaenger: payload.empfaenger || "alle",  // Standardmässig an alle, wenn nicht anders definiert
+                gelesen: "",
+                geloescht: ""
+            };
+
+            const { error } = await client
+                .from('news_db')
+                .insert([newsData]);
+
+            if (error) throw error;
+            console.log("🎯 News (Direkt-Payload) erfolgreich in Supabase gespeichert.");
+            return;
+
+        } catch (err) {
+            console.error("❌ Fehler beim Speichern des News-Payloads in Supabase:", err);
+            return;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // AB HIER: FALLBACK FÜR ÄLTERE FUNKTIONEN (die noch den alten Weg nutzen)
+    // -------------------------------------------------------------------------
     const rawHalle = (payload.halle || "").toString().toLowerCase().trim();
     const klasseVal = (payload.klasse || "").toString().toLowerCase().trim();
 
@@ -5771,7 +5808,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return;
     }
 
-    // 1. Identifikation der handelnden Lehrperson
     let handelndeLP = "";
     if (isZahlungsrunde) {
         handelndeLP = "System";
@@ -5785,7 +5821,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     
     const eventDatum = payload.datum || payload.date || getLocalIsoDate();
 
-    // Wochentag & Tag-Index ermitteln
     let zielTag = payload.wochentag;
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
     if (!zielTag && eventDatum) {
@@ -5793,7 +5828,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
     const tagIndex = wochentage.indexOf(zielTag);
 
-    // 2. Empfänger-Berechnung
     let empfaenger = "";
     let gefundeneLehrer = [];
 
@@ -5837,7 +5871,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
     
-    // 3. TITEL-, TEXT- UND ZEITFENSTER-LOGIK
     let displayHeader = "";
     let newsText = "";
     let newsTyp = rawHalle || "allgemein";
@@ -5892,7 +5925,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         newsText = `Die Klasse ${kl} fällt aus!`;
     }
 
-    // Zeitfenster-Berechnung
     const zeiten = [
         "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
         "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
@@ -5917,7 +5949,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
     }
 
-    // 4. Speichern in Supabase (ID wird nun automatisch von der DB als int8 generiert)
     try {
         const newsData = {
             typ: newsTyp,
@@ -5925,7 +5956,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             tag_index: tagIndex !== -1 ? tagIndex : null,
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
             zeitfenster: zeitfensterString,
-            datum: new Date().toISOString(), // Erstellungszeitpunkt der Meldung
+            datum: getLocalIsoDate(),
             titel: displayHeader,
             text: newsText,
             klasse: payload.klasse || "",
@@ -5940,7 +5971,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             .insert([newsData]);
 
         if (error) throw error;
-        console.log("🎯 News erfolgreich in Supabase gespeichert (Auto-ID vergeben).");
+        console.log("🎯 News (Fallback-Modus) erfolgreich in Supabase gespeichert.");
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
@@ -5948,11 +5979,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 };
     
 /* ============================================================
-    9.2. NEWS ANZEIGEN
-    ============================================================ */
-
-/* ============================================================
-    9.2. NEWS ANZEIGEN (Korrigiert für Spalte 'datum')
+    9.2. NEWS ANZEIGEN (Gesteuert über Spalte 'typ')
     ============================================================ */
 
 window.showNews = function() { 
@@ -6003,11 +6030,9 @@ window.showNews = function() {
         const eventInfoZeile = news.zeitfenster ? news.zeitfenster.toString() : "";
         const displayMain = news.text ? news.text.toString() : "";
 
-        // Erkennung für Stellvertretungs-Karten
-        const titelUpper = news.titel ? news.titel.toString().toUpperCase() : "";
-        const textUpper = news.text ? news.text.toString().toUpperCase() : "";
-        const idStr = news.id !== undefined && news.id !== null ? news.id.toString().toUpperCase() : "";
-        const istStvCard = titelUpper.includes("STELLVERTRETUNG") || textUpper.includes("ABWESENHEIT") || idStr.startsWith("STV_");
+        // 3. SAUBERE TYP-ERKENNUNG DIREKT ÜBER DIE SPALTE 'typ'
+        const newsTyp = news.typ ? news.typ.toString().toLowerCase().trim() : "";
+        const istStvCard = (newsTyp === "stellvertretung" || newsTyp === "stv");
 
         const card = document.createElement('div'); 
         card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`; 
@@ -8863,9 +8888,6 @@ window.openNewMeldungModal = function() {
 };
 
 // 3. Speichert die neue Meldung direkt in Supabase (service_db mit typ 'meldung' und automatischer ID)
-/* ============================================================
-    MELDUNGEN SPEICHERN & BEHEBEN (Mit saveNewsToDBFrontend)
-    ============================================================ */
 
 window.saveMeldung = async function() {
     const input = document.getElementById('meldung-text');
@@ -8901,15 +8923,15 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. News-Eintrag sauber über die zentrale Wrapper-Funktion erstellen
+        // 2. SAUBERER, EINHEITLICHER NEWS-PAYLOAD
+        // Keine "fake" Slots oder Hallen mehr, sondern echte News-Felder!
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                halle: "defekt_meldung",
-                datum: datumDateOnly,
-                slot: "0",
-                klasse: "Defekt",
-                verfasser: userKuerzelVal,
-                text: text
+                typ: "meldung",                        // Typ der News (für Filterung/Anzeige)
+                titel: "DEFEKT",                       // Titel der Karte
+                text: text,                            // Der eigentliche Inhalt
+                datum: datumDateOnly,                  // Erstellungsdatum
+                verfasser: userKuerzelVal              // Wer hats gemeldet
             });
         }
 
