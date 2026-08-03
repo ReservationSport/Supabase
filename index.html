@@ -8879,10 +8879,12 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. Nur den Typ übergeben – den Rest übernimmt saveNewsToDBFrontend vollständig
+        // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                typ: "meldung"
+                typ: "meldung",
+                titel: "Defekt gemeldet",
+                text: text
             });
         }
 
@@ -8911,28 +8913,11 @@ window.saveMeldung = async function() {
 };
 
 
-/* ============================================================
-    MARK AS RESOLVED (Gesteuert über das neue News-Payload-System)
-    ============================================================ */
-
 window.markAsResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
-    
-    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
-    const datumDateOnly = new Date().toISOString().split('T')[0];
 
     try {
-        // 1. Zuerst den Beschreibungstext des Defekts auslesen (für die News)
-        const { data: record, error: fetchError } = await window.supabaseClient
-            .from('service_db')
-            .select('beschreibung')
-            .eq('id', id)
-            .single();
-
-        if (fetchError) throw fetchError;
-        const ursprungsText = record ? record.beschreibung : "";
-
-        // 2. Status in der service_db auf "behoben" aktualisieren
+        // Status in der service_db auf "behoben" aktualisieren (ohne News-Insert)
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
@@ -8940,18 +8925,7 @@ window.markAsResolved = async function(id, btnElement) {
 
         if (updateError) throw updateError;
 
-        // 3. News-Eintrag für "Defekt behoben" über den sauberen Direkt-Payload erstellen
-        if (typeof window.saveNewsToDBFrontend === 'function') {
-            await window.saveNewsToDBFrontend({
-                typ: "meldung",                  // Typ der News (wie bei Defektmeldungen)
-                titel: "DEFEKT BEHOBEN",         // Titel der Karte
-                text: `${ursprungsText}`,         // Inhalt
-                datum: datumDateOnly,            // Erstellungsdatum
-                verfasser: userVal               // Wer hat es behoben
-            });
-        }
-
-        // 4. UI aktualisieren
+        // UI aktualisieren
         setTimeout(() => {
             if (typeof renderMeldungen === 'function') {
                 renderMeldungen();
@@ -9128,7 +9102,9 @@ window.saveWunsch = async function() {
         // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                typ: 'wunsch'
+                typ: 'wunsch',
+                titel: 'Materialwunsch vorhanden',
+                text: text
             });
         }
 
@@ -9156,44 +9132,18 @@ window.saveWunsch = async function() {
     }
 };
 
-// 4. Markiert einen Materialwunsch als behoben/erledigt (in service_db & generiert News)
+// 4. Markiert einen Materialwunsch als behoben/erledigt (in service_db, ohne News)
 window.markWunschResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
-    
-    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
 
     try {
-        // Zuerst den Beschreibungstext auslesen (für die News)
-        const { data: record, error: fetchError } = await window.supabaseClient
-            .from('service_db')
-            .select('beschreibung')
-            .eq('id', id)
-            .single();
-
-        if (fetchError) throw fetchError;
-        const ursprungsText = record ? record.beschreibung : "";
-
-        // Status in der service_db auf "behoben" aktualisieren
+        // Status in der service_db auf "behoben" aktualisieren (ohne News-Insert)
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
             .eq('id', id);
 
         if (updateError) throw updateError;
-
-        // News-Eintrag für "Materialwunsch erledigt" erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: new Date().toISOString().split('T')[0],
-                slot: "0",
-                klasse: "Info",
-                halle: "material_wunsch",
-                user: userVal,
-                text: `Materialwunsch erledigt: ${ursprungsText}`
-            }]);
-
-        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
 
         setTimeout(() => {
             if (typeof renderMaterialWunsche === 'function') {
