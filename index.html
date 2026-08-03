@@ -8239,7 +8239,10 @@ window.handleMoveConfirm = async function(targetSlot) {
     ============================================================ */
 
 window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
-    const zielHalle = (mode === 'LOESCHEN') ? "" : "Ausfall";
+    const isLoeschen = (mode === 'LOESCHEN');
+    const zielHalle = isLoeschen ? "" : "Ausfall";
+    // Wenn Ausfall gesetzt wird, ist der Typ "ausfall", ansonsten Standard-Buchung
+    const zielTyp = isLoeschen ? "buchung" : "ausfall";
     
     // 1. UI-LOADER (Optisch am Button)
     if (btn) {
@@ -8275,6 +8278,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
         if (window.lastPlanData && window.lastPlanData[currentSlotId]) {
             window.lastPlanData[currentSlotId].halle = halleVal;
             window.lastPlanData[currentSlotId].verfasser = userKuerzel;
+            window.lastPlanData[currentSlotId].typ = payloadData.typ;
         }
 
         // UI für den spezifischen Slot aktualisieren
@@ -8310,7 +8314,7 @@ window.handleAusfallClick = async function(mode, time, slot, klasse, btn) {
         kommentar: currentSlotData.kommentar || "",
         details: currentSlotData.details || currentSlotData.materialDetail || "",
         timestamp: now,
-        typ: currentSlotData.typ || "buchung",
+        typ: zielTyp, // <--- Hier wird nun sauber zwischen "ausfall" und "buchung" gewechselt
         verfasser: userKuerzel
     };
 
@@ -8611,10 +8615,10 @@ window.fuehreAbklebenAus = async function(klasse) {
         if (geloescht && typeof window.saveNewsToDBFrontend === 'function') {
             for (let slotIndex of zielSlotsListe) {
                 await window.saveNewsToDBFrontend({
-                    halle: "beendet", // Signalisiert der News-Logik das Abkleben
+                    typ: "beendet",           // <--- Korrekt: Nutzt jetzt 'typ' statt 'halle'
                     slot: slotIndex,
                     klasse: klasse,
-                    kuerzel: aktiverNutzer,
+                    verfasser: aktiverNutzer, // <--- Korrekt: Nutzt 'verfasser' statt 'kuerzel'
                     datum: targetDate
                 }, window.lastPlanData);
             }
