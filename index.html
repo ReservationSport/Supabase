@@ -5772,30 +5772,41 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     // Variablen, die wir je nach Typ füllen
     let titelVal = "";
     let payloadText = payload.text ? payload.text.toString() : "";
-    let empfaenger = "alle";
+    let empfaenger = "";
     let zeitfensterString = "";
 
-    // Hilfsfunktion: Alle anderen Lehrer im System einzeln ermitteln (Kürzel mit Komma getrennt, ausser Verfasser)
-    const getAlleAusserVerfasser = () => {
-        let gefundeneLehrer = [];
-        const planData = currentMasterData || window.lastPlanData;
+    // Zuverlässige Hilfsfunktion: Holt ALLE Lehrpersonen im System systemweit (kein Fallback auf "alle" mehr)
+    const getAllTeachersSystemWide = () => {
+        let teachers = [];
         
+        // 1. Aus window.allClassTeachers extrahieren (Array oder Objekt)
+        if (window.allClassTeachers) {
+            if (Array.isArray(window.allClassTeachers)) {
+                teachers = [...window.allClassTeachers];
+            } else if (typeof window.allClassTeachers === 'object') {
+                teachers = Object.values(window.allClassTeachers);
+            }
+        }
+        
+        // 2. Aus Plan-Daten / MasterData extrahieren
+        const planData = currentMasterData || window.lastPlanData;
         if (planData) {
-            Object.values(planData).forEach(slotData => {
-                if (!slotData) return;
-                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
-                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
-                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
-                }
-                lehrerKuerzel = lehrerKuerzel.toString().trim();
-                if (lehrerKuerzel !== "") {
-                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
-                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
-                    }
-                }
+            Object.values(planData).forEach(slot => {
+                if (!slot) return;
+                let k = slot.verfasser || slot.lehrer || "";
+                if (k) teachers.push(k);
             });
         }
-        return gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : "alle";
+        
+        // Bereinigen, Grossbuchstaben, Duplikate entfernen
+        let unique = [...new Set(teachers.map(t => t.toString().trim().toUpperCase()))].filter(Boolean);
+        
+        // Absoluter Fallback falls gar nichts im System gefunden wird
+        if (unique.length === 0) {
+            unique = [handelndeLP.toUpperCase()];
+        }
+        
+        return unique.join(",");
     };
 
     // =========================================================================
@@ -5838,19 +5849,14 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 lehrerKuerzel = lehrerKuerzel.toString().trim();
 
                 if (lehrerKuerzel !== "") {
-                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
+                    if (!gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
                         gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
                     }
                 }
             }
         }
         
-        if (gefundeneLehrer.length === 0) {
-            console.log(`ℹ️ Keine weiteren Lehrpersonen im Zeitslot gefunden für Typ [${rawTyp}]. Es wird keine News generiert.`);
-            return;
-        }
-
-        empfaenger = gefundeneLehrer.join(",");
+        empfaenger = gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : getAllTeachersSystemWide();
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
@@ -5877,42 +5883,42 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Einzelne LP getrennt durch Komma, ausser Verfasser)
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS
         // =========================================================================
         
-        const alleAusserMir = getAlleAusserVerfasser();
+        const alleLehrerStr = getAllTeachersSystemWide();
 
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
-                empfaenger: alleAusserMir,
+                empfaenger: alleLehrerStr,
                 text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
                 verfasser: handelndeLP
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
-                empfaenger: alleAusserMir, 
+                empfaenger: alleLehrerStr, 
                 text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
-                empfaenger: alleAusserMir, 
+                empfaenger: alleLehrerStr, 
                 text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
-                empfaenger: alleAusserMir, 
+                empfaenger: alleLehrerStr, 
                 text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
                 verfasser: handelndeLP 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: alleLehrerStr, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: alleLehrerStr, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
             apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",        text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
         };
 
-        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle", text: "", verfasser: handelndeLP };
+        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: alleLehrerStr, text: "", verfasser: handelndeLP };
         
         titelVal = regel.titel;
         empfaenger = payload.empfaenger || regel.empfaenger;
@@ -5934,9 +5940,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             text: payloadText,               
             klasse: klasse,
             verfasser: handelndeLP,          
-            empfaenger: empfaenger,          // Enthält nun die einzelnen LP-Kürzel mit Komma getrennt (ohne Verfasser)
+            empfaenger: empfaenger,          // Enthält nun alle gefundenen Lehrer als kommagetrennte Kürzel
             gelesen: "",
-            geloescht: "" 
+            geloescht: handelndeLP           // Verfasser wird direkt in geloescht gepackt
         };
 
         const { error } = await client
@@ -5944,7 +5950,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             .insert([newsData]);
 
         if (error) throw error;
-        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Verfasser: ${handelndeLP}, Empfänger: ${empfaenger}).`);
+        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Verfasser: ${handelndeLP}, Empfänger: ${empfaenger}, Gelöscht-Feld: ${handelndeLP}).`);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
