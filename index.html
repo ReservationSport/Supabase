@@ -5891,16 +5891,17 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         if (rawTyp === "apotheke") {
             try {
-                const { data: chefData, error: chefError } = await client
+                // Alle Zeilen abfragen und den ersten gültigen Chef herausfiltern
+                const { data: chefRows, error: chefError } = await client
                     .from('material')
-                    .select('chef')
-                    .limit(1)
-                    .single();
+                    .select('chef');
 
-                if (!chefError && chefData && chefData.chef) {
-                    empfaengerList = [chefData.chef.toString().trim().toUpperCase()];
+                const validChef = !chefError && chefRows ? chefRows.find(row => row.chef && row.chef.toString().trim() !== '')?.chef : null;
+
+                if (validChef) {
+                    empfaengerList = [validChef.toString().trim().toUpperCase()];
                 } else {
-                    empfaengerList = ["CHEF"];
+                    empfaengerList = ["CHEF"]; // Fallback
                 }
             } catch (err) {
                 console.error("⚠️ Konnte Chef nicht aus Tabelle 'material' laden, nutze Fallback.", err);
