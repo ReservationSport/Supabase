@@ -5776,8 +5776,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
     const isSlotBased = slotBasierteTypen.includes(rawTyp);
 
-    // Event-Datum nur bei Slot-basierten Events befüllen, bei Meldungen leer lassen
-    const eventDatum = isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : "";
+    // Event-Datum nur bei Slot-basierten Events befüllen, bei anderen optional aus Payload
+    const eventDatum = isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : (payload.datum || payload.date || "");
     
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
     let zielTag = payload.wochentag;
@@ -5790,7 +5790,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     // Variablen, die wir je nach Typ füllen
     let titelVal = "";
-    let payloadText = payload.text ? payload.text.toString() : "";
+    let payloadText = payload.text ? payload.text.toString() : (payload.beschreibung ? payload.beschreibung.toString() : "");
     let empfaengerList = [];
     let zeitfensterString = "";
 
@@ -5832,7 +5832,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         ];
 
         let formatiertesEventDatum = eventDatum;
-        if (formatiertesEventDatum.includes('-')) {
+        if (formatiertesEventDatum && formatiertesEventDatum.includes('-')) {
             const parts = formatiertesEventDatum.split('-');
             if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
         }
@@ -5848,46 +5848,10 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Direkt via Payload übergeben)
         // =========================================================================
         
-        const zusatzRegeln = {
-            meldung: { 
-                titel: payload.titel || "Meldung (Defekt)", 
-                text: document.getElementById('meldung-text')?.value || "" 
-            },
-            wunsch: { 
-                titel: payload.titel || "Materialwunsch",     
-                text: document.getElementById('wunsch-text')?.value || "" 
-            },
-            banner: { 
-                titel: payload.titel || "Bannermeldung",     
-                text: document.getElementById('banner-text-input')?.value || "" 
-            },
-            idee: { 
-                titel: payload.titel || `Idee (${document.getElementById('ideen-kategorie')?.value || 'Allgemein'})`,
-                text: document.getElementById('ideen-text')?.value || "" 
-            },
-            kasse: { 
-                titel: payload.titel || "Teamkasse",
-                text: "Neue Zahlungsrunde eröffnet! Du bist etwas schuldig..."
-            },
-            vertretung: { 
-                titel: payload.titel || "Stellvertretung",
-                text: payload.text || payload.beschreibung || "Stellvertretung gesucht!" 
-            },
-            apotheke: { 
-                titel: payload.titel || "Apotheke",
-                text: payload.text || payload.beschreibung || "" 
-            }
-        };
-
-        const regel = zusatzRegeln[rawTyp] || { titel: "Information", text: "" };
-        
-        titelVal = regel.titel;
-        if (!payloadText) {
-            payloadText = regel.text;
-        }
+        titelVal = payload.titel || "Information";
 
         if (rawTyp === "apotheke") {
             try {
@@ -5907,11 +5871,15 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 console.error("⚠️ Konnte Chef nicht aus Tabelle 'material' laden, nutze Fallback.", err);
                 empfaengerList = ["CHEF"];
             }
+        } else if (payload.empfaenger) {
+            empfaengerList = Array.isArray(payload.empfaenger) 
+                ? payload.empfaenger 
+                : payload.empfaenger.split(',').map(e => e.trim());
         } else {
             empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
         }
         
-        zeitfensterString = ""; 
+        zeitfensterString = payload.zeitfenster || ""; 
     }
 
     const empfaengerString = empfaengerList.join(",");
@@ -5929,9 +5897,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             text: payloadText,               
             klasse: klasse,
             verfasser: handelndeLP,          
-            empfaenger: empfaengerString,    // Alle LP kommagetrennt (ohne Verfasser)
+            empfaenger: empfaengerString,    
             gelesen: "",
-            geloescht: ""                    // Bleibt leer
+            geloescht: ""                    
         };
 
         const { error } = await client
@@ -10923,7 +10891,6 @@ window.toggleAllStvLessons = function() {
     }
 };
 
-// Letzter Schritt: Absenden direkt an window.supabaseClient (service_db)
 window.submitStellvertretungWithLessons = async function() {
     let selectedLektionen = [];
     if (currentStvData.allDay) {
@@ -10962,12 +10929,26 @@ window.submitStellvertretungWithLessons = async function() {
             .from('service_db')
             .insert(lektionenPayload);
 
+        if (error) throw error;
+
+        // Anzahl der ausgewählten Lektionen ermitteln
+        const anzahlLektionen = selectedLektionen.length;
+        const lektionText = anzahlLektionen === 1 ? "1 Lektion" : `${anzahlLektionen} Lektionen`;
+
+        // Zentralen News-Eintrag erstellen mit der Anzahl Lektionen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'vertretung',
+                datum: currentStvData.datum,
+                verfasser: aktuellerUser,
+                text: `${lektionText}`
+            });
+        }
+
         if (saveBtn) { 
             saveBtn.disabled = false; 
             saveBtn.innerText = "Speichern"; 
         }
-
-        if (error) throw error;
 
         closeModal('stv-lektionen-modal');
         const datumField = document.getElementById('stv-datum');
@@ -10976,6 +10957,10 @@ window.submitStellvertretungWithLessons = async function() {
         if (grundField) grundField.value = '';
         
         renderStellvertretung();
+
+        if (typeof refreshNews === 'function') {
+            refreshNews();
+        }
 
     } catch (e) {
         if (saveBtn) { 
@@ -11867,9 +11852,28 @@ window.startNeueZahlungsrunde = async function() {
                 .eq('id', lp.id);
         }
 
+        // Verfasser und Datum für den News-Eintrag ermitteln
+        const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "lp";
+        const aktuellesDatum = new Date().toISOString().split('T')[0];
+
+        // News-Eintrag für die Teamkasse erstellen (wird automatisch an alle außer den Verfasser gesendet)
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'kasse',
+                titel: 'Teamkasse auffüllen!',
+                text: 'Eine neue Zahlungsrunde wurde ausgelöst. Zahle deinen Beitrag per Twint an den Kassenwart!',
+                verfasser: aktuellerUser,
+                datum: aktuellesDatum
+            });
+        }
+
         alert("Neue Runde erfolgreich gestartet! Alle Status wurden auf 'offen' gesetzt.");
         renderAdminLpList();
         renderTeamkasse();
+
+        if (typeof refreshNews === 'function') {
+            refreshNews();
+        }
 
     } catch (e) {
         console.error("Fehler beim Starten der neuen Runde:", e);
