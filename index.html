@@ -5793,20 +5793,33 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
                 return;
         }
 
-        // 6. Empfänger ermitteln (Betroffene Lehrpersonen/Verfasser im Slot)
+        // 6. Empfänger-Logik: Nur im entsprechenden Zeitslot suchen
         let empfaengerSet = new Set();
-        if (masterPlanData) {
+        if (masterPlanData && typeof masterPlanData === 'object') {
+            // Direktes Prüfen, falls masterPlanData nach Slot-Keys strukturiert ist
+            if (masterPlanData[slot]) {
+                const slotData = masterPlanData[slot];
+                const entries = Array.isArray(slotData) ? slotData : [slotData];
+                entries.forEach(item => {
+                    if (item) {
+                        const lehrerName = (item.lehrer || item.verfasser || "").toString().trim();
+                        if (lehrerName && lehrerName.toLowerCase() !== verfasser.toLowerCase()) {
+                            empfaengerSet.add(lehrerName);
+                        }
+                    }
+                });
+            }
+            // Zusätzlich über alle Einträge iterieren, falls der Slot als Eigenschaft hinterlegt ist
             Object.values(masterPlanData).forEach(item => {
-                if (item && (String(item.slot) === String(slot))) {
-                    if (item.lehrer && item.lehrer !== verfasser) empfaengerSet.add(item.lehrer);
-                    if (item.verfasser && item.verfasser !== verfasser) empfaengerSet.add(item.verfasser);
+                if (item && String(item.slot || item.slot_index || "") === String(slot)) {
+                    const lehrerName = (item.lehrer || item.verfasser || "").toString().trim();
+                    if (lehrerName && lehrerName.toLowerCase() !== verfasser.toLowerCase()) {
+                        empfaengerSet.add(lehrerName);
+                    }
                 }
             });
         }
         let empfaengerStr = Array.from(empfaengerSet).join(", ");
-        if (!empfaengerStr) {
-            empfaengerStr = "Alle Sportlehrpersonen"; // Fallback, falls keine anderen direkt erfasst sind
-        }
 
         // 7. Vollständiges Payload für die Datenbank
         const dbPayload = {
