@@ -227,11 +227,15 @@
                 tickerBanner.style.display = "none";
             }
 
-            // --- 3. PLAN AUS BUCHUNGEN_DB LADEN ---
+            // --- 3. PLAN AUS BUCHUNGEN_DB NUR FÜR HEUTE LADEN ---
             let plan = {};
             try {
-                // Hier wurde 'slot_id' zu 'slot' korrigiert
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot,klasse,halle`, {
+                // Heutiges Datum im Format YYYY-MM-DD ermitteln (z.B. "2026-08-03")
+                const todayStr = new Date().toISOString().split('T')[0];
+
+                // WICHTIG: Falls deine Datums-Spalte in Supabase nicht 'datum' heißt, 
+                // passe 'datum=eq.' entsprechend an (z.B. 'date=eq.' oder 'tag=eq.')
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot,klasse,halle&datum=eq.${todayStr}`, {
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
