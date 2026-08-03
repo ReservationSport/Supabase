@@ -4346,7 +4346,7 @@ window.fetchKalenderContext = async function(dateObj) {
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 
-    // 2. Kalender-Daten aus Supabase laden
+    // 2. Kalender-Daten aus Supabase laden (Vergleich: kalenderwoche in DB == berechnete weekNo)
     let kalenderData = null;
     try {
         const { data, error } = await supabaseClient
@@ -4369,14 +4369,12 @@ window.fetchKalenderContext = async function(dateObj) {
         const schul = kalenderData.schulwoche !== undefined && kalenderData.schulwoche !== null ? kalenderData.schulwoche.toString().trim() : "";
         const u21 = kalenderData.u21_woche !== undefined && kalenderData.u21_woche !== null ? kalenderData.u21_woche.toString().trim() : "";
 
-        // Schulwoche ermitteln
+        // A) Schulwoche ermitteln
         if (schul !== "" && !isNaN(schul)) {
             aktuelleSchulwoche = parseInt(schul);
-        } else if (u21 !== "" && !isNaN(u21) && parseInt(u21) <= 10) {
-            aktuelleSchulwoche = parseInt(u21);
         }
 
-        // U21 Slot-Index aus u21_woche ermitteln (falls dort eine Slot-Nummer 1-5 steht)
+        // B) U21 Slot-Index aus u21_woche ermitteln (HAT NICHTS MIT A/B ZU TUN!)
         if (u21 !== "" && !isNaN(u21)) {
             const val = parseInt(u21);
             if (val >= 1 && val <= 5) {
@@ -4384,22 +4382,15 @@ window.fetchKalenderContext = async function(dateObj) {
             }
         }
 
-        // A/B bzw. Gerade/Ungerade Logik
-        const schulUpper = schul.toUpperCase();
-        const u21Upper = u21.toUpperCase();
-
-        if (u21Upper === 'B' || u21Upper === '2' || u21Upper === 'EVEN') {
-            isEvenWeek = true;
-        } else if (schulUpper === 'B' || schulUpper === '2' || schulUpper === 'EVEN') {
-            isEvenWeek = true;
-        } else if (!isNaN(schul)) {
+        // C) A/B Logik: Prüft AUSSCHLIESSLICH, ob die Schulwoche gerade oder ungerade ist
+        if (schul !== "" && !isNaN(schul)) {
             isEvenWeek = (parseInt(schul) % 2 === 0);
         }
     }
 
     const istUngeradeWoche = !isEvenWeek;
 
-    // --- HIER INTEGRIERT: Die direkte Klassen-Auflösungs-Funktion ---
+    // Klassen-Auflösung (A/B Logik via Leerzeichen am Slash)
     const resolveKlasse = (roheKlasse) => {
         if (!roheKlasse) return "";
         const trimmed = roheKlasse.toString().trim();
@@ -4420,7 +4411,7 @@ window.fetchKalenderContext = async function(dateObj) {
         isEvenWeek,
         istUngeradeWoche,
         kalenderData,
-        resolveKlasse // Direkt im Kontext verfügbar!
+        resolveKlasse 
     };
 };
 
