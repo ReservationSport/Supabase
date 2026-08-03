@@ -5951,6 +5951,10 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     9.2. NEWS ANZEIGEN
     ============================================================ */
 
+/* ============================================================
+    9.2. NEWS ANZEIGEN (Korrigiert für Spalte 'datum')
+    ============================================================ */
+
 window.showNews = function() { 
     const sidebar = document.getElementById('newsSidebar'); 
     const newsContainer = document.getElementById('newsContent'); 
@@ -5968,10 +5972,10 @@ window.showNews = function() {
         return !geloeschtVon.includes(aktuellerUser); 
     }); 
 
-    // Sortierung primär nach Spalte 'zeitstempel' (neueste Meldung zuoberst)
+    // Sortierung primär nach Spalte 'datum' (neueste Meldung zuoberst)
     aktiveNews.sort((a, b) => {
-        const timeA = new Date(a.zeitstempel || a.created_at || 0).getTime();
-        const timeB = new Date(b.zeitstempel || b.created_at || 0).getTime();
+        const timeA = new Date(a.datum || a.zeitstempel || a.created_at || 0).getTime();
+        const timeB = new Date(b.datum || b.zeitstempel || b.created_at || 0).getTime();
         if (timeB - timeA !== 0) return timeB - timeA;
         return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
@@ -5982,8 +5986,8 @@ window.showNews = function() {
         const gelesenListe = (news.gelesen || "").toString().toUpperCase().split(',').map(s => s.trim()); 
         const istGelesen = gelesenListe.includes(aktuellerUser); 
         
-        // 1. Erstellungsdatum / Zeitstempel (für unten links)
-        let rawZeitstempel = news.zeitstempel ? news.zeitstempel.toString() : ''; 
+        // 1. Erstellungsdatum aus Spalte 'datum' (für unten links)
+        let rawZeitstempel = news.datum ? news.datum.toString() : (news.zeitstempel ? news.zeitstempel.toString() : ''); 
         if (rawZeitstempel.includes('T')) rawZeitstempel = rawZeitstempel.split('T')[0];
         let formatiertesErstellungsDatum = rawZeitstempel; 
         if (formatiertesErstellungsDatum.includes('-')) { 
@@ -5999,7 +6003,7 @@ window.showNews = function() {
         const eventInfoZeile = news.zeitfenster ? news.zeitfenster.toString() : "";
         const displayMain = news.text ? news.text.toString() : "";
 
-        // Erkennung für Stellvertretungs-Karten (sicher konvertiert)
+        // Erkennung für Stellvertretungs-Karten
         const titelUpper = news.titel ? news.titel.toString().toUpperCase() : "";
         const textUpper = news.text ? news.text.toString().toUpperCase() : "";
         const idStr = news.id !== undefined && news.id !== null ? news.id.toString().toUpperCase() : "";
