@@ -5734,7 +5734,7 @@ function updateNewsDot() {
 
 /**
  * Zentraler News-Generator für das Frontend
- * Generiert nur für Ausfall, Badi, Outdoor und Abgeklebt eine Meldung mit dem Titel "Halle frei!"
+ * Schreibt relevante Event-Meldungen mit allen Pflichtfeldern in die news_db.
  */
 window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
     if (!window.supabaseClient) {
@@ -5743,21 +5743,38 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
     }
 
     try {
-        // Fängt sowohl 'typ' als auch 'halle' ab und wandelt es in Kleinbuchstaben um
+        // Typ/Halle ermitteln und normalisieren
         const rawTyp = newsPayload.typ || newsPayload.halle || "";
         const typ = rawTyp.toString().toLowerCase().trim();
         
-        const klasse = newsPayload.klasse || "";
-        const verfasser = newsPayload.verfasser || newsPayload.kuerzel || window.userKuerzel || "System";
-        const datum = newsPayload.datum || new Date().toISOString().split('T')[0];
-
-        // 1. Nur die definierten Spezial-Fälle erlauben, normale Reservationen ignorieren
+        // Nur die definierten Spezial-Fälle erlauben (normale Reservationen ignorieren)
         const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet"];
         if (!erlaubteTypen.includes(typ)) {
             return; 
         }
 
-        // 2. Exakte Text-Generierung nach deinen Vorgaben
+        const klasse = newsPayload.klasse || "";
+        const verfasser = newsPayload.verfasser || newsPayload.kuerzel || window.userKuerzel || "System";
+        
+        // 1. Datum der Erfassung der News (heutiges Datum)
+        const erstellungsDatum = new Date().toISOString().split('T')[0];
+        
+        // 2. Event-Datum (Datum im Stundenplan)
+        const datumEvent = newsPayload.datum || erstellungsDatum;
+        
+        // 3. Slot & Zeitfenster
+        const slot = newsPayload.slot || "";
+        const slotIndex = parseInt(slot, 10) || 0;
+        const zeitfenster = newsPayload.time || newsPayload.zeitfenster || "";
+
+        // 4. Tag-Index ermitteln (0 = Sonntag, 1 = Montag, etc.)
+        let tagIndex = 0;
+        if (datumEvent) {
+            const tempDate = new Date(datumEvent.replace(/-/g, "/"));
+            tagIndex = tempDate.getDay();
+        }
+
+        // 5. Exakter Text nach deinen Vorgaben
         let nachrichtenText = "";
         switch (typ) {
             case "ausfall":
@@ -5776,14 +5793,34 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
                 return;
         }
 
-        // 3. In die News-Datenbank schreiben (ohne 'slot', da die Spalte in news_db nicht existiert)
+        // 6. Empfänger ermitteln (Betroffene Lehrpersonen/Verfasser im Slot)
+        let empfaengerSet = new Set();
+        if (masterPlanData) {
+            Object.values(masterPlanData).forEach(item => {
+                if (item && (String(item.slot) === String(slot))) {
+                    if (item.lehrer && item.lehrer !== verfasser) empfaengerSet.add(item.lehrer);
+                    if (item.verfasser && item.verfasser !== verfasser) empfaengerSet.add(item.verfasser);
+                }
+            });
+        }
+        let empfaengerStr = Array.from(empfaengerSet).join(", ");
+        if (!empfaengerStr) {
+            empfaengerStr = "Alle Sportlehrpersonen"; // Fallback, falls keine anderen direkt erfasst sind
+        }
+
+        // 7. Vollständiges Payload für die Datenbank
         const dbPayload = {
-            titel: "Halle frei!",        // <--- Fixer Titel
-            text: nachrichtenText,       // <--- Exakter Text nach Vorgabe
-            datum: datum,
+            titel: "Halle frei!",
+            text: nachrichtenText,
+            datum: erstellungsDatum,    // Datum der Erfassung
+            datum_event: datumEvent,    // Datum im Stundenplan
+            zeitfenster: zeitfenster,
+            tag_index: tagIndex,
+            slot_index: slotIndex,
             klasse: klasse,
             verfasser: verfasser,
-            typ: typ
+            typ: typ,
+            empfaenger: empfaengerStr
         };
 
         const { error: newsError } = await window.supabaseClient
