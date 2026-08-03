@@ -4415,32 +4415,7 @@ window.fetchKalenderContext = async function(dateObj) {
     };
 };
 
-    
-window.sperrzeitenMap = {};
-
-window.initSperrzeitenCache = async function() {
-    try {
-        const { data, error } = await supabaseClient.from('sperrzeiten').select('*');
-        if (!error && data) {
-            window.sperrzeitenMap = {};
-            data.forEach(item => {
-                if (item.datum) {
-                    window.sperrzeitenMap[item.datum.trim()] = item.grund;
-                }
-            });
-        }
-    } catch(e) {
-        // Still abfangen
-    }
-};
-
-    
-/* ============================================================
-   3. LOGIN
-   ============================================================ */
-    
-
-// Globale Map für den Sperrzeiten-Cache definieren
+    // Globale Map für den Sperrzeiten-Cache definieren
 window.sperrzeitenMap = {};
 window.initSperrzeitenCache = async function() {
     try {
@@ -4455,6 +4430,49 @@ window.initSperrzeitenCache = async function() {
         }
     } catch(e) {}
 };
+
+window.initTeachersCache = async function() {
+    const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
+    if (!client) return [];
+    
+    try {
+        const { data, error } = await client.from('master_db').select('lehrer');
+        let teachers = [];
+        if (!error && data && data.length > 0) {
+            data.forEach(row => {
+                let l = row.lehrer;
+                if (l) {
+                    if (typeof l === 'string') {
+                        l.split(',').forEach(item => teachers.push(item.trim()));
+                    } else if (Array.isArray(l)) {
+                        teachers.push(...l);
+                    }
+                }
+            });
+        }
+        
+        // Fallback falls master_db leer ist
+        if (teachers.length === 0 && window.allClassTeachers) {
+            teachers = Array.isArray(window.allClassTeachers) ? window.allClassTeachers : Object.values(window.allClassTeachers);
+        }
+        
+        window.allTeachers = [...new Set(teachers.map(t => t.toString().trim().toUpperCase()))].filter(Boolean);
+        console.log("✅ Lehrer aus master_db erfolgreich im Cache:", window.allTeachers);
+        return window.allTeachers;
+        
+    } catch (e) {
+        console.error("❌ Fehler beim Laden der Lehrer aus master_db:", e);
+        window.allTeachers = [];
+        return [];
+    }
+};
+
+    
+    
+/* ============================================================
+   3. LOGIN
+   ============================================================ */
+    
 
 window.handleLogin = async function() {
     const btn = document.getElementById('loginBtn');
@@ -4500,6 +4518,7 @@ window.handleLogin = async function() {
         const linksPromise = supabaseClient.from('links').select('*');
         const matPromise = supabaseClient.from('materialien').select('*');
         const sperrzeitPromise = window.initSperrzeitenCache();
+        const teachersPromise = window.initTeachersCache();
 
         const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
 
@@ -5749,9 +5768,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
         rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || rawVerfasser.userKuerzel || "LP";
     }
-    let handelndeLP = rawVerfasser ? rawVerfasser.toString().trim() : "LP";
-    if (handelndeLP === "[object Object]" || handelndeLP === "{}" || handelndeLP.toLowerCase() === "userkuerzel") {
-        handelndeLP = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().trim() : "LP";
+    let handelndeLP = rawVerfasser ? rawVerfasser.toString().trim().toUpperCase() : "LP";
+    if (handelndeLP === "[OBJECT OBJECT]" || handelndeLP === "{}" || handelndeLP === "USERKUERZEL") {
+        handelndeLP = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().trim().toUpperCase() : "LP";
     }
 
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
@@ -5772,42 +5791,13 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     // Variablen, die wir je nach Typ füllen
     let titelVal = "";
     let payloadText = payload.text ? payload.text.toString() : "";
-    let empfaenger = "";
+    let empfaengerList = [];
     let zeitfensterString = "";
 
-    // Zuverlässige Hilfsfunktion: Holt ALLE Lehrpersonen im System systemweit (kein Fallback auf "alle" mehr)
-    const getAllTeachersSystemWide = () => {
-        let teachers = [];
-        
-        // 1. Aus window.allClassTeachers extrahieren (Array oder Objekt)
-        if (window.allClassTeachers) {
-            if (Array.isArray(window.allClassTeachers)) {
-                teachers = [...window.allClassTeachers];
-            } else if (typeof window.allClassTeachers === 'object') {
-                teachers = Object.values(window.allClassTeachers);
-            }
-        }
-        
-        // 2. Aus Plan-Daten / MasterData extrahieren
-        const planData = currentMasterData || window.lastPlanData;
-        if (planData) {
-            Object.values(planData).forEach(slot => {
-                if (!slot) return;
-                let k = slot.verfasser || slot.lehrer || "";
-                if (k) teachers.push(k);
-            });
-        }
-        
-        // Bereinigen, Grossbuchstaben, Duplikate entfernen
-        let unique = [...new Set(teachers.map(t => t.toString().trim().toUpperCase()))].filter(Boolean);
-        
-        // Absoluter Fallback falls gar nichts im System gefunden wird
-        if (unique.length === 0) {
-            unique = [handelndeLP.toUpperCase()];
-        }
-        
-        return unique.join(",");
-    };
+    // Notfall-Fallback falls window.allTeachers noch nicht geladen sein sollte
+    if (!window.allTeachers || window.allTeachers.length === 0) {
+        window.allTeachers = [handelndeLP];
+    }
 
     // =========================================================================
     // 1. STUNDENPLAN-RELEVANTE TYPEN
@@ -5830,33 +5820,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 break;
         }
 
-        let gefundeneLehrer = [];
-        const planData = currentMasterData || window.lastPlanData;
-        
-        if (!isNaN(slotNummer) && slotNummer > 0 && planData) {
-            const rowIndex = Math.floor((slotNummer - 1) / 5);
-            const rowStartSlot = (rowIndex * 5) + 1;
-
-            for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
-                const slotData = planData[s];
-                if (!slotData) continue;
-
-                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
-                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
-                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
-                }
-
-                lehrerKuerzel = lehrerKuerzel.toString().trim();
-
-                if (lehrerKuerzel !== "") {
-                    if (!gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
-                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
-                    }
-                }
-            }
-        }
-        
-        empfaenger = gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : getAllTeachersSystemWide();
+        // Alle globalen Lehrer AUSSER dem Verfasser
+        empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
@@ -5886,46 +5851,43 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         // 2. ZUSATZFUNKTIONEN / TEAM-NEWS
         // =========================================================================
         
-        const alleLehrerStr = getAllTeachersSystemWide();
-
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
-                empfaenger: alleLehrerStr,
-                text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
-                verfasser: handelndeLP
+                text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "" 
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
-                empfaenger: alleLehrerStr, 
-                text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
-                verfasser: handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "" 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
-                empfaenger: alleLehrerStr, 
-                text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
-                verfasser: handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "" 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
-                empfaenger: alleLehrerStr, 
-                text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
-                verfasser: handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "" 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: alleLehrerStr, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: alleLehrerStr, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",        text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
+            kasse:      { titel: payload.titel || "Teamkasse",      text: payload.text || payload.beschreibung || "" },
+            vertretung: { titel: payload.titel || "Stellvertretung", text: payload.text || payload.beschreibung || "" },
+            apotheke:   { titel: payload.titel || "Apotheke",   text: payload.text || payload.beschreibung || "" }
         };
 
-        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: alleLehrerStr, text: "", verfasser: handelndeLP };
+        const regel = zusatzRegeln[rawTyp] || { titel: "Information", text: "" };
         
         titelVal = regel.titel;
-        empfaenger = payload.empfaenger || regel.empfaenger;
         payloadText = regel.text;
-        handelndeLP = regel.verfasser || handelndeLP;
+
+        if (rawTyp === "apotheke") {
+            empfaengerList = ["CHEF"];
+        } else {
+            empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
+        }
+        
         zeitfensterString = ""; 
     }
+
+    const empfaengerString = empfaengerList.join(",");
 
     // In Supabase speichern
     try {
@@ -5940,9 +5902,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             text: payloadText,               
             klasse: klasse,
             verfasser: handelndeLP,          
-            empfaenger: empfaenger,          // Enthält nun alle gefundenen Lehrer als kommagetrennte Kürzel
+            empfaenger: empfaengerString,    // Alle LP kommagetrennt (ohne Verfasser)
             gelesen: "",
-            geloescht: handelndeLP           // Verfasser wird direkt in geloescht gepackt
+            geloescht: ""                    // Bleibt leer
         };
 
         const { error } = await client
@@ -5950,7 +5912,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             .insert([newsData]);
 
         if (error) throw error;
-        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Verfasser: ${handelndeLP}, Empfänger: ${empfaenger}, Gelöscht-Feld: ${handelndeLP}).`);
+        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Verfasser: ${handelndeLP}, Empfänger: ${empfaengerString}).`);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
