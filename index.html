@@ -5948,14 +5948,14 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 };
     
 /* ============================================================
-   9.2. NEWS ANZEIGEN
-   ============================================================ */
+    9.2. NEWS ANZEIGEN
+    ============================================================ */
 
 window.showNews = function() { 
     const sidebar = document.getElementById('newsSidebar'); 
     const newsContainer = document.getElementById('newsContent'); 
     const backdrop = document.getElementById('newsSidebarBackdrop'); 
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : ""; 
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().toUpperCase().trim() : ""; 
 
     if (sidebar) sidebar.style.display = 'flex'; 
     if (backdrop) backdrop.style.display = 'block'; 
@@ -5964,7 +5964,7 @@ window.showNews = function() {
     const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : []; 
     const aktiveNews = sichereNewsListe.filter(n => { 
         if (!n) return false; 
-        const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim()); 
+        const geloeschtVon = (n.geloescht || "").toString().toUpperCase().split(',').map(s => s.trim()); 
         return !geloeschtVon.includes(aktuellerUser); 
     }); 
 
@@ -5973,13 +5973,13 @@ window.showNews = function() {
         const timeA = new Date(a.zeitstempel || a.created_at || 0).getTime();
         const timeB = new Date(b.zeitstempel || b.created_at || 0).getTime();
         if (timeB - timeA !== 0) return timeB - timeA;
-        return (b.id || 0) - (a.id || 0);
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
     aktiveNews.forEach(news => { 
         if (!news) return; 
 
-        const gelesenListe = (news.gelesen || "").toUpperCase().split(',').map(s => s.trim()); 
+        const gelesenListe = (news.gelesen || "").toString().toUpperCase().split(',').map(s => s.trim()); 
         const istGelesen = gelesenListe.includes(aktuellerUser); 
         
         // 1. Erstellungsdatum / Zeitstempel (für unten links)
@@ -5995,14 +5995,14 @@ window.showNews = function() {
         const displayVerfasser = safeVerfasserInput.toLowerCase(); 
 
         // 2. Direkte Daten-Übernahme aus der news_db
-        const displayHeader = news.titel || "Info:";
-        const eventInfoZeile = news.zeitfenster || "";
-        const displayMain = news.text || "";
+        const displayHeader = news.titel ? news.titel.toString() : "Info:";
+        const eventInfoZeile = news.zeitfenster ? news.zeitfenster.toString() : "";
+        const displayMain = news.text ? news.text.toString() : "";
 
-        // Erkennung für Stellvertretungs-Karten
-        const titelUpper = (news.titel || "").toUpperCase();
-        const textUpper = (news.text || "").toUpperCase();
-        const idStr = (news.id || "").toUpperCase();
+        // Erkennung für Stellvertretungs-Karten (sicher konvertiert)
+        const titelUpper = news.titel ? news.titel.toString().toUpperCase() : "";
+        const textUpper = news.text ? news.text.toString().toUpperCase() : "";
+        const idStr = news.id !== undefined && news.id !== null ? news.id.toString().toUpperCase() : "";
         const istStvCard = titelUpper.includes("STELLVERTRETUNG") || textUpper.includes("ABWESENHEIT") || idStr.startsWith("STV_");
 
         const card = document.createElement('div'); 
@@ -6032,7 +6032,8 @@ window.showNews = function() {
                 const newsInListe = sichereNewsListe.find(n => n && n.id === news.id); 
                 if (newsInListe) { 
                     if (!newsInListe.gelesen) newsInListe.gelesen = ""; 
-                    if (!newsInListe.gelesen.toUpperCase().includes(aktuellerUser)) { 
+                    const gelesenStr = newsInListe.gelesen.toString().toUpperCase();
+                    if (!gelesenStr.includes(aktuellerUser)) { 
                         newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser; 
                     } 
                 } 
@@ -6078,7 +6079,6 @@ window.showNews = function() {
     if (newsContainer) newsContainer.scrollTop = 0; 
     setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10); 
 };
-
     
 
 /**
