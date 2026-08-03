@@ -5919,22 +5919,22 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     9.2. NEWS ANZEIGEN (Gesteuert über Spalte 'typ')
     ============================================================ */
 
-window.showNews = function() { 
-    const sidebar = document.getElementById('newsSidebar'); 
-    const newsContainer = document.getElementById('newsContent'); 
-    const backdrop = document.getElementById('newsSidebarBackdrop'); 
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().toUpperCase().trim() : ""; 
+window.showNews = function() {  
+    const sidebar = document.getElementById('newsSidebar');  
+    const newsContainer = document.getElementById('newsContent');  
+    const backdrop = document.getElementById('newsSidebarBackdrop');  
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().toUpperCase().trim() : "";  
 
-    if (sidebar) sidebar.style.display = 'flex'; 
-    if (backdrop) backdrop.style.display = 'block'; 
-    if (newsContainer) newsContainer.innerHTML = ""; 
+    if (sidebar) sidebar.style.display = 'flex';  
+    if (backdrop) backdrop.style.display = 'block';  
+    if (newsContainer) newsContainer.innerHTML = "";  
     
-    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : []; 
-    const aktiveNews = sichereNewsListe.filter(n => { 
-        if (!n) return false; 
-        const geloeschtVon = (n.geloescht || "").toString().toUpperCase().split(',').map(s => s.trim()); 
-        return !geloeschtVon.includes(aktuellerUser); 
-    }); 
+    const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];  
+    const aktiveNews = sichereNewsListe.filter(n => {  
+        if (!n) return false;  
+        const geloeschtVon = (n.geloescht || "").toString().toUpperCase().split(',').map(s => s.trim());  
+        return !geloeschtVon.includes(aktuellerUser);  
+    });  
 
     // Sortierung primär nach Spalte 'datum' (neueste Meldung zuoberst)
     aktiveNews.sort((a, b) => {
@@ -5944,23 +5944,23 @@ window.showNews = function() {
         return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
-    aktiveNews.forEach(news => { 
-        if (!news) return; 
+    aktiveNews.forEach(news => {  
+        if (!news) return;  
 
-        const gelesenListe = (news.gelesen || "").toString().toUpperCase().split(',').map(s => s.trim()); 
-        const istGelesen = gelesenListe.includes(aktuellerUser); 
+        const gelesenListe = (news.gelesen || "").toString().toUpperCase().split(',').map(s => s.trim());  
+        const istGelesen = gelesenListe.includes(aktuellerUser);  
         
         // 1. Erstellungsdatum aus Spalte 'datum' (für unten links)
-        let rawZeitstempel = news.datum ? news.datum.toString() : (news.zeitstempel ? news.zeitstempel.toString() : ''); 
+        let rawZeitstempel = news.datum ? news.datum.toString() : (news.zeitstempel ? news.zeitstempel.toString() : '');  
         if (rawZeitstempel.includes('T')) rawZeitstempel = rawZeitstempel.split('T')[0];
-        let formatiertesErstellungsDatum = rawZeitstempel; 
-        if (formatiertesErstellungsDatum.includes('-')) { 
-            const parts = formatiertesErstellungsDatum.split('-'); 
-            if (parts.length === 3) formatiertesErstellungsDatum = `${parts[2]}.${parts[1]}.${parts[0]}`; 
+        let formatiertesErstellungsDatum = rawZeitstempel;  
+        if (formatiertesErstellungsDatum.includes('-')) {  
+            const parts = formatiertesErstellungsDatum.split('-');  
+            if (parts.length === 3) formatiertesErstellungsDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;  
         }
 
-        const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : ''; 
-        const displayVerfasser = safeVerfasserInput.toLowerCase(); 
+        const safeVerfasserInput = (news.verfasser !== null && news.verfasser !== undefined) ? news.verfasser.toString() : '';  
+        const displayVerfasser = safeVerfasserInput.toLowerCase();  
 
         // 2. Direkte Daten-Übernahme aus der news_db
         const displayHeader = news.titel ? news.titel.toString() : "Info:";
@@ -5971,79 +5971,79 @@ window.showNews = function() {
         const newsTyp = news.typ ? news.typ.toString().toLowerCase().trim() : "";
         const istStvCard = (newsTyp === "stellvertretung" || newsTyp === "stv");
 
-        const card = document.createElement('div'); 
-        card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`; 
-        const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : ''; 
+        const card = document.createElement('div');  
+        card.className = `news-item ${istGelesen ? 'news-gelesen' : 'news-unread'}`;  
+        const safeNewsId = (news.id !== null && news.id !== undefined) ? news.id.toString() : '';  
 
-        card.innerHTML = ` 
-            <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;"> 
-                <span class="status-icon" style="font-size: 0.7rem; font-weight:bold;">${istGelesen ? 'GELESEN' : 'NEU'}</span> 
-                <span class="material-symbols-outlined" style="color: #ff9800; cursor: pointer; font-size: 20px;" onclick="event.stopPropagation(); deleteNews('${safeNewsId}')" title="Nachricht löschen">delete</span> 
-            </div> 
-            <div class="news-text" style="margin: 8px 0;"> 
-                <div style="font-weight:bold; font-size: 0.9rem;">${displayHeader}</div> 
-                <div style="font-size: 0.8rem; color: #555; margin-top: 2px;">${eventInfoZeile}</div> 
-                <div style="font-style: italic; margin-top: 4px;">${displayMain}</div> 
-            </div> 
-            <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;"> 
-                <span>${formatiertesErstellungsDatum}</span> 
-                <span style="font-weight:bold;">${displayVerfasser}</span> 
-            </div> 
-        `; 
+        card.innerHTML = `  
+            <div class="news-header" style="display:flex; justify-content:space-between; align-items:center;">  
+                <span class="status-icon" style="font-size: 0.7rem; font-weight:bold;">${istGelesen ? 'GELESEN' : 'NEU'}</span>  
+                <span class="material-symbols-outlined" style="color: #ff9800; cursor: pointer; font-size: 20px;" onclick="event.stopPropagation(); deleteNews('${safeNewsId}', this)" title="Nachricht löschen">delete</span>  
+            </div>  
+            <div class="news-text" style="margin: 8px 0;">  
+                <div style="font-weight:bold; font-size: 0.9rem;">${displayHeader}</div>  
+                <div style="font-size: 0.8rem; color: #555; margin-top: 2px;">${eventInfoZeile}</div>  
+                <div style="font-style: italic; margin-top: 4px;">${displayMain}</div>  
+            </div>  
+            <div style="font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 5px; display:flex; justify-content:space-between;">  
+                <span>${formatiertesErstellungsDatum}</span>  
+                <span style="font-weight:bold;">${displayVerfasser}</span>  
+            </div>  
+        `;  
         
-        card.onclick = async (e) => { 
-            if (istStvCard) { 
-                e.stopPropagation(); 
+        card.onclick = async (e) => {  
+            if (istStvCard) {  
+                e.stopPropagation();  
                 
-                const newsInListe = sichereNewsListe.find(n => n && n.id === news.id); 
-                if (newsInListe) { 
-                    if (!newsInListe.gelesen) newsInListe.gelesen = ""; 
+                const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);  
+                if (newsInListe) {  
+                    if (!newsInListe.gelesen) newsInListe.gelesen = "";  
                     const gelesenStr = newsInListe.gelesen.toString().toUpperCase();
-                    if (!gelesenStr.includes(aktuellerUser)) { 
-                        newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser; 
-                    } 
-                } 
+                    if (!gelesenStr.includes(aktuellerUser)) {  
+                        newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser;  
+                    }  
+                }  
                 
-                card.style.opacity = "0.4"; 
-                card.style.pointerEvents = "none"; 
-                const statusIconEl = card.querySelector('.status-icon'); 
-                if (statusIconEl) { 
-                    statusIconEl.innerHTML = `<span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px; color: #27ae60;">mark_email_read</span> Gelesen`; 
-                } 
-                if (typeof updateNewsDot === 'function') updateNewsDot(); 
+                card.style.opacity = "0.4";  
+                card.style.pointerEvents = "none";  
+                const statusIconEl = card.querySelector('.status-icon');  
+                if (statusIconEl) {  
+                    statusIconEl.innerHTML = `<span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px; color: #27ae60;">mark_email_read</span> Gelesen`;  
+                }  
+                if (typeof updateNewsDot === 'function') updateNewsDot();  
 
-                try { 
-                    await window.supabaseClient 
-                        .from('news_db') 
-                        .update({ gelesen: newsInListe ? newsInListe.gelesen : aktuellerUser }) 
-                        .eq('id', news.id); 
-                } catch (err) { 
-                    console.error("Fehler beim Markieren:", err); 
-                } 
+                try {  
+                    await window.supabaseClient  
+                        .from('news_db')  
+                        .update({ gelesen: newsInListe ? newsInListe.gelesen : aktuellerUser })  
+                        .eq('id', news.id);  
+                } catch (err) {  
+                    console.error("Fehler beim Markieren:", err);  
+                }  
 
-                if (sidebar) sidebar.classList.remove('active'); 
-                if (backdrop) backdrop.style.display = 'none'; 
-                setTimeout(() => { if (sidebar) sidebar.style.display = 'none'; }, 300); 
+                if (sidebar) sidebar.classList.remove('active');  
+                if (backdrop) backdrop.style.display = 'none';  
+                setTimeout(() => { if (sidebar) sidebar.style.display = 'none'; }, 300);  
 
-                const overlay = document.getElementById('stellvertretung-overlay'); 
-                if (overlay) { 
-                    overlay.style.display = 'flex'; 
-                    if (typeof renderStellvertretung === 'function') { 
-                        renderStellvertretung(); 
-                    } 
-                } else { 
-                    console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!"); 
-                } 
-            } else { 
-                markAsReadAndJump(news, e); 
-            } 
-        }; 
+                const overlay = document.getElementById('stellvertretung-overlay');  
+                if (overlay) {  
+                    overlay.style.display = 'flex';  
+                    if (typeof renderStellvertretung === 'function') {  
+                        renderStellvertretung();  
+                    }  
+                } else {  
+                    console.error("Fehler: Element mit ID 'stellvertretung-overlay' existiert nicht!");  
+                }  
+            } else {  
+                markAsReadAndJump(news, e);  
+            }  
+        };  
 
-        if (newsContainer) newsContainer.appendChild(card); 
-    }); 
+        if (newsContainer) newsContainer.appendChild(card);  
+    });  
 
-    if (newsContainer) newsContainer.scrollTop = 0; 
-    setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10); 
+    if (newsContainer) newsContainer.scrollTop = 0;  
+    setTimeout(() => { if (sidebar) sidebar.classList.add('active'); }, 10);  
 };
     
 
