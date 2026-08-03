@@ -5775,6 +5775,29 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let empfaenger = "alle";
     let zeitfensterString = "";
 
+    // Hilfsfunktion: Alle anderen Lehrer im System einzeln ermitteln (Kürzel mit Komma getrennt, ausser Verfasser)
+    const getAlleAusserVerfasser = () => {
+        let gefundeneLehrer = [];
+        const planData = currentMasterData || window.lastPlanData;
+        
+        if (planData) {
+            Object.values(planData).forEach(slotData => {
+                if (!slotData) return;
+                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
+                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
+                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
+                }
+                lehrerKuerzel = lehrerKuerzel.toString().trim();
+                if (lehrerKuerzel !== "") {
+                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
+                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
+                    }
+                }
+            });
+        }
+        return gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : "alle";
+    };
+
     // =========================================================================
     // 1. STUNDENPLAN-RELEVANTE TYPEN
     // =========================================================================
@@ -5854,37 +5877,39 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Gehen an "alle" inkl. Verfasser)
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Einzelne LP getrennt durch Komma, ausser Verfasser)
         // =========================================================================
         
+        const alleAusserMir = getAlleAusserVerfasser();
+
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
-                empfaenger: "alle",
+                empfaenger: alleAusserMir,
                 text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
                 verfasser: handelndeLP
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
-                empfaenger: "alle", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
-                empfaenger: "alle", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
                 verfasser: handelndeLP 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
-                empfaenger: "alle", 
+                empfaenger: alleAusserMir, 
                 text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
                 verfasser: handelndeLP 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
-            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: alleAusserMir, text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",        text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
         };
 
         const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle", text: "", verfasser: handelndeLP };
@@ -5909,7 +5934,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             text: payloadText,               
             klasse: klasse,
             verfasser: handelndeLP,          
-            empfaenger: empfaenger,          // Steht nun auf "alle" (bzw. "chef" bei Apotheke)
+            empfaenger: empfaenger,          // Enthält nun die einzelnen LP-Kürzel mit Komma getrennt (ohne Verfasser)
             gelesen: "",
             geloescht: "" 
         };
