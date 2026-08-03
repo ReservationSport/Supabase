@@ -4397,13 +4397,30 @@ window.fetchKalenderContext = async function(dateObj) {
         }
     }
 
+    const istUngeradeWoche = !isEvenWeek;
+
+    // --- HIER INTEGRIERT: Die direkte Klassen-Auflösungs-Funktion ---
+    const resolveKlasse = (roheKlasse) => {
+        if (!roheKlasse) return "";
+        const trimmed = roheKlasse.toString().trim();
+        
+        if (trimmed.includes(" /") || trimmed.includes("/ ")) {
+            const teile = trimmed.split("/").map(s => s.trim());
+            if (teile.length >= 2) {
+                return istUngeradeWoche ? (teile[0] || "") : (teile[1] || "");
+            }
+        }
+        return trimmed;
+    };
+
     return {
         weekNo,
         schulwoche: aktuelleSchulwoche,
         targetSlotIdx: u21SlotIdx,
         isEvenWeek,
-        istUngeradeWoche: !isEvenWeek,
-        kalenderData
+        istUngeradeWoche,
+        kalenderData,
+        resolveKlasse // Direkt im Kontext verfügbar!
     };
 };
 
@@ -5037,7 +5054,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
 
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
-            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
+            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true, resolveKlasse: (k) => k };
 
         const istUngeradeWoche = calContext.istUngeradeWoche;
         const targetSlotIdx = calContext.targetSlotIdx;
@@ -5053,17 +5070,6 @@ window.loadPlan = async function(isExplicitUserAction = false) {
         const masterData = masterRes.data;
         let buchungenData = buchungenRes.data;
 
-        // SAUBERE UNTERSCHEIDUNG: Nur wenn " / " (mit Leerzeichen) da ist, ist es A/B. "abc/xyz" bleibt absolut intakt!
-        const resolveKlassenString = (roheKlasse, isUngerade) => {
-            if (roheKlasse.includes(" / ")) {
-                const teile = roheKlasse.split(" / ").map(s => s.trim());
-                if (teile.length >= 2) {
-                    return isUngerade ? (teile[0] || "") : (teile[1] || "");
-                }
-            }
-            return roheKlasse;
-        };
-
         if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
             let temporaerPlan = {};
             for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "", lehrer: "" };
@@ -5073,7 +5079,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                     let lehrerName = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    let klasseName = resolveKlassenString(roheKlasse, istUngeradeWoche);
+                    let klasseName = calContext.resolveKlasse(roheKlasse);
 
                     if (klasseName === "") {
                         lehrerName = "";
@@ -5141,7 +5147,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                     let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    roheKlasse = resolveKlassenString(roheKlasse, istUngeradeWoche);
+                    roheKlasse = calContext.resolveKlasse(roheKlasse);
 
                     if (roheKlasse === "") {
                         plan[row.slot].klasse = "";
@@ -5246,7 +5252,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                      <div class="lehrer-info">${lehrer}</div>
                      <div class="halle-label">${halle}</div>
                      <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
-                       ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
+                        ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
                      </div>
                 </div>`;
             }
@@ -5372,9 +5378,7 @@ window.syncPlan = async function() {
 
         const calContext = typeof fetchKalenderContext === 'function' 
             ? await fetchKalenderContext(dateObj) 
-            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true };
-
-        const istUngeradeWoche = calContext.istUngeradeWoche;
+            : { schulwoche: 1, targetSlotIdx: null, istUngeradeWoche: true, resolveKlasse: (k) => k };
 
         const masterPromise = supabaseClient.from('master_db').select('*').eq('wochentag', aktuellerWochentag);
         const buchungenPromise = supabaseClient.from('buchungen_db').select('*').eq('datum', dateVal);
@@ -5395,23 +5399,12 @@ window.syncPlan = async function() {
             };
         }
 
-        // Hilfsfunktion: Unterscheidet echtes A/B (" / ") von festen Kombi-Klassen ("/")
-        const resolveKlassenString = (roheKlasse, isUngerade) => {
-            if (roheKlasse.includes(" / ")) {
-                const teile = roheKlasse.split(" / ").map(s => s.trim());
-                if (teile.length >= 2) {
-                    return isUngerade ? (teile[0] || "") : (teile[1] || "");
-                }
-            }
-            return roheKlasse;
-        };
-
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
                 let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                 let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                 
-                roheKlasse = resolveKlassenString(roheKlasse, istUngeradeWoche);
+                roheKlasse = calContext.resolveKlasse(roheKlasse);
 
                 if (roheKlasse === "") {
                     newPlan[row.slot].klasse = "";
