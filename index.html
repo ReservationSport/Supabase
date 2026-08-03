@@ -5720,10 +5720,6 @@ function updateNewsDot() {
     9.1. NEWS ERFASSEN
     ============================================================ */
 
-/* ============================================================
-    ZENTRALE NEWS-SPEICHERUNG (Saubere Struktur & Empfänger-Logik)
-    ============================================================ */
-
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
     if (!client) {
@@ -5741,7 +5737,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     // Fängt sowohl 'typ' als auch 'halle' ab und normalisiert es
     const rawTyp = (payload.typ || payload.halle || "").toString().toLowerCase().trim();
     
-    // WICHTIG: Nur die definierten Spezial-Fälle erlauben, normale Reservationen / Änderungen ignorieren!
     const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet", "meldung", "wunsch", "banner", "kasse", "vertretung", "idee", "apotheke"];
     if (!erlaubteTypen.includes(rawTyp)) {
         return; 
@@ -5750,11 +5745,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System").toString().trim();
     const eventDatum = payload.datum || payload.date || getLocalIsoDate();
     
-    // Fixer Titel wie gewünscht
-    const titelVal = "Halle frei!";
-
-    let zielTag = payload.wochentag;
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    let zielTag = payload.wochentag;
     if (!zielTag && eventDatum) {
         zielTag = wochentage[new Date(eventDatum.replace(/-/g, "/")).getDay()];
     }
@@ -5762,9 +5754,20 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const slotNummer = parseInt(payload.slot, 10);
     const klasse = payload.klasse || "";
 
-    // Exakte Text-Generierung nach deinen Vorgaben für die Sport-Events
+    // Variablen, die wir je nach Typ füllen
+    let titelVal = "";
     let payloadText = payload.text ? payload.text.toString() : "";
-    if (["ausfall", "badi", "outdoor", "beendet"].includes(rawTyp)) {
+    let empfaenger = "alle";
+
+    // =========================================================================
+    // 1. STUNDENPLAN-RELEVANTE TYPEN (ABSOLUT UNANGETASTET!)
+    // =========================================================================
+    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
+    
+    if (slotBasierteTypen.includes(rawTyp)) {
+        titelVal = "Halle frei!";
+
+        // Exakte Text-Generierung nach deinen Vorgaben für die Sport-Events
         switch (rawTyp) {
             case "ausfall":
                 payloadText = `Die Klasse ${klasse} fällt aus!`;
@@ -5779,20 +5782,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 payloadText = `Die Klasse ${klasse} wurde abgeklebt!`;
                 break;
         }
-    }
 
-    // =========================================================================
-    // EMPFÄNGER-LOGIK NACH EXakter STRUKTUR
-    // =========================================================================
-    let empfaenger = "alle";
-
-    // 1. Slot-basierte Typen (gleicher Zeitslot ausser Verfasser)
-    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
-    
-    // 2. Teamweite Typen (alle ausser Verfasser)
-    const teamWeiteTypen = ["meldung", "wunsch", "banner", "kasse", "vertretung", "idee"];
-
-    if (slotBasierteTypen.includes(rawTyp)) {
+        // Empfänger-Logik für Zeitslot (alle ausser Verfasser im selben Zeitslot)
         let gefundeneLehrer = [];
         const planData = currentMasterData || window.lastPlanData;
         
@@ -5819,7 +5810,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             }
         }
         
-        // Wenn keine anderen Lehrpersonen im Zeitslot gefunden wurden, komplett abbrechen (keine News generieren)
         if (gefundeneLehrer.length === 0) {
             console.log(`ℹ️ Keine weiteren Lehrpersonen im Zeitslot gefunden für Typ [${rawTyp}]. Es wird keine News generiert.`);
             return;
@@ -5827,17 +5817,47 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         empfaenger = gefundeneLehrer.join(",");
 
-    } else if (teamWeiteTypen.includes(rawTyp)) {
-        // Alle ausser dem Verfasser
-        empfaenger = "alle_ausser_verfasser";
-
-    } else if (rawTyp === "apotheke") {
-        // Nur an den Chef
-        empfaenger = "chef";
-
     } else {
-        // Fallback
-        empfaenger = payload.empfaenger || "alle";
+        // =========================================================================
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (ZENTRALES SPALTEN-MAPPING)
+        // =========================================================================
+        
+        // Hier definierst du exakt, welche Spaltenwerte für welche Funktion gesetzt werden sollen:
+        const zusatzRegeln = {
+            meldung: { 
+                titel: payload.titel || "Meldung (Defekt)", 
+                empfaenger: "alle_ausser_verfasser",
+                text: payload.beschreibung || payload.text || "",
+                verfasser: payload.verfasser || payload.kuerzel || handelndeLP
+            },
+            wunsch: { 
+                titel: payload.titel || "Materialwunsch",     
+                empfaenger: "alle_ausser_verfasser", 
+                text: payload.beschreibung || payload.text || "", 
+                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+            },
+            banner: { 
+                titel: payload.titel || "Bannermeldung",     
+                empfaenger: "alle_ausser_verfasser", 
+                text: payload.beschreibung || payload.text || "", 
+                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+            },
+            idee: { 
+                titel: payload.titel || "Idee",       
+                empfaenger: "alle_ausser_verfasser", 
+                text: payload.beschreibung || payload.text || "", 
+                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+            },
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || "", verfasser: handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || "", verfasser: handelndeLP },
+            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || "", verfasser: handelndeLP }
+        };
+
+        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle" };
+        
+        titelVal = regel.titel;
+        empfaenger = payload.empfaenger || regel.empfaenger;
+        // payloadText bleibt hier einfach das, was im Payload mitgegeben wurde (z.B. der Text des Formulars)
     }
 
     // Zeitfenster-Formatierung
@@ -5872,11 +5892,11 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
             zeitfenster: payload.zeitfenster || zeitfensterString,
             datum: new Date().toISOString(), // Erfassungsdatum
-            titel: titelVal,                 // "Halle frei!"
-            text: payloadText,               // Dein exakter Text (z.B. "Die Klasse xyz fällt aus!")
+            titel: titelVal,                 // Dynamisch je nach Typ
+            text: payloadText,               // Entweder generiert (Sport) oder aus Payload (Zusatzfunktionen)
             klasse: klasse,
             verfasser: handelndeLP,
-            empfaenger: empfaenger,          // Exakte Empfänger-Regel aus der Matrix
+            empfaenger: empfaenger,          // Aus der jeweiligen Regel gesteuert
             gelesen: "",
             geloescht: "" 
         };
@@ -5888,6 +5908,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         if (error) throw error;
         console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
 
+    } else { ... // (Catch block wie gehabt)
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
     }
@@ -8844,7 +8865,6 @@ window.saveMeldung = async function() {
     try {
         const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
         const datumIso = new Date().toISOString(); 
-        const datumDateOnly = datumIso.split('T')[0]; 
 
         // 1. In die service_db speichern
         const { error: dbError } = await window.supabaseClient
@@ -8859,15 +8879,10 @@ window.saveMeldung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. SAUBERER, EINHEITLICHER NEWS-PAYLOAD
-        // Keine "fake" Slots oder Hallen mehr, sondern echte News-Felder!
+        // 2. Nur den Typ übergeben – den Rest übernimmt saveNewsToDBFrontend vollständig
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                typ: "meldung",                        // Typ der News (für Filterung/Anzeige)
-                titel: "DEFEKT",                       // Titel der Karte
-                text: text,                            // Der eigentliche Inhalt
-                datum: datumDateOnly,                  // Erstellungsdatum
-                verfasser: userKuerzelVal              // Wer hats gemeldet
+                typ: "meldung"
             });
         }
 
