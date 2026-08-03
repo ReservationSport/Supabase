@@ -10931,17 +10931,26 @@ window.submitStellvertretungWithLessons = async function() {
 
         if (error) throw error;
 
+        // Wochentag und formatiertes Datum ermitteln
+        const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const dObj = new Date(currentStvData.datum.replace(/-/g, "/"));
+        const wochentagName = wochentage[dObj.getDay()];
+
+        const parts = currentStvData.datum.split('-');
+        const formatiertesDatum = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : currentStvData.datum;
+
         // Anzahl der ausgewählten Lektionen ermitteln
         const anzahlLektionen = selectedLektionen.length;
         const lektionText = anzahlLektionen === 1 ? "1 Lektion" : `${anzahlLektionen} Lektionen`;
 
-        // Zentralen News-Eintrag erstellen mit der Anzahl Lektionen
+        // Zentralen News-Eintrag erstellen mit Titel, Wochentag, Datum und Anzahl Lektionen
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
                 typ: 'vertretung',
                 datum: currentStvData.datum,
                 verfasser: aktuellerUser,
-                text: `${lektionText}`
+                titel: 'Stellvertretung gesucht',
+                text: `${wochentagName}, ${formatiertesDatum} (${lektionText})`
             });
         }
 
