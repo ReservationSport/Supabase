@@ -5742,8 +5742,18 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return; 
     }
 
-    let handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System").toString().trim();
-    const eventDatum = payload.datum || payload.date || getLocalIsoDate();
+    // Verfasser sauber extrahieren (verhindert das {}-Objekt-Problem)
+    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System";
+    if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
+        rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || "System";
+    }
+    let handelndeLP = rawVerfasser.toString().trim();
+
+    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
+    const isSlotBased = slotBasierteTypen.includes(rawTyp);
+
+    // Event-Datum nur bei Slot-basierten Events befüllen, bei Meldungen etc. leer lassen
+    const eventDatum = isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : "";
     
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
     let zielTag = payload.wochentag;
@@ -5758,16 +5768,14 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     let titelVal = "";
     let payloadText = payload.text ? payload.text.toString() : "";
     let empfaenger = "alle";
+    let zeitfensterString = "";
 
     // =========================================================================
-    // 1. STUNDENPLAN-RELEVANTE TYPEN (ABSOLUT UNANGETASTET!)
+    // 1. STUNDENPLAN-RELEVANTE TYPEN
     // =========================================================================
-    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
-    
-    if (slotBasierteTypen.includes(rawTyp)) {
+    if (isSlotBased) {
         titelVal = "Halle frei!";
 
-        // Exakte Text-Generierung nach deinen Vorgaben für die Sport-Events
         switch (rawTyp) {
             case "ausfall":
                 payloadText = `Die Klasse ${klasse} fällt aus!`;
@@ -5783,7 +5791,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 break;
         }
 
-        // Empfänger-Logik für Zeitslot (alle ausser Verfasser im selben Zeitslot)
         let gefundeneLehrer = [];
         const planData = currentMasterData || window.lastPlanData;
         
@@ -5817,9 +5824,32 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         empfaenger = gefundeneLehrer.join(",");
 
+        // Zeitfenster-Formatierung nur für Slot-Events
+        const zeiten = [
+            "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
+            "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
+            "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
+            "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
+        ];
+
+        let formatiertesEventDatum = eventDatum;
+        if (formatiertesEventDatum.includes('-')) {
+            const parts = formatiertesEventDatum.split('-');
+            if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
+        }
+
+        zeitfensterString = formatiertesEventDatum;
+        if (!isNaN(slotNummer) && slotNummer > 0) {
+            const rowIndex = Math.floor((slotNummer - 1) / 5);
+            const uhrzeit = zeiten[rowIndex] || "";
+            if (uhrzeit) {
+                zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
+            }
+        }
+
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (ZENTRALES SPALTEN-MAPPING)
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Meldung, Wunsch, Banner, Idee etc.)
         // =========================================================================
         
         const zusatzRegeln = {
@@ -5827,29 +5857,29 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 titel: payload.titel || "Meldung (Defekt)", 
                 empfaenger: "alle_ausser_verfasser",
                 text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
-                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP
+                verfasser: handelndeLP
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
                 empfaenger: "alle_ausser_verfasser", 
                 text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
-                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
+                verfasser: handelndeLP 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
                 empfaenger: "alle_ausser_verfasser", 
                 text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
-                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
+                verfasser: handelndeLP 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
                 empfaenger: "alle_ausser_verfasser", 
                 text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
-                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
+                verfasser: handelndeLP 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP },
-            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP }
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: handelndeLP },
+            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || payload.beschreibung || "", verfasser: handelndeLP }
         };
 
         const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle", text: "", verfasser: handelndeLP };
@@ -5857,48 +5887,24 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         titelVal = regel.titel;
         empfaenger = payload.empfaenger || regel.empfaenger;
         payloadText = regel.text;
-        if (regel.verfasser) {
-            handelndeLP = regel.verfasser;
-        }
-    }
-
-    // Zeitfenster-Formatierung
-    const zeiten = [
-        "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
-        "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
-        "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
-        "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
-    ];
-
-    let formatiertesEventDatum = eventDatum;
-    if (formatiertesEventDatum.includes('-')) {
-        const parts = formatiertesEventDatum.split('-');
-        if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
-    }
-
-    let zeitfensterString = formatiertesEventDatum;
-    if (!isNaN(slotNummer) && slotNummer > 0) {
-        const rowIndex = Math.floor((slotNummer - 1) / 5);
-        const uhrzeit = zeiten[rowIndex] || "";
-        if (uhrzeit) {
-            zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
-        }
+        handelndeLP = regel.verfasser || handelndeLP;
+        zeitfensterString = ""; // Bleibt bei Meldungen, Wünschen etc. leer
     }
 
     // In Supabase speichern
     try {
         const newsData = {
             typ: rawTyp,
-            datum_event: eventDatum,
+            datum_event: eventDatum !== "" ? eventDatum : null, // Ist bei Meldung nun leer/null
             tag_index: tagIndex !== -1 ? tagIndex : null,
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
-            zeitfenster: payload.zeitfenster || zeitfensterString,
+            zeitfenster: payload.zeitfenster || zeitfensterString, // Ist bei Meldung nun leer
             datum: new Date().toISOString(), // Erfassungsdatum
-            titel: titelVal,                 // Dynamisch je nach Typ
-            text: payloadText,               // Automatisch aus Regel / DOM gezogen
+            titel: titelVal,                 
+            text: payloadText,               
             klasse: klasse,
-            verfasser: handelndeLP,
-            empfaenger: empfaenger,          // Aus der jeweiligen Regel gesteuert
+            verfasser: handelndeLP,          // Sauberer String statt {}
+            empfaenger: empfaenger,          
             gelesen: "",
             geloescht: "" 
         };
@@ -5908,7 +5914,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             .insert([newsData]);
 
         if (error) throw error;
-        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
+        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Verfasser: ${handelndeLP}, Empfänger: ${empfaenger}).`);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
