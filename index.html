@@ -5854,19 +5854,19 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
-                text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "" 
+                text: document.getElementById('meldung-text')?.value || "" 
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
-                text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "" 
+                text: document.getElementById('wunsch-text')?.value || "" 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
-                text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "" 
+                text: document.getElementById('banner-text-input')?.value || "" 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
-                text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "" 
+                text: document.getElementById('ideen-text')?.value || "" 
             },
             kasse:      { titel: payload.titel || "Teamkasse",      text: payload.text || payload.beschreibung || "" },
             vertretung: { titel: payload.titel || "Stellvertretung", text: payload.text || payload.beschreibung || "" },
