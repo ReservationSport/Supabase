@@ -5729,148 +5729,75 @@ function updateNewsDot() {
 
 
 /* ============================================================
-    ZENTRALE NEWS-SPEICHERUNG (Saubere Struktur & Empfänger-Logik)
+    9.1. NEWS ERFASSEN
     ============================================================ */
 
-window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
-    const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
-    if (!client) {
-        console.error("❌ Supabase Client fehlt für News-Speicherung.");
+/**
+ * Zentraler News-Generator für das Frontend
+ * Generiert nur für spezifische Aktionen (Ausfall, Badi, Outdoor, Abgeklebt) eine Meldung.
+ */
+window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
+    if (!window.supabaseClient) {
+        console.error("❌ saveNewsToDBFrontend: Supabase-Client fehlt!");
         return;
     }
 
-    const getLocalIsoDate = (date = new Date()) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-
-    const rawTyp = (payload.typ || "").toString().toLowerCase().trim();
-    const handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || "System").toString().trim();
-    const eventDatum = payload.datum || payload.date || getLocalIsoDate();
-    const payloadText = payload.text ? payload.text.toString() : "";
-    const titelVal = payload.titel || "Meldung";
-
-    let zielTag = payload.wochentag;
-    const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-    if (!zielTag && eventDatum) {
-        zielTag = wochentage[new Date(eventDatum.replace(/-/g, "/")).getDay()];
-    }
-    const tagIndex = wochentage.indexOf(zielTag);
-    const slotNummer = parseInt(payload.slot, 10);
-
-    // =========================================================================
-    // EMPFÄNGER-LOGIK NACH EXakter STRUKTUR
-    // =========================================================================
-    let empfaenger = "alle";
-
-    // 1. Slot-basierte Typen (gleicher Zeitslot ausser Verfasser)
-    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
-    
-    // 2. Teamweite Typen (alle ausser Verfasser)
-    const teamWeiteTypen = ["meldung", "wunsch", "banner", "kasse", "vertretung", "idee"];
-
-    if (slotBasierteTypen.includes(rawTyp)) {
-        let gefundeneLehrer = [];
-        const planData = currentMasterData || window.lastPlanData;
-        
-        if (!isNaN(slotNummer) && slotNummer > 0 && planData) {
-            const rowIndex = Math.floor((slotNummer - 1) / 5);
-            const rowStartSlot = (rowIndex * 5) + 1;
-
-            for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
-                const slotData = planData[s];
-                if (!slotData) continue;
-
-                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
-                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
-                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
-                }
-
-                lehrerKuerzel = lehrerKuerzel.toString().trim();
-
-                if (lehrerKuerzel !== "") {
-                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
-                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
-                    }
-                }
-            }
-        }
-        
-        // Wenn keine anderen Lehrpersonen im Zeitslot gefunden wurden, komplett abbrechen (keine News generieren)
-        if (gefundeneLehrer.length === 0) {
-            console.log(`ℹ️ Keine weiteren Lehrpersonen im Zeitslot gefunden für Typ [${rawTyp}]. Es wird keine News generiert.`);
-            return;
-        }
-
-        empfaenger = gefundeneLehrer.join(",");
-
-    } else if (teamWeiteTypen.includes(rawTyp)) {
-        // Alle ausser dem Verfasser
-        empfaenger = "alle_ausser_verfasser";
-
-    } else if (rawTyp === "apotheke") {
-        // Nur an den Chef
-        empfaenger = "chef";
-
-    } else {
-        // Fallback
-        empfaenger = payload.empfaenger || "alle";
-    }
-
-    // Zeitfenster-Formatierung
-    const zeiten = [
-        "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
-        "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
-        "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
-        "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
-    ];
-
-    let formatiertesEventDatum = eventDatum;
-    if (formatiertesEventDatum.includes('-')) {
-        const parts = formatiertesEventDatum.split('-');
-        if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
-    }
-
-    let zeitfensterString = formatiertesEventDatum;
-    if (!isNaN(slotNummer) && slotNummer > 0) {
-        const rowIndex = Math.floor((slotNummer - 1) / 5);
-        const uhrzeit = zeiten[rowIndex] || "";
-        if (uhrzeit) {
-            zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
-        }
-    }
-
-    // In Supabase speichern
     try {
-        const newsData = {
-            typ: rawTyp,
-            datum_event: eventDatum,
-            tag_index: tagIndex !== -1 ? tagIndex : null,
-            slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
-            zeitfenster: payload.zeitfenster || zeitfensterString,
-            datum: new Date().toISOString(),
-            titel: titelVal,
-            text: payloadText,
-            klasse: payload.klasse || "",
-            verfasser: handelndeLP,
-            empfaenger: empfaenger,
-            gelesen: "",
-            geloescht: "" 
+        const typ = (newsPayload.typ || "").toString().toLowerCase().trim();
+        const slot = newsPayload.slot;
+        const klasse = newsPayload.klasse || "";
+        const verfasser = newsPayload.verfasser || window.userKuerzel || "System";
+        const datum = newsPayload.datum || new Date().toISOString().split('T')[0];
+
+        // 1. WICHTIG: Normale Reservationen / Hallenwechsel sollen keine News generieren!
+        const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet"];
+        if (!erlaubteTypen.includes(typ)) {
+            return; // Beendet die Funktion sofort, ohne News zu schreiben
+        }
+
+        // 2. Exakte Text-Generierung nach deinen Vorgaben
+        let nachrichtenText = "";
+        switch (typ) {
+            case "ausfall":
+                nachrichtenText = `Die Klasse ${klasse} fällt aus!`;
+                break;
+            case "badi":
+                nachrichtenText = `Die Klasse ${klasse} ist in der Badi!`;
+                break;
+            case "outdoor":
+                nachrichtenText = `Die Klasse ${klasse} ist "outdoor"!`;
+                break;
+            case "beendet":
+                nachrichtenText = `Die Klasse ${klasse} wurde abgeklebt!`;
+                break;
+            default:
+                return;
+        }
+
+        // 3. In die News-Datenbank schreiben
+        const dbPayload = {
+            titel: "Halle frei!",        // <--- Immer fixer Titel
+            text: nachrichtenText,       // <--- Dein definierter Text
+            datum: datum,
+            slot: slot,
+            klasse: klasse,
+            verfasser: verfasser,
+            typ: typ
         };
 
-        const { error } = await client
+        const { error: newsError } = await window.supabaseClient
             .from('news_db')
-            .insert([newsData]);
+            .insert([dbPayload]);
 
-        if (error) throw error;
-        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
+        if (newsError) throw newsError;
 
-    } catch (err) {
-        console.error("❌ Fehler beim Speichern der News in Supabase:", err);
+        console.log("📰 News erfolgreich generiert:", dbPayload);
+
+    } catch (e) {
+        console.error("❌ Fehler beim Erstellen der News:", e);
     }
 };
+    
     
 /* ============================================================
     9.2. NEWS ANZEIGEN (Gesteuert über Spalte 'typ')
