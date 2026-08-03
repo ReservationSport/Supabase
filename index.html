@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SportDesk // BBZO1111</title>
+    <title>SportDesk // BBZO</title>
 
    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
@@ -10145,11 +10145,12 @@ window.saveApothekeBestellung = async function() {
 
         // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen und beschreibungText übergeben
         if (typeof window.saveNewsToDBFrontend === 'function') {
-            await window.saveNewsToDBFrontend({
-                typ: 'apotheke',
-                text: beschreibungText
-            });
-        }
+    await window.saveNewsToDBFrontend({
+        typ: 'apotheke',
+        titel: 'Apotheke auffüllen',
+        text: `Folgende Artikel werden gewünscht: ${beschreibungText}`
+    });
+}
 
         if (typeof closeModal === 'function') {
             closeModal('new-apotheke-modal');
