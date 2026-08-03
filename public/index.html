@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BBZO HallenbelegungNeu</title>
+    <title>BBZO Hallenbelegung</title>
     <!-- Google Material Symbols für das Megaphon-Icon -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" />
     
-    <!-- Supabase JavaScript Client über CDN einbinden -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Keine externe Supabase-Bibliothek mehr nötig! -->
 
     <style>
         body { 
@@ -38,19 +37,16 @@
             z-index: -1;
         }
 
-        /* ============================================================
-            Bannermeldungen - Oranges Band ganz oben fixiert
-            ============================================================ */
         .news-ticker-container {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
-            background: #e67e22; /* Kräftiges Orange */
+            background: #e67e22;
             border-bottom: 3px solid #d35400;
             padding: 12px 20px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
-            display: none; /* Wird per JS eingeblendet, wenn Meldungen da sind */
+            display: none;
             align-items: center;
             box-sizing: border-box;
             z-index: 9999;
@@ -164,7 +160,6 @@
     </style>
 </head>
 <body>
-    <!-- Oranges Band mit vergrößertem Material-Symbol "campaign" ganz oben fixiert -->
     <div id="news-ticker-banner" class="news-ticker-container">
         <span class="news-icon material-symbols-outlined">campaign</span>
         <div class="ticker-wrapper">
@@ -180,26 +175,14 @@
         <div class="spinner"></div>
     </div>
 
-
- <script>
+    <script>
         // ==========================================
-        // 1. SUPABASE INITIALISIERUNG (Fix eingetragene URL)
+        // 1. SUPABASE & GOOGLE CONFIG
         // ==========================================
+        const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";       
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4"; 
-        
-        try {
-            // Die URL wird hier als reiner, direkter Text übergeben (keine Variable!)
-            window.supabaseClient = window.supabase.createClient(
-                "https://wztxlatxorzcwwimsgem.supabase.co", 
-                SUPABASE_ANON_KEY
-            );
-            console.log("Supabase erfolgreich initialisiert!");
-        } catch (err) {
-            console.error("Supabase Initialisierung fehlgeschlagen:", err);
-        }
 
-        // Google Apps Script URL für die Hallenbelegung
-        const URL = "https://script.google.com/macros/s/AKfycbxCHPxDHj0Eoj1NXOgGR85ETN1m-cpRdAC5D1H0Ck27nm--PetaqyUpSbUsWUFUv3dF/exec?action=getPublicPlan";
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCHPxDHj0Eoj1NXOgGR85ETN1m-cpRdAC5D1H0Ck27nm--PetaqyUpSbUsWUFUv3dF/exec?action=getPublicPlan";
 
         const blockStartZeiten = [
             { startStunde: 7,  startMinute: 15, name: "Start 07:15" },
@@ -216,7 +199,6 @@
             { startStunde: 17, startMinute: 15, name: "Start 17:15" }
         ];
 
-        // Datum sofort beim Laden der Seite anzeigen
         const nowInitial = new Date();
         const optionsInitial = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         document.getElementById('datum').innerText = nowInitial.toLocaleDateString('de-DE', optionsInitial);
@@ -227,33 +209,33 @@
             const tickerContent = document.getElementById('news-ticker-content');
             let data = null;
 
-            // --- 2. BANNERS AUS SUPABASE LADEN ---
-            if (window.supabaseClient) {
-                try {
-                    const { data: bannerData, error: bannerError } = await window.supabaseClient
-                        .from('service_db')
-                        .select('id, beschreibung')
-                        .eq('typ', 'banner');
-
-                    if (bannerError) throw bannerError;
-
-                    if (bannerData && bannerData.length > 0) {
-                        const alleMeldungen = bannerData.map(b => b.beschreibung).join(" &nbsp;&nbsp;&nbsp;&bull;&nbsp;&nbsp;&nbsp; ");
-                        tickerContent.innerHTML = alleMeldungen;
-                        tickerBanner.style.display = "flex";
-                    } else {
-                        tickerBanner.style.display = "none";
+            // --- 2. BANNER DIREKT PER NATIVE FETCH LADEN (Umgeht den Supabase-Client-Bug) ---
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/service_db?typ=eq.banner&select=id,beschreibung`, {
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
                     }
-                } catch (err) {
-                    console.warn("Konnte Banner aus Supabase nicht laden:", err);
+                });
+                
+                const bannerData = await response.json();
+
+                if (bannerData && bannerData.length > 0) {
+                    const alleMeldungen = bannerData.map(b => b.beschreibung).join(" &nbsp;&nbsp;&nbsp;&bull;&nbsp;&nbsp;&nbsp; ");
+                    tickerContent.innerHTML = alleMeldungen;
+                    tickerBanner.style.display = "flex";
+                } else {
                     tickerBanner.style.display = "none";
                 }
+            } catch (err) {
+                console.warn("Konnte Banner aus Supabase nicht laden:", err);
+                tickerBanner.style.display = "none";
             }
 
             // --- 3. HALLENBELEGUNG ÜBER GOOGLE APPS SCRIPT LADEN ---
             for (let versuch = 0; versuch < 2; versuch++) {
                 try {
-                    const response = await fetch(URL);
+                    const response = await fetch(APPS_SCRIPT_URL);
                     data = await response.json();
                     break; 
                 } catch (e) {
@@ -337,6 +319,5 @@
         updateDisplay();
         setInterval(updateDisplay, 60000);
     </script>
-    
 </body>
 </html>
