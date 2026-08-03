@@ -6,8 +6,6 @@
     <title>BBZO Hallenbelegung</title>
     <!-- Google Material Symbols für das Megaphon-Icon -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" />
-    
-    <!-- Keine externe Supabase-Bibliothek mehr nötig! -->
 
     <style>
         body { 
@@ -177,12 +175,10 @@
 
     <script>
         // ==========================================
-        // 1. SUPABASE & GOOGLE CONFIG
+        // 1. SUPABASE CONFIG
         // ==========================================
         const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";       
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4"; 
-
-        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCHPxDHj0Eoj1NXOgGR85ETN1m-cpRdAC5D1H0Ck27nm--PetaqyUpSbUsWUFUv3dF/exec?action=getPublicPlan";
 
         const blockStartZeiten = [
             { startStunde: 7,  startMinute: 15, name: "Start 07:15" },
@@ -207,9 +203,8 @@
             const div = document.getElementById('info');
             const tickerBanner = document.getElementById('news-ticker-banner');
             const tickerContent = document.getElementById('news-ticker-content');
-            let data = null;
 
-            // --- 2. BANNER DIREKT PER NATIVE FETCH LADEN (Umgeht den Supabase-Client-Bug) ---
+            // --- 2. BANNER AUS SUPABASE LADEN ---
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/service_db?typ=eq.banner&select=id,beschreibung`, {
                     headers: {
@@ -232,25 +227,29 @@
                 tickerBanner.style.display = "none";
             }
 
-            // --- 3. HALLENBELEGUNG ÜBER GOOGLE APPS SCRIPT LADEN ---
-            for (let versuch = 0; versuch < 2; versuch++) {
-                try {
-                    const response = await fetch(APPS_SCRIPT_URL);
-                    data = await response.json();
-                    break; 
-                } catch (e) {
-                    console.warn(`Versuch ${versuch + 1} fehlgeschlagen, versuche es erneut...`, e);
-                    if (versuch === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 1500));
-                    } else {
-                        div.innerHTML = `<div class="hinweis" style="color: #e74c3c;">Fehler beim Laden der Daten...</div>`;
-                        return;
+            // --- 3. PLAN AUS MASTER_DB & BUCHUNGEN_DB LADEN ---
+            let plan = {};
+            try {
+                // Abfrage der Buchungen verknüpft mit Master-Daten (über PostgREST Foreign Key Join)
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot_id,klasse,halle,master_db(*)`, {
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
                     }
-                }
-            }
+                });
+                const buchungenData = await response.json();
 
-            if (!data || !data.plan) return;
-            const plan = data.plan;
+                buchungenData.forEach(item => {
+                    plan[item.slot_id] = {
+                        klasse: item.klasse,
+                        halle: item.halle
+                    };
+                });
+            } catch (e) {
+                console.warn("Fehler beim Laden der Buchungen aus Supabase:", e);
+                div.innerHTML = `<div class="hinweis" style="color: #e74c3c;">Fehler beim Laden der Daten...</div>`;
+                return;
+            }
 
             const now = new Date();
             document.getElementById('datum').innerText = now.toLocaleDateString('de-DE', optionsInitial);
