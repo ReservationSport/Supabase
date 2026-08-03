@@ -201,7 +201,7 @@
 
         async function updateDisplay() {
             const div = document.getElementById('info');
-            const tickerBanner = document.getElementById('news-ticker-banner');
+            const tickerBanner = document.getElementById('news-ticker-container');
             const tickerContent = document.getElementById('news-ticker-content');
 
             // --- 2. BANNER AUS SUPABASE LADEN ---
@@ -215,7 +215,7 @@
                 
                 const bannerData = await response.json();
 
-                if (bannerData && bannerData.length > 0) {
+                if (Array.isArray(bannerData) && bannerData.length > 0) {
                     const alleMeldungen = bannerData.map(b => b.beschreibung).join(" &nbsp;&nbsp;&nbsp;&bull;&nbsp;&nbsp;&nbsp; ");
                     tickerContent.innerHTML = alleMeldungen;
                     tickerBanner.style.display = "flex";
@@ -227,10 +227,10 @@
                 tickerBanner.style.display = "none";
             }
 
-            // --- 3. PLAN AUS MASTER_DB & BUCHUNGEN_DB LADEN ---
+            // --- 3. PLAN AUS BUCHUNGEN_DB LADEN ---
             let plan = {};
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot_id,klasse,halle,master_db(*)`, {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot_id,klasse,halle`, {
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
@@ -239,10 +239,9 @@
                 
                 const buchungenData = await response.json();
 
-                // Prüfen, ob Supabase einen Fehler zurückgegeben hat (statt eines Arrays)
                 if (!Array.isArray(buchungenData)) {
-                    console.error("Supabase hat einen Fehler zurückgegeben:", buchungenData);
-                    throw new Error(buchungenData.message || "Unbekannter Fehler von Supabase");
+                    console.error("Supabase Fehler:", buchungenData);
+                    throw new Error(buchungenData.message || "Fehler beim Laden");
                 }
 
                 buchungenData.forEach(item => {
@@ -295,10 +294,10 @@
 
             let gefundeneEintraege = [];
             for (let s = startSlotId; s <= endSlotId; s++) {
-                if (plan[s] && plan[s].klasse && plan[s].klasse.trim() !== "") {
+                if (plan[s] && plan[s].halle && plan[s].halle.trim() !== "") {
                     gefundeneEintraege.push({
-                        klasse: plan[s].klasse,
-                        halle: plan[s].halle || "Offen"
+                        klasse: plan[s].klasse || "",
+                        halle: plan[s].halle
                     });
                 }
             }
