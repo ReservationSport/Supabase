@@ -5865,12 +5865,21 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 text: document.getElementById('banner-text-input')?.value || "" 
             },
             idee: { 
-                titel: payload.titel || "Idee",       
+                titel: payload.titel || "Idee für "(${document.getElementById('ideen-kategorie')?.value})""      
                 text: document.getElementById('ideen-text')?.value || "" 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      text: payload.text || payload.beschreibung || "" },
-            vertretung: { titel: payload.titel || "Stellvertretung", text: payload.text || payload.beschreibung || "" },
-            apotheke:   { titel: payload.titel || "Apotheke",   text: payload.text || payload.beschreibung || "" }
+            kasse:      { 
+                titel: payload.titel || "Teamkasse",
+                text: "Neue Zahlungsrunde eröffnet"
+            },
+    
+            vertretung: { 
+                titel: payload.titel || "Stellvertretung",
+                text: payload.text || payload.beschreibung || "Stellvertretung gesucht" },
+            
+            apotheke:   { 
+                titel: payload.titel || "Apotheke",
+                         text: payload.text || payload.beschreibung || "" }
         };
 
         const regel = zusatzRegeln[rawTyp] || { titel: "Information", text: "" };
