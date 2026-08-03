@@ -230,14 +230,20 @@
             // --- 3. PLAN AUS MASTER_DB & BUCHUNGEN_DB LADEN ---
             let plan = {};
             try {
-                // Abfrage der Buchungen verknüpft mit Master-Daten (über PostgREST Foreign Key Join)
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?select=slot_id,klasse,halle,master_db(*)`, {
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
                     }
                 });
+                
                 const buchungenData = await response.json();
+
+                // Prüfen, ob Supabase einen Fehler zurückgegeben hat (statt eines Arrays)
+                if (!Array.isArray(buchungenData)) {
+                    console.error("Supabase hat einen Fehler zurückgegeben:", buchungenData);
+                    throw new Error(buchungenData.message || "Unbekannter Fehler von Supabase");
+                }
 
                 buchungenData.forEach(item => {
                     plan[item.slot_id] = {
