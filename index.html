@@ -9114,11 +9114,10 @@ window.saveWunsch = async function() {
     }
 
     try {
-        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || "LP");
         const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
-        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
 
-        // In die service_db speichern (typ: 'wunsch')
+        // 1. In die service_db speichern (typ: 'wunsch')
         const { error: dbError } = await window.supabaseClient
             .from('service_db')
             .insert([{
@@ -9131,19 +9130,12 @@ window.saveWunsch = async function() {
 
         if (dbError) throw dbError;
 
-        // Gleichzeitig den News-Eintrag erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: datumDateOnly,
-                slot: "0",
-                klasse: "Material", // Angepasst auf Material
-                halle: "material_wunsch",
-                user: userKuerzelVal,
-                text: text
-            }]);
-
-        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+        // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'wunsch'
+            });
+        }
 
         // UI aufräumen
         if (input) input.value = '';
@@ -9616,9 +9608,8 @@ window.saveBanner = async function() {
     }
 
     try {
-        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || "LP");
         const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
-        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
 
         // In die service_db speichern (typ: 'banner' mit den gewünschten Spalten)
         const { error: dbError } = await window.supabaseClient
@@ -9633,19 +9624,12 @@ window.saveBanner = async function() {
 
         if (dbError) throw dbError;
 
-        // Gleichzeitig den News-Eintrag erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: datumDateOnly,
-                slot: "0",
-                klasse: "Banner",
-                halle: "bannermeldung",
-                user: userKuerzelVal,
-                text: text
-            }]);
-
-        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+        // Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'banner'
+            });
+        }
 
         // UI aufräumen
         if (input) input.value = '';
@@ -9864,9 +9848,8 @@ window.saveIdee = async function() {
     }
 
     try {
-        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : "LP";
+        const userKuerzelVal = typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || "LP");
         const datumIso = new Date().toISOString(); // Voller ISO-Zeitstempel für timestamptz
-        const datumDateOnly = datumIso.split('T')[0]; // Nur Datum für news_db
 
         // In die service_db speichern (typ: 'idee' mit den gewünschten Spalten)
         const { error: dbError } = await window.supabaseClient
@@ -9882,19 +9865,12 @@ window.saveIdee = async function() {
 
         if (dbError) throw dbError;
 
-        // Gleichzeitig den News-Eintrag erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: datumDateOnly,
-                slot: "0",
-                klasse: kategorie,
-                halle: "ideenbrett",
-                user: userKuerzelVal,
-                text: `Neue Idee (${kategorie}): ${beschreibung}`
-            }]);
-
-        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+        // Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'idee'
+            });
+        }
 
         // UI aufräumen
         if (textarea) textarea.value = '';
@@ -10157,7 +10133,6 @@ window.saveApothekeBestellung = async function() {
     const userVal = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
     const beschreibungText = selectedItems.join(', ');
     const datumIso = new Date().toISOString();
-    const datumDateOnly = datumIso.split('T')[0];
 
     try {
         // 1. In die service_db speichern (typ: 'apotheke')
@@ -10173,19 +10148,12 @@ window.saveApothekeBestellung = async function() {
 
         if (dbError) throw dbError;
 
-        // 2. News-Eintrag erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: datumDateOnly,
-                slot: "0",
-                klasse: "Apotheke",
-                halle: "apotheke",
-                user: userVal,
-                text: `Apotheken-Bestellung: ${beschreibungText}`
-            }]);
-
-        if (newsError) console.error("Fehler beim Erstellen der News:", newsError);
+        // 2. Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
+        if (typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: 'apotheke'
+            });
+        }
 
         if (typeof closeModal === 'function') {
             closeModal('new-apotheke-modal');
@@ -10207,6 +10175,7 @@ window.saveApothekeBestellung = async function() {
         }
     }
 };
+    
 
 // Lädt die offenen Apotheken-Bestellungen direkt aus der service_db
 window.renderApothekeBestellungen = async function() {
