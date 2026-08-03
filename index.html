@@ -5742,17 +5742,22 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return; 
     }
 
-    // Verfasser sauber extrahieren (verhindert das {}-Objekt-Problem)
-    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System";
+    // =========================================================================
+    // VERFASSER BOMBENFEST EXTRAHIEREN (Löst das {}-Problem und setzt "bupa")
+    // =========================================================================
+    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "LP";
     if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
-        rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || "System";
+        rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || rawVerfasser.userKuerzel || "LP";
     }
     let handelndeLP = rawVerfasser.toString().trim();
+    if (handelndeLP === "[object Object]" || handelndeLP === "{}") {
+        handelndeLP = "bupa"; // Fallback falls es ein leeres Objekt war
+    }
 
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
     const isSlotBased = slotBasierteTypen.includes(rawTyp);
 
-    // Event-Datum nur bei Slot-basierten Events befüllen, bei Meldungen etc. leer lassen
+    // Event-Datum nur bei Slot-basierten Events befüllen, bei Meldungen leer lassen
     const eventDatum = isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : "";
     
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -5849,7 +5854,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Meldung, Wunsch, Banner, Idee etc.)
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Meldung, Wunsch, Banner etc.)
         // =========================================================================
         
         const zusatzRegeln = {
@@ -5888,23 +5893,23 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaenger = payload.empfaenger || regel.empfaenger;
         payloadText = regel.text;
         handelndeLP = regel.verfasser || handelndeLP;
-        zeitfensterString = ""; // Bleibt bei Meldungen, Wünschen etc. leer
+        zeitfensterString = ""; // Bleibt bei Meldungen leer
     }
 
     // In Supabase speichern
     try {
         const newsData = {
             typ: rawTyp,
-            datum_event: eventDatum !== "" ? eventDatum : null, // Ist bei Meldung nun leer/null
+            datum_event: eventDatum !== "" ? eventDatum : null, // Bleibt bei Meldung leer/null
             tag_index: tagIndex !== -1 ? tagIndex : null,
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
-            zeitfenster: payload.zeitfenster || zeitfensterString, // Ist bei Meldung nun leer
+            zeitfenster: payload.zeitfenster || zeitfensterString, // Bleibt bei Meldung leer
             datum: new Date().toISOString(), // Erfassungsdatum
             titel: titelVal,                 
             text: payloadText,               
             klasse: klasse,
-            verfasser: handelndeLP,          // Sauberer String statt {}
-            empfaenger: empfaenger,          
+            verfasser: handelndeLP,          // Schreibt nun sauber "bupa" (oder das echte Kürzel) hinein
+            empfaenger: empfaenger,          // "alle_ausser_verfasser"
             gelesen: "",
             geloescht: "" 
         };
