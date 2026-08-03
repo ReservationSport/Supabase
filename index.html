@@ -9622,7 +9622,9 @@ window.saveBanner = async function() {
         // Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
         if (typeof window.saveNewsToDBFrontend === 'function') {
             await window.saveNewsToDBFrontend({
-                typ: 'banner'
+                typ: 'banner',
+                titel: 'Bannermeldung erfasst',
+                text: text
             });
         }
 
@@ -9650,44 +9652,18 @@ window.saveBanner = async function() {
     }
 };
 
-// 4. Markiert eine Bannermeldung als behoben/gelöscht (in service_db & generiert News)
+// 4. Markiert eine Bannermeldung als behoben/gelöscht (in service_db, ohne News)
 window.markBannerResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
-    
-    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
 
     try {
-        // Zuerst den Beschreibungstext auslesen (für die News)
-        const { data: record, error: fetchError } = await window.supabaseClient
-            .from('service_db')
-            .select('beschreibung')
-            .eq('id', id)
-            .single();
-
-        if (fetchError) throw fetchError;
-        const ursprungsText = record ? record.beschreibung : "";
-
-        // Status in der service_db auf "behoben" aktualisieren
+        // Status in der service_db auf "behoben" aktualisieren (ohne News-Insert)
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
             .eq('id', id);
 
         if (updateError) throw updateError;
-
-        // News-Eintrag für "Bannermeldung beendet" erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: new Date().toISOString().split('T')[0],
-                slot: "0",
-                klasse: "Info",
-                halle: "bannermeldung",
-                user: userVal,
-                text: `Bannermeldung beendet: ${ursprungsText}`
-            }]);
-
-        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
 
         setTimeout(() => {
             if (typeof renderBanner === 'function') {
@@ -9861,11 +9837,13 @@ window.saveIdee = async function() {
         if (dbError) throw dbError;
 
         // Den News-Eintrag komplett über die zentrale Funktion erstellen lassen
-        if (typeof window.saveNewsToDBFrontend === 'function') {
-            await window.saveNewsToDBFrontend({
-                typ: 'idee'
-            });
-        }
+if (typeof window.saveNewsToDBFrontend === 'function') {
+    await window.saveNewsToDBFrontend({
+        typ: 'idee',
+        titel: `Idee für ${kategorie}`,
+        text: beschreibung
+    });
+}
 
         // UI aufräumen
         if (textarea) textarea.value = '';
@@ -9894,42 +9872,15 @@ window.saveIdee = async function() {
 // 4. Markiert eine Idee als erledigt (in service_db & generiert News)
 window.markIdeeResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
-    
-    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
 
     try {
-        // Zuerst Kategorie und Beschreibung auslesen (für die News)
-        const { data: record, error: fetchError } = await window.supabaseClient
-            .from('service_db')
-            .select('kategorie, beschreibung')
-            .eq('id', id)
-            .single();
-
-        if (fetchError) throw fetchError;
-        const katName = record ? record.kategorie : "";
-        const beschreibungText = record ? record.beschreibung : "";
-
-        // Status in der service_db auf "behoben" aktualisieren
+        // Status in der service_db auf "behoben" aktualisieren (ohne News-Insert)
         const { error: updateError } = await window.supabaseClient
             .from('service_db')
             .update({ status: 'behoben' })
             .eq('id', id);
 
         if (updateError) throw updateError;
-
-        // News-Eintrag für "Idee erledigt" erstellen
-        const { error: newsError } = await window.supabaseClient
-            .from('news_db')
-            .insert([{
-                date: new Date().toISOString().split('T')[0],
-                slot: "0",
-                klasse: katName || "Info",
-                halle: "ideenbrett",
-                user: userVal,
-                text: `Idee erledigt (${katName}): ${beschreibungText}`
-            }]);
-
-        if (newsError) console.error("Fehler beim News-Erstellen:", newsError);
 
         setTimeout(() => {
             if (typeof renderIdeen === 'function') {
