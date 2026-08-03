@@ -5885,10 +5885,27 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         const regel = zusatzRegeln[rawTyp] || { titel: "Information", text: "" };
         
         titelVal = regel.titel;
-        payloadText = regel.text;
+        if (!payloadText) {
+            payloadText = regel.text;
+        }
 
         if (rawTyp === "apotheke") {
-            empfaengerList = ["CHEF"];
+            try {
+                const { data: chefData, error: chefError } = await client
+                    .from('material')
+                    .select('chef')
+                    .limit(1)
+                    .single();
+
+                if (!chefError && chefData && chefData.chef) {
+                    empfaengerList = [chefData.chef.toString().trim().toUpperCase()];
+                } else {
+                    empfaengerList = ["CHEF"];
+                }
+            } catch (err) {
+                console.error("⚠️ Konnte Chef nicht aus Tabelle 'material' laden, nutze Fallback.", err);
+                empfaengerList = ["CHEF"];
+            }
         } else {
             empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
         }
