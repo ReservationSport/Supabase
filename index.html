@@ -5734,7 +5734,7 @@ function updateNewsDot() {
 
 /**
  * Zentraler News-Generator für das Frontend
- * Generiert nur für spezifische Aktionen (Ausfall, Badi, Outdoor, Abgeklebt) eine Meldung.
+ * Generiert nur für Ausfall, Badi, Outdoor und Abgeklebt eine Meldung mit dem Titel "Halle frei!"
  */
 window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
     if (!window.supabaseClient) {
@@ -5743,16 +5743,19 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
     }
 
     try {
-        const typ = (newsPayload.typ || "").toString().toLowerCase().trim();
+        // Fängt sowohl 'typ' als auch 'halle' ab und wandelt es in Kleinbuchstaben um
+        const rawTyp = newsPayload.typ || newsPayload.halle || "";
+        const typ = rawTyp.toString().toLowerCase().trim();
+        
         const slot = newsPayload.slot;
         const klasse = newsPayload.klasse || "";
-        const verfasser = newsPayload.verfasser || window.userKuerzel || "System";
+        const verfasser = newsPayload.verfasser || newsPayload.kuerzel || window.userKuerzel || "System";
         const datum = newsPayload.datum || new Date().toISOString().split('T')[0];
 
-        // 1. WICHTIG: Normale Reservationen / Hallenwechsel sollen keine News generieren!
+        // 1. Nur die definierten Spezial-Fälle erlauben, alles andere (normale Reservationen) ignorieren
         const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet"];
         if (!erlaubteTypen.includes(typ)) {
-            return; // Beendet die Funktion sofort, ohne News zu schreiben
+            return; 
         }
 
         // 2. Exakte Text-Generierung nach deinen Vorgaben
@@ -5776,8 +5779,8 @@ window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
 
         // 3. In die News-Datenbank schreiben
         const dbPayload = {
-            titel: "Halle frei!",        // <--- Immer fixer Titel
-            text: nachrichtenText,       // <--- Dein definierter Text
+            titel: "Halle frei!",        // <--- Fixer Titel
+            text: nachrichtenText,       // <--- Exakter Text nach Vorgabe
             datum: datum,
             slot: slot,
             klasse: klasse,
