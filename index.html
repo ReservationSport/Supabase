@@ -6188,22 +6188,28 @@ window.refreshAndShowNews = async function() {
 window.blinkTimer = window.blinkTimer || {};
 
 
+/* ============================================================
+    KORRIGIERTE FUNKTION: markAsReadAndJump (Inkl. Hallen-Sprünge)
+    ============================================================ */
+
 async function markAsReadAndJump(news, event) {
     if (!news) return;
 
     const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : "";
     const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
-    const safeHalle = (news.halle !== null && news.halle !== undefined) ? news.halle.toString() : "";
     
+    // Einheitliche Typ-Erkennung über die Spalte 'typ' (und Fallback auf altes 'halle' falls vorhanden)
+    const newsTyp = (news.typ !== null && news.typ !== undefined) ? news.typ.toString().toLowerCase().trim() : "";
+    const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase().trim() : "";
     const newsTextLower = safeNewsText.toLowerCase();
-    const hallenTypLower = safeHalle.toLowerCase();
     
-    const istZahlungsrunde = hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde");
-    const istDefekt = hallenTypLower.includes("defekt_meldung") || newsTextLower.includes("defekt");
-    const istIdee = hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:");
-    const istMaterial = hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch");
-    const istStv = hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit") || newsTextLower.includes("stellvertretung");
-    
+    const istZahlungsrunde = (newsTyp === "kasse" || newsTyp === "zahlungsrunde" || hallenTypLower.includes("zahlungsrunde") || newsTextLower.includes("zahlungsrunde"));
+    const istDefekt = (newsTyp === "meldung" || newsTyp === "defekt" || hallenTypLower.includes("defekt_meldung") || newsTextLower.includes("defekt"));
+    const istIdee = (newsTyp === "idee" || hallenTypLower.includes("ideenbrett") || newsTextLower.includes("neue idee:"));
+    const istMaterial = (newsTyp === "wunsch" || newsTyp === "material_wunsch" || hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch"));
+    const istStv = (newsTyp === "vertretung" || newsTyp === "stellvertretung" || hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit"));
+    const istApotheke = (newsTyp === "apotheke" || hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken"));
+
     const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];
     const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);
     
@@ -6242,6 +6248,7 @@ async function markAsReadAndJump(news, event) {
         window.closeNews();
     }
 
+    // Modal-Weiterleitungen für spezielle News-Typen
     if (istStv) {
         const overlay = document.getElementById('stellvertretung-overlay');
         if (overlay) {
@@ -6273,7 +6280,13 @@ async function markAsReadAndJump(news, event) {
         return; 
     }
 
-    // Datum und Sprung über datum_event und slot_index
+    if (istApotheke) {
+        if (typeof window.openApotheke === 'function') window.openApotheke();
+        return;
+    }
+
+    // FÜR ALLE ANDEREN TYPEN (wie ausfall, badi, outdoor, beendet, etc.): 
+    // Datum und Sprung direkt zur entsprechenden Lektion im Kalender
     const eventDatum = news.datum_event || news.datum;
     if (eventDatum) {
         const datePickerEl = document.getElementById('datePicker');
