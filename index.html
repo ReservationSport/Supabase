@@ -6049,12 +6049,35 @@ window.showNews = function() {
 
 /**
  * Löscht eine Nachricht für den aktuellen User (fügt Kürzel zur 'geloescht'-Spalte hinzu).
+ * Verwendet Optimistic UI: Die Nachricht verschwindet sofort beim ersten Klick visuell und lokal,
+ * während die Datenbank-Aktualisierung im Hintergrund stattfindet.
  */
-window.deleteNews = async function(newsId) {
+window.deleteNews = async function(newsId, btnElement) {
     const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
     if (!user) return;
 
+    // 1. Sofortiges visuelles Feedback (Element sanft ausblenden)
+    if (btnElement) {
+        const cardElement = btnElement.closest('.news-item, .news-card, .card, tr, article');
+        if (cardElement) {
+            cardElement.style.transition = 'all 0.2s ease';
+            cardElement.style.transform = 'scale(0.95)';
+            cardElement.style.opacity = '0';
+            setTimeout(() => cardElement.remove(), 200);
+        }
+    }
+
+    // 2. Lokales Array sofort filtern und UI aktualisieren, damit es ohne Latenz weg ist
+    meineRelevanteNews = meineRelevanteNews.filter(n => n.id !== newsId);
+    if (typeof showNews === 'function') {
+        showNews();
+    }
+    if (typeof updateNewsDot === 'function') {
+        updateNewsDot();
+    }
+
     try {
+        // 3. Datenbank-Operation im Hintergrund durchführen
         const { data: currentNews, error: fetchError } = await window.supabaseClient
             .from('news_db')
             .select('geloescht')
@@ -6079,11 +6102,12 @@ window.deleteNews = async function(newsId) {
 
         if (updateError) throw updateError;
 
-        meineRelevanteNews = meineRelevanteNews.filter(n => n.id !== newsId);
-        showNews(); 
-
     } catch (e) {
-        console.error("Fehler beim Löschen:", e);
+        console.error("Fehler beim Löschen in der Datenbank:", e);
+        // Falls im Hintergrund ein Fehler auftritt, Zustand synchronisieren
+        if (typeof refreshAndShowNews === 'function') {
+            refreshAndShowNews();
+        }
     }
 };
 
