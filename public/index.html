@@ -181,14 +181,15 @@
     </div>
 
     <script>
+       // ==========================================
+        // 1. SUPABASE INITIALISIERUNG (mit .trim() gegen unsichtbare Zeichen)
         // ==========================================
-        // 1. SUPABASE INITIALISIERUNG
-        // ==========================================
-        const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";       
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4"; 
+        const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co".trim();       
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4".trim(); 
         
         window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        
         // Google Apps Script URL für die Hallenbelegung
         const URL = "https://script.google.com/macros/s/AKfycbxCHPxDHj0Eoj1NXOgGR85ETN1m-cpRdAC5D1H0Ck27nm--PetaqyUpSbUsWUFUv3dF/exec?action=getPublicPlan";
 
