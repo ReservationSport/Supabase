@@ -6695,15 +6695,18 @@ window.saveImmediately = async function(payload, options = {}) {
         console.log("🎯 Speicherbefehl erfolgreich in Supabase ausgeführt:", payload);
         
         // 3. ✨ AUTOMATISCHER NEWS-TRIGGER ✨
-        // Sendet die Aktion direkt an das News-System (für Badi, Outdoor, Ausfall, Abkleben etc.)
+        // Sendet die Aktion direkt an das News-System (mit sauberem 'typ'-Feld)
         if (typeof window.saveNewsToDBFrontend === 'function') {
+            // Ermittelt den Typ (Priorität hat payload.typ, ansonsten wird bookingData.halle als Typ genutzt)
+            const aktuellerTyp = (payload.typ || bookingData.halle || "").toString().toLowerCase().trim();
+
             await window.saveNewsToDBFrontend({
-                halle: bookingData.halle,       // Erkennt z.B. "", "badi", "outdoor", "beendet"
-                slot: slotNum,                  // Betroffener Slot
-                klasse: bookingData.klasse,     // Betroffene Klasse
-                kuerzel: aktuellesKuerzel,      // Wer hats gemacht?
-                datum: dateVal                  // An welchem Tag?
-            }, window.lastPlanData);            // Übergibt optional Masterdaten für die Empfänger-Matrix
+                typ: aktuellerTyp,            // <--- Übergibt nun strikt 'typ' statt 'halle'
+                slot: slotNum,                // Betroffener Slot
+                klasse: bookingData.klasse,   // Betroffene Klasse
+                verfasser: aktuellesKuerzel,  // Korrektes Feld für den Verfasser
+                datum: dateVal                // An welchem Tag?
+            }, window.lastPlanData);          // Übergibt Masterdaten für die Empfänger-Matrix
         }
 
         return { status: "success", msg: "Erfolgreich in Supabase gespeichert" };
