@@ -5732,120 +5732,176 @@ function updateNewsDot() {
     9.1. NEWS ERFASSEN
     ============================================================ */
 
-/**
- * Zentraler News-Generator für das Frontend
- * Schreibt relevante Event-Meldungen mit allen Pflichtfeldern in die news_db.
- */
-window.saveNewsToDBFrontend = async function(newsPayload, masterPlanData) {
-    if (!window.supabaseClient) {
-        console.error("❌ saveNewsToDBFrontend: Supabase-Client fehlt!");
+/* ============================================================
+    ZENTRALE NEWS-SPEICHERUNG (Saubere Struktur & Empfänger-Logik)
+    ============================================================ */
+
+window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
+    const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
+    if (!client) {
+        console.error("❌ Supabase Client fehlt für News-Speicherung.");
         return;
     }
 
-    try {
-        // Typ/Halle ermitteln und normalisieren
-        const rawTyp = newsPayload.typ || newsPayload.halle || "";
-        const typ = rawTyp.toString().toLowerCase().trim();
-        
-        // Nur die definierten Spezial-Fälle erlauben (normale Reservationen ignorieren)
-        const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet"];
-        if (!erlaubteTypen.includes(typ)) {
-            return; 
-        }
+    const getLocalIsoDate = (date = new Date()) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
 
-        const klasse = newsPayload.klasse || "";
-        const verfasser = newsPayload.verfasser || newsPayload.kuerzel || window.userKuerzel || "System";
-        
-        // 1. Datum der Erfassung der News (heutiges Datum)
-        const erstellungsDatum = new Date().toISOString().split('T')[0];
-        
-        // 2. Event-Datum (Datum im Stundenplan)
-        const datumEvent = newsPayload.datum || erstellungsDatum;
-        
-        // 3. Slot & Zeitfenster
-        const slot = newsPayload.slot || "";
-        const slotIndex = parseInt(slot, 10) || 0;
-        const zeitfenster = newsPayload.time || newsPayload.zeitfenster || "";
+    // Fängt sowohl 'typ' als auch 'halle' ab und normalisiert es
+    const rawTyp = (payload.typ || payload.halle || "").toString().toLowerCase().trim();
+    
+    // WICHTIG: Nur die definierten Spezial-Fälle erlauben, normale Reservationen / Änderungen ignorieren!
+    const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet", "meldung", "wunsch", "banner", "kasse", "vertretung", "idee", "apotheke"];
+    if (!erlaubteTypen.includes(rawTyp)) {
+        return; 
+    }
 
-        // 4. Tag-Index ermitteln (0 = Sonntag, 1 = Montag, etc.)
-        let tagIndex = 0;
-        if (datumEvent) {
-            const tempDate = new Date(datumEvent.replace(/-/g, "/"));
-            tagIndex = tempDate.getDay();
-        }
+    const handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System").toString().trim();
+    const eventDatum = payload.datum || payload.date || getLocalIsoDate();
+    
+    // Fixer Titel wie gewünscht
+    const titelVal = "Halle frei!";
 
-        // 5. Exakter Text nach deinen Vorgaben
-        let nachrichtenText = "";
-        switch (typ) {
+    let zielTag = payload.wochentag;
+    const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+    if (!zielTag && eventDatum) {
+        zielTag = wochentage[new Date(eventDatum.replace(/-/g, "/")).getDay()];
+    }
+    const tagIndex = wochentage.indexOf(zielTag);
+    const slotNummer = parseInt(payload.slot, 10);
+    const klasse = payload.klasse || "";
+
+    // Exakte Text-Generierung nach deinen Vorgaben für die Sport-Events
+    let payloadText = payload.text ? payload.text.toString() : "";
+    if (["ausfall", "badi", "outdoor", "beendet"].includes(rawTyp)) {
+        switch (rawTyp) {
             case "ausfall":
-                nachrichtenText = `Die Klasse ${klasse} fällt aus!`;
+                payloadText = `Die Klasse ${klasse} fällt aus!`;
                 break;
             case "badi":
-                nachrichtenText = `Die Klasse ${klasse} ist in der Badi!`;
+                payloadText = `Die Klasse ${klasse} ist in der Badi!`;
                 break;
             case "outdoor":
-                nachrichtenText = `Die Klasse ${klasse} ist "outdoor"!`;
+                payloadText = `Die Klasse ${klasse} ist "outdoor"!`;
                 break;
             case "beendet":
-                nachrichtenText = `Die Klasse ${klasse} wurde abgeklebt!`;
+                payloadText = `Die Klasse ${klasse} wurde abgeklebt!`;
                 break;
-            default:
-                return;
         }
+    }
 
-        // 6. Empfänger-Logik: Nur im entsprechenden Zeitslot suchen
-        let empfaengerSet = new Set();
-        if (masterPlanData && typeof masterPlanData === 'object') {
-            // Direktes Prüfen, falls masterPlanData nach Slot-Keys strukturiert ist
-            if (masterPlanData[slot]) {
-                const slotData = masterPlanData[slot];
-                const entries = Array.isArray(slotData) ? slotData : [slotData];
-                entries.forEach(item => {
-                    if (item) {
-                        const lehrerName = (item.lehrer || item.verfasser || "").toString().trim();
-                        if (lehrerName && lehrerName.toLowerCase() !== verfasser.toLowerCase()) {
-                            empfaengerSet.add(lehrerName);
-                        }
-                    }
-                });
-            }
-            // Zusätzlich über alle Einträge iterieren, falls der Slot als Eigenschaft hinterlegt ist
-            Object.values(masterPlanData).forEach(item => {
-                if (item && String(item.slot || item.slot_index || "") === String(slot)) {
-                    const lehrerName = (item.lehrer || item.verfasser || "").toString().trim();
-                    if (lehrerName && lehrerName.toLowerCase() !== verfasser.toLowerCase()) {
-                        empfaengerSet.add(lehrerName);
+    // =========================================================================
+    // EMPFÄNGER-LOGIK NACH EXakter STRUKTUR
+    // =========================================================================
+    let empfaenger = "alle";
+
+    // 1. Slot-basierte Typen (gleicher Zeitslot ausser Verfasser)
+    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
+    
+    // 2. Teamweite Typen (alle ausser Verfasser)
+    const teamWeiteTypen = ["meldung", "wunsch", "banner", "kasse", "vertretung", "idee"];
+
+    if (slotBasierteTypen.includes(rawTyp)) {
+        let gefundeneLehrer = [];
+        const planData = currentMasterData || window.lastPlanData;
+        
+        if (!isNaN(slotNummer) && slotNummer > 0 && planData) {
+            const rowIndex = Math.floor((slotNummer - 1) / 5);
+            const rowStartSlot = (rowIndex * 5) + 1;
+
+            for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
+                const slotData = planData[s];
+                if (!slotData) continue;
+
+                let lehrerKuerzel = slotData.verfasser || slotData.lehrer || "";
+                if (!lehrerKuerzel && slotData.klasse && window.allClassTeachers) {
+                    lehrerKuerzel = window.allClassTeachers[slotData.klasse] || "";
+                }
+
+                lehrerKuerzel = lehrerKuerzel.toString().trim();
+
+                if (lehrerKuerzel !== "") {
+                    if (lehrerKuerzel.toUpperCase() !== handelndeLP.toUpperCase() && !gefundeneLehrer.includes(lehrerKuerzel.toUpperCase())) {
+                        gefundeneLehrer.push(lehrerKuerzel.toUpperCase());
                     }
                 }
-            });
+            }
         }
-        let empfaengerStr = Array.from(empfaengerSet).join(", ");
+        
+        // Wenn keine anderen Lehrpersonen im Zeitslot gefunden wurden, komplett abbrechen (keine News generieren)
+        if (gefundeneLehrer.length === 0) {
+            console.log(`ℹ️ Keine weiteren Lehrpersonen im Zeitslot gefunden für Typ [${rawTyp}]. Es wird keine News generiert.`);
+            return;
+        }
 
-        // 7. Vollständiges Payload für die Datenbank
-        const dbPayload = {
-            titel: "Halle frei!",
-            text: nachrichtenText,
-            datum: erstellungsDatum,    // Datum der Erfassung
-            datum_event: datumEvent,    // Datum im Stundenplan
-            zeitfenster: zeitfenster,
-            tag_index: tagIndex,
-            slot_index: slotIndex,
+        empfaenger = gefundeneLehrer.join(",");
+
+    } else if (teamWeiteTypen.includes(rawTyp)) {
+        // Alle ausser dem Verfasser
+        empfaenger = "alle_ausser_verfasser";
+
+    } else if (rawTyp === "apotheke") {
+        // Nur an den Chef
+        empfaenger = "chef";
+
+    } else {
+        // Fallback
+        empfaenger = payload.empfaenger || "alle";
+    }
+
+    // Zeitfenster-Formatierung
+    const zeiten = [
+        "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
+        "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
+        "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", 
+        "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"
+    ];
+
+    let formatiertesEventDatum = eventDatum;
+    if (formatiertesEventDatum.includes('-')) {
+        const parts = formatiertesEventDatum.split('-');
+        if (parts.length === 3) formatiertesEventDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    let zeitfensterString = formatiertesEventDatum;
+    if (!isNaN(slotNummer) && slotNummer > 0) {
+        const rowIndex = Math.floor((slotNummer - 1) / 5);
+        const uhrzeit = zeiten[rowIndex] || "";
+        if (uhrzeit) {
+            zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
+        }
+    }
+
+    // In Supabase speichern
+    try {
+        const newsData = {
+            typ: rawTyp,
+            datum_event: eventDatum,
+            tag_index: tagIndex !== -1 ? tagIndex : null,
+            slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
+            zeitfenster: payload.zeitfenster || zeitfensterString,
+            datum: new Date().toISOString(), // Erfassungsdatum
+            titel: titelVal,                 // "Halle frei!"
+            text: payloadText,               // Dein exakter Text (z.B. "Die Klasse xyz fällt aus!")
             klasse: klasse,
-            verfasser: verfasser,
-            typ: typ,
-            empfaenger: empfaengerStr
+            verfasser: handelndeLP,
+            empfaenger: empfaenger,          // Exakte Empfänger-Regel aus der Matrix
+            gelesen: "",
+            geloescht: "" 
         };
 
-        const { error: newsError } = await window.supabaseClient
+        const { error } = await client
             .from('news_db')
-            .insert([dbPayload]);
+            .insert([newsData]);
 
-        if (newsError) throw newsError;
+        if (error) throw error;
+        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
 
-        console.log("📰 News erfolgreich generiert:", dbPayload);
-
-    } catch (e) {
-        console.error("❌ Fehler beim Erstellen der News:", e);
+    } catch (err) {
+        console.error("❌ Fehler beim Speichern der News in Supabase:", err);
     }
 };
     
