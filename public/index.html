@@ -204,9 +204,9 @@
             const tickerBanner = document.getElementById('news-ticker-banner');
             const tickerContent = document.getElementById('news-ticker-content');
 
-            // --- 2. BANNER AUS SUPABASE LADEN ---
+            // --- 2. BANNER AUS SUPABASE LADEN (Nur wenn Status "offen") ---
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/service_db?typ=eq.banner&select=id,beschreibung`, {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/service_db?typ=eq.banner&status=eq.offen&select=id,beschreibung`, {
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
