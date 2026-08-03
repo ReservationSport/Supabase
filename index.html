@@ -4988,8 +4988,6 @@ window.hideLoading = function() {
 
     
 window.loadPlan = async function(isExplicitUserAction = false) {
-    // Verhindern, dass beim initialen Laden der Seite automatisch geladen wird, 
-    // es sei denn, es ist eine explizite Benutzeraktion oder der Login ist erfolgt.
     if (!window.initialLoadDone && !isExplicitUserAction) {
         return;
     }
@@ -5055,6 +5053,17 @@ window.loadPlan = async function(isExplicitUserAction = false) {
         const masterData = masterRes.data;
         let buchungenData = buchungenRes.data;
 
+        // SAUBERE UNTERSCHEIDUNG: Nur wenn " / " (mit Leerzeichen) da ist, ist es A/B. "abc/xyz" bleibt absolut intakt!
+        const resolveKlassenString = (roheKlasse, isUngerade) => {
+            if (roheKlasse.includes(" / ")) {
+                const teile = roheKlasse.split(" / ").map(s => s.trim());
+                if (teile.length >= 2) {
+                    return isUngerade ? (teile[0] || "") : (teile[1] || "");
+                }
+            }
+            return roheKlasse;
+        };
+
         if ((!buchungenData || buchungenData.length === 0) && targetSlotIdx !== null && !isNaN(targetSlotIdx)) {
             let temporaerPlan = {};
             for (let m = 1; m <= 60; m++) temporaerPlan[m] = { klasse: "", lehrer: "" };
@@ -5062,15 +5071,9 @@ window.loadPlan = async function(isExplicitUserAction = false) {
             if (masterData) {
                 masterData.forEach(row => {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
-                    let klasseName = "";
                     let lehrerName = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    if (roheKlasse.includes("/")) {
-                        let teile = roheKlasse.split("/").map(s => s.trim());
-                        klasseName = istUngeradeWoche ? (teile[0] || "") : (teile[1] || "");
-                    } else {
-                        klasseName = roheKlasse;
-                    }
+                    let klasseName = resolveKlassenString(roheKlasse, istUngeradeWoche);
 
                     if (klasseName === "") {
                         lehrerName = "";
@@ -5138,12 +5141,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                     let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                     let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                     
-                    if (roheKlasse.includes("/")) {
-                        const teile = roheKlasse.split("/").map(s => s.trim());
-                        if (teile.length >= 2) {
-                            roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
-                        }
-                    }
+                    roheKlasse = resolveKlassenString(roheKlasse, istUngeradeWoche);
 
                     if (roheKlasse === "") {
                         plan[row.slot].klasse = "";
@@ -5397,17 +5395,23 @@ window.syncPlan = async function() {
             };
         }
 
+        // Hilfsfunktion: Unterscheidet echtes A/B (" / ") von festen Kombi-Klassen ("/")
+        const resolveKlassenString = (roheKlasse, isUngerade) => {
+            if (roheKlasse.includes(" / ")) {
+                const teile = roheKlasse.split(" / ").map(s => s.trim());
+                if (teile.length >= 2) {
+                    return isUngerade ? (teile[0] || "") : (teile[1] || "");
+                }
+            }
+            return roheKlasse;
+        };
+
         masterData.forEach(row => {
             if (newPlan[row.slot]) {
                 let roheKlasse = row.klasse ? row.klasse.toString().trim() : "";
                 let roherLehrer = row.lehrer ? row.lehrer.toString().trim() : "";
                 
-                if (roheKlasse.includes("/")) {
-                    const teile = roheKlasse.split("/").map(s => s.trim());
-                    if (teile.length >= 2) {
-                        roheKlasse = istUngeradeWoche ? teile[0] : teile[1];
-                    }
-                }
+                roheKlasse = resolveKlassenString(roheKlasse, istUngeradeWoche);
 
                 if (roheKlasse === "") {
                     newPlan[row.slot].klasse = "";
