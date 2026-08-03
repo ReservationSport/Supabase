@@ -5729,9 +5729,8 @@ function updateNewsDot() {
 
 
 /* ============================================================
-   9.1. NEWS AUSLÖSEN
-   ============================================================ */
-
+    ZENTRALE NEWS-SPEICHERUNG (Saubere Struktur & Empfänger-Logik)
+    ============================================================ */
 
 window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
@@ -5740,7 +5739,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return;
     }
 
-    // Hilfsfunktion für das lokale Datum (verhindert UTC-Verschiebungen)
     const getLocalIsoDate = (date = new Date()) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -5748,75 +5746,11 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return `${year}-${month}-${day}`;
     };
 
-    // 1. Wenn der Payload bereits das neue, einheitliche Format nutzt (typ, titel, text etc.),
-    //    schreiben wir ihn direkt 1:1 in die Datenbank, ohne Umwege.
-    if (payload && payload.typ && payload.titel && payload.text) {
-        try {
-            const newsData = {
-                typ: payload.typ.toString().toLowerCase().trim(),
-                titel: payload.titel.toString().trim(),
-                text: payload.text.toString().trim(),
-                datum: payload.datum || getLocalIsoDate(), // Erstellungsdatum
-                zeitfenster: payload.zeitfenster || "",    // Optional (z.B. für Zusatzinfos)
-                verfasser: (payload.verfasser || "System").toString().trim(),
-                empfaenger: payload.empfaenger || "alle",  // Standardmässig an alle, wenn nicht anders definiert
-                gelesen: "",
-                geloescht: ""
-            };
-
-            const { error } = await client
-                .from('news_db')
-                .insert([newsData]);
-
-            if (error) throw error;
-            console.log("🎯 News (Direkt-Payload) erfolgreich in Supabase gespeichert.");
-            return;
-
-        } catch (err) {
-            console.error("❌ Fehler beim Speichern des News-Payloads in Supabase:", err);
-            return;
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // AB HIER: FALLBACK FÜR ÄLTERE FUNKTIONEN (die noch den alten Weg nutzen)
-    // -------------------------------------------------------------------------
-    const rawHalle = (payload.halle || "").toString().toLowerCase().trim();
-    const klasseVal = (payload.klasse || "").toString().toLowerCase().trim();
-
-    const isZahlungsrunde = (rawHalle === "zahlungsrunde");
-    const isApotheke = (rawHalle === "apotheke_bestellung");
-    const isDefekt = (rawHalle === "defekt_meldung" || klasseVal === "defekt");
-    const isDefektBehoben = (rawHalle === "defekt_behoben");
-    const isMaterial = (rawHalle === "material_wunsch");
-    const isIdee = (rawHalle === "ideenbrett");
-    const isApothekeMeldung = (rawHalle === "apotheke_meldung");
-    const isStv = (rawHalle === "stellvertretung");
-    const isAusfall = (rawHalle === "ausfall"); 
-    const isAbkleben = (rawHalle === "beendet" || rawHalle === "abgeklebt");
-    const isOutdoor = rawHalle.includes("outdoor");
-    const isBadi = rawHalle.includes("badi");
-    
-    const isSpecial = (isDefekt || isDefektBehoben || isMaterial || isZahlungsrunde || isIdee || isApotheke || isApothekeMeldung || isStv);
-    const isFreieHalle = (isAusfall || isAbkleben || isOutdoor || isBadi);
-
-    if (!isSpecial && !isFreieHalle) {
-        console.log("ℹ️ Normale Hallen-Reservierung/-Änderung: Es wird keine News verschickt.");
-        return;
-    }
-
-    let handelndeLP = "";
-    if (isZahlungsrunde) {
-        handelndeLP = "System";
-    } else if (isApotheke) {
-        handelndeLP = (payload.user || payload.kuerzel || payload.kürzel || "Unbekannt").toString().trim();
-    } else if (isApothekeMeldung) {
-        handelndeLP = "System";
-    } else {
-        handelndeLP = (payload.verfasser || payload.kuerzel || payload.kürzel || payload.user || "System").toString().trim();
-    }
-    
+    const rawTyp = (payload.typ || "").toString().toLowerCase().trim();
+    const handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || "System").toString().trim();
     const eventDatum = payload.datum || payload.date || getLocalIsoDate();
+    const payloadText = payload.text ? payload.text.toString() : "";
+    const titelVal = payload.titel || "Meldung";
 
     let zielTag = payload.wochentag;
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -5824,22 +5758,25 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         zielTag = wochentage[new Date(eventDatum.replace(/-/g, "/")).getDay()];
     }
     const tagIndex = wochentage.indexOf(zielTag);
+    const slotNummer = parseInt(payload.slot, 10);
 
-    let empfaenger = "";
-    let gefundeneLehrer = [];
+    // =========================================================================
+    // EMPFÄNGER-LOGIK NACH EXakter STRUKTUR
+    // =========================================================================
+    let empfaenger = "alle";
 
-    if (isZahlungsrunde) {
-        empfaenger = payload.kuerzel || ""; 
-    } else if (isApotheke) {
-        empfaenger = "chef"; 
-    } else if (isDefekt || isDefektBehoben || isMaterial || isIdee || isApothekeMeldung || isStv) {
-        empfaenger = "alle";
-    } else {
-        const currentSlot = parseInt(payload.slot, 10);
+    // 1. Slot-basierte Typen (gleicher Zeitslot ausser Verfasser)
+    const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
+    
+    // 2. Teamweite Typen (alle ausser Verfasser)
+    const teamWeiteTypen = ["meldung", "wunsch", "banner", "kasse", "vertretung", "idee"];
+
+    if (slotBasierteTypen.includes(rawTyp)) {
+        let gefundeneLehrer = [];
         const planData = currentMasterData || window.lastPlanData;
         
-        if (!isNaN(currentSlot) && currentSlot > 0 && planData) {
-            const rowIndex = Math.floor((currentSlot - 1) / 5);
+        if (!isNaN(slotNummer) && slotNummer > 0 && planData) {
+            const rowIndex = Math.floor((slotNummer - 1) / 5);
             const rowStartSlot = (rowIndex * 5) + 1;
 
             for (let s = rowStartSlot; s < rowStartSlot + 5; s++) {
@@ -5860,68 +5797,22 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 }
             }
         }
+        empfaenger = gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : "";
 
-        if (gefundeneLehrer.length === 0) {
-            empfaenger = isFreieHalle ? "" : "alle";
-        } else {
-            empfaenger = gefundeneLehrer.join(",");
-        }
-    }
-    
-    let displayHeader = "";
-    let newsText = "";
-    let newsTyp = rawHalle || "allgemein";
-    const payloadText = payload.text ? payload.text.toString() : "";
-    const kl = payload.klasse ? payload.klasse.toString() : "unbekannt";
+    } else if (teamWeiteTypen.includes(rawTyp)) {
+        // Alle ausser dem Verfasser
+        empfaenger = "alle_ausser_verfasser";
 
-    if (isIdee) {
-        displayHeader = "Neue Idee";
-        const kat = payload.kategorie ? payload.kategorie : "Allgemein"; 
-        newsText = `NEUE IDEE: [${kat}] ${payloadText}`;
-    } else if (isDefekt) {
-        displayHeader = "DEFEKT";
-        newsText = `NEUER DEFEKT: ${payloadText} (Gemeldet von: ${handelndeLP})`;
-    } else if (isDefektBehoben) {
-        displayHeader = "DEFEKT BEHOBEN";
-        newsText = payloadText;
-    } else if (isMaterial) {
-        displayHeader = "MATERIALWUNSCH";
-        newsText = `MATERIALWUNSCH: ${payloadText} (Von: ${handelndeLP})`;
-    } else if (isApotheke) {
-        displayHeader = "APOTHEKEN-BESTELLUNG";
-        newsText = `APOTHEKEN-BEDARF: ${payloadText} (Bestellt von: ${handelndeLP})`;
-    } else if (isApothekeMeldung) {
-        displayHeader = "Meldung";
-        newsText = payloadText;
-    } else if (isStv) {
-        displayHeader = "STELLVERTRETUNG GESUCHT";
-        let anzahlLektionen = payload.anzahlLektionen || payload.count || payload.lektionen;
-        if (!anzahlLektionen && payload.slots && Array.isArray(payload.slots)) {
-            anzahlLektionen = payload.slots.length;
-        } else if (!anzahlLektionen && payload.items && Array.isArray(payload.items)) {
-            anzahlLektionen = payload.items.length;
-        }
-        if (!anzahlLektionen || anzahlLektionen === 0) {
-            anzahlLektionen = "Mehrere";
-        }
-        newsText = `${handelndeLP} hat eine Abwesenheit gemeldet für den ${eventDatum} (${anzahlLektionen} Lektionen).`;
-    } else if (isZahlungsrunde) {
-        displayHeader = "TEAMKASSE";
-        newsText = `Neue Zahlungsrunde eröffnet! Zahle bitte möglichst bald ${payload.betrag} CHF per TWINT an den Kassenwart.`;
-    } else if (isBadi) {
-        displayHeader = "Halle frei!";
-        newsText = `Die Klasse ${kl} ist in der Badi!`;
-    } else if (isOutdoor) {
-        displayHeader = "Halle frei!";
-        newsText = `Die Klasse ${kl} ist draussen!`;
-    } else if (isAbkleben) {
-        displayHeader = "Halle frei!";
-        newsText = `Die Klasse ${kl} wurde abgeklebt!`;
-    } else if (isAusfall) {
-        displayHeader = "Halle frei!";
-        newsText = `Die Klasse ${kl} fällt aus!`;
+    } else if (rawTyp === "apotheke") {
+        // Nur an den Chef
+        empfaenger = "chef";
+
+    } else {
+        // Fallback
+        empfaenger = payload.empfaenger || "alle";
     }
 
+    // Zeitfenster-Formatierung
     const zeiten = [
         "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
         "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
@@ -5936,26 +5827,25 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
 
     let zeitfensterString = formatiertesEventDatum;
-    const slotNummer = parseInt(payload.slot, 10);
     if (!isNaN(slotNummer) && slotNummer > 0) {
         const rowIndex = Math.floor((slotNummer - 1) / 5);
         const uhrzeit = zeiten[rowIndex] || "";
         if (uhrzeit) {
-            const formatierteUhrzeit = uhrzeit.replace(/\s*-\s*/g, '-');
-            zeitfensterString = `${formatiertesEventDatum} / ${formatierteUhrzeit}`;
+            zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
         }
     }
 
+    // In Supabase speichern
     try {
         const newsData = {
-            typ: newsTyp,
+            typ: rawTyp,
             datum_event: eventDatum,
             tag_index: tagIndex !== -1 ? tagIndex : null,
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
-            zeitfenster: zeitfensterString,
-            datum: getLocalIsoDate(),
-            titel: displayHeader,
-            text: newsText,
+            zeitfenster: payload.zeitfenster || zeitfensterString,
+            datum: new Date().toISOString(),
+            titel: titelVal,
+            text: payloadText,
             klasse: payload.klasse || "",
             verfasser: handelndeLP,
             empfaenger: empfaenger,
@@ -5968,7 +5858,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             .insert([newsData]);
 
         if (error) throw error;
-        console.log("🎯 News (Fallback-Modus) erfolgreich in Supabase gespeichert.");
+        console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
 
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
