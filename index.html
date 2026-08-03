@@ -5743,15 +5743,15 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
 
     // =========================================================================
-    // VERFASSER BOMBENFEST EXTRAHIEREN (Löst das {}-Problem und setzt "bupa")
+    // VERFASSER BOMBENFEST EXTRAHIEREN (Nutzt direkt die globale userKuerzel Variable)
     // =========================================================================
-    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "LP";
+    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || (typeof userKuerzel !== 'undefined' ? userKuerzel : null) || window.userKuerzel || "LP";
     if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
         rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || rawVerfasser.userKuerzel || "LP";
     }
-    let handelndeLP = rawVerfasser.toString().trim();
-    if (handelndeLP === "[object Object]" || handelndeLP === "{}") {
-        handelndeLP = "bupa"; // Fallback falls es ein leeres Objekt war
+    let handelndeLP = rawVerfasser ? rawVerfasser.toString().trim() : "LP";
+    if (handelndeLP === "[object Object]" || handelndeLP === "{}" || handelndeLP.toLowerCase() === "userkuerzel") {
+        handelndeLP = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().trim() : "LP";
     }
 
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
@@ -5908,7 +5908,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             titel: titelVal,                 
             text: payloadText,               
             klasse: klasse,
-            verfasser: handelndeLP,          // Schreibt nun sauber "bupa" (oder das echte Kürzel) hinein
+            verfasser: handelndeLP,          // Schreibt nun sauber das echte Kürzel aus userKuerzel hinein
             empfaenger: empfaenger,          // "alle_ausser_verfasser"
             gelesen: "",
             geloescht: "" 
