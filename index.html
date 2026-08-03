@@ -5797,7 +5797,14 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 }
             }
         }
-        empfaenger = gefundeneLehrer.length > 0 ? gefundeneLehrer.join(",") : "";
+        
+        // Wenn keine anderen Lehrpersonen im Zeitslot gefunden wurden, komplett abbrechen (keine News generieren)
+        if (gefundeneLehrer.length === 0) {
+            console.log(`ℹ️ Keine weiteren Lehrpersonen im Zeitslot gefunden für Typ [${rawTyp}]. Es wird keine News generiert.`);
+            return;
+        }
+
+        empfaenger = gefundeneLehrer.join(",");
 
     } else if (teamWeiteTypen.includes(rawTyp)) {
         // Alle ausser dem Verfasser
