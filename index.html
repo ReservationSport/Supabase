@@ -5742,7 +5742,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         return; 
     }
 
-    const handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System").toString().trim();
+    let handelndeLP = (payload.verfasser || payload.kuerzel || payload.user || window.userKuerzel || "System").toString().trim();
     const eventDatum = payload.datum || payload.date || getLocalIsoDate();
     
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -5822,42 +5822,44 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (ZENTRALES SPALTEN-MAPPING)
         // =========================================================================
         
-        // Hier definierst du exakt, welche Spaltenwerte für welche Funktion gesetzt werden sollen:
         const zusatzRegeln = {
             meldung: { 
                 titel: payload.titel || "Meldung (Defekt)", 
                 empfaenger: "alle_ausser_verfasser",
-                text: payload.beschreibung || payload.text || "",
-                verfasser: payload.verfasser || payload.kuerzel || handelndeLP
+                text: payload.beschreibung || payload.text || document.getElementById('meldung-text')?.value || "",
+                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP
             },
             wunsch: { 
                 titel: payload.titel || "Materialwunsch",     
                 empfaenger: "alle_ausser_verfasser", 
-                text: payload.beschreibung || payload.text || "", 
-                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('wunsch-text')?.value || "", 
+                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
             },
             banner: { 
                 titel: payload.titel || "Bannermeldung",     
                 empfaenger: "alle_ausser_verfasser", 
-                text: payload.beschreibung || payload.text || "", 
-                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('banner-text')?.value || "", 
+                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
             },
             idee: { 
                 titel: payload.titel || "Idee",       
                 empfaenger: "alle_ausser_verfasser", 
-                text: payload.beschreibung || payload.text || "", 
-                verfasser: payload.verfasser || payload.kuerzel || handelndeLP 
+                text: payload.beschreibung || payload.text || document.getElementById('idee-text')?.value || "", 
+                verfasser: payload.verfasser || payload.kuerzel || window.userKuerzel || handelndeLP 
             },
-            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || "", verfasser: handelndeLP },
-            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || "", verfasser: handelndeLP },
-            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || "", verfasser: handelndeLP }
+            kasse:      { titel: payload.titel || "Teamkasse",      empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP },
+            vertretung: { titel: payload.titel || "Stellvertretung", empfaenger: "alle_ausser_verfasser", text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP },
+            apotheke:   { titel: payload.titel || "Apotheke",   empfaenger: "chef",                  text: payload.text || payload.beschreibung || "", verfasser: payload.verfasser || window.userKuerzel || handelndeLP }
         };
 
-        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle" };
+        const regel = zusatzRegeln[rawTyp] || { titel: "Information", empfaenger: "alle", text: "", verfasser: handelndeLP };
         
         titelVal = regel.titel;
         empfaenger = payload.empfaenger || regel.empfaenger;
-        // payloadText bleibt hier einfach das, was im Payload mitgegeben wurde (z.B. der Text des Formulars)
+        payloadText = regel.text;
+        if (regel.verfasser) {
+            handelndeLP = regel.verfasser;
+        }
     }
 
     // Zeitfenster-Formatierung
@@ -5893,7 +5895,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             zeitfenster: payload.zeitfenster || zeitfensterString,
             datum: new Date().toISOString(), // Erfassungsdatum
             titel: titelVal,                 // Dynamisch je nach Typ
-            text: payloadText,               // Entweder generiert (Sport) oder aus Payload (Zusatzfunktionen)
+            text: payloadText,               // Automatisch aus Regel / DOM gezogen
             klasse: klasse,
             verfasser: handelndeLP,
             empfaenger: empfaenger,          // Aus der jeweiligen Regel gesteuert
@@ -5908,7 +5910,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         if (error) throw error;
         console.log(`🎯 News vom Typ [${rawTyp}] erfolgreich gespeichert (Empfänger: ${empfaenger}).`);
 
-    } else { ... // (Catch block wie gehabt)
     } catch (err) {
         console.error("❌ Fehler beim Speichern der News in Supabase:", err);
     }
