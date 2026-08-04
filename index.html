@@ -4475,7 +4475,7 @@ window.initTeachersCache = async function() {
     
     
 /* ============================================================
-   3. LOGIN (Mit Kürzel-Lookup aus 'teachers' & Supabase Auth)
+   3. LOGIN (Mit Kürzel-Lookup, .ilike und Start-Passwort-Zwang)
    ============================================================ */
 
 window.handleLogin = async function() {
@@ -4485,7 +4485,7 @@ window.handleLogin = async function() {
     const loginOverlay = document.getElementById('loginOverlay');
     const loadingOverlay = document.getElementById('loadingOverlay');
     
-    const kuerzelVal = document.getElementById('userKuerzel').value.trim().toLowerCase();
+    const kuerzelVal = document.getElementById('userKuerzel').value.trim();
     const pwVal = document.getElementById('pw').value;
 
     if (!kuerzelVal) { 
@@ -4502,11 +4502,11 @@ window.handleLogin = async function() {
     if (errorDiv) errorDiv.innerText = "";
 
     try {
-        // --- 1. SCHRITT: ECHTE E-MAIL AUS DER 'teachers'-TABELLE ABRUFEN ---
+        // --- 1. SCHRITT: E-MAIL & FLAG AUS DER 'teachers'-TABELLE ABRUFEN (.ilike ignoriert Groß/Klein) ---
         const { data: teacherData, error: teacherError } = await supabaseClient
             .from('teachers')
-            .select('email')
-            .eq('lehrer', kuerzelVal)
+            .select('email, must_change_password')
+            .ilike('lehrer', kuerzelVal)
             .single();
 
         if (teacherError || !teacherData || !teacherData.email) {
@@ -4517,7 +4517,7 @@ window.handleLogin = async function() {
 
         const realEmail = teacherData.email;
 
-        // --- 2. SCHRITT: ECHTE SUPABASE AUTHENTIFIZIERUNG MIT DER REALEN E-MAIL ---
+        // --- 2. SCHRITT: SUPABASE AUTHENTIFIZIERUNG ---
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
             email: realEmail,
             password: pwVal,
@@ -4527,6 +4527,48 @@ window.handleLogin = async function() {
             if (errorDiv) errorDiv.innerText = "Falsches Passwort!";
             if (btn) btn.classList.remove('is-loading');
             return;
+        }
+
+        // --- 3. SCHRITT: PRÜFEN OB DAS START-PASSWORT GEÄNDERT WERDEN MUSS ---
+        if (teacherData.must_change_password) {
+            let validNewPassword = false;
+            let newPassword = "";
+
+            while (!validNewPassword) {
+                newPassword = prompt("Willkommen!\n\nDu hast dich mit dem Start-Passwort angemeldet. Bitte gib jetzt dein persönliches, neues Passwort ein (min. 6 Zeichen):");
+
+                if (newPassword === null) {
+                    await supabaseClient.auth.signOut();
+                    if (errorDiv) errorDiv.innerText = "Passwortänderung abgebrochen.";
+                    if (btn) btn.classList.remove('is-loading');
+                    return;
+                }
+
+                if (newPassword.length < 6) {
+                    alert("Das Passwort muss mindestens 6 Zeichen lang sein!");
+                } else {
+                    validNewPassword = true;
+                }
+            }
+
+            // Neues Passwort bei Supabase Auth speichern
+            const { error: updateError } = await supabaseClient.auth.updateUser({
+                password: newPassword
+            });
+
+            if (updateError) {
+                alert("Fehler beim Ändern des Passworts: " + updateError.message);
+                if (btn) btn.classList.remove('is-loading');
+                return;
+            }
+
+            // In der teachers-Tabelle must_change_password auf false setzen
+            await supabaseClient
+                .from('teachers')
+                .update({ must_change_password: false })
+                .ilike('lehrer', kuerzelVal);
+
+            alert("Passwort erfolgreich geändert! Du wirst nun eingeloggt.");
         }
 
         userPw = pwVal;
@@ -4602,13 +4644,13 @@ window.handlePasswordReset = async function() {
     const kuerzelVal = prompt("Bitte gib dein Lehrer-Kürzel ein (z.B. mue):");
     if (!kuerzelVal) return;
 
-    const cleanKuerzel = kuerzelVal.trim().toLowerCase();
+    const cleanKuerzel = kuerzelVal.trim();
 
-    // 1. Echte E-Mail aus der 'teachers'-Tabelle abfragen
+    // 1. E-Mail über .ilike aus der 'teachers'-Tabelle abfragen
     const { data, error } = await supabaseClient
         .from('teachers')
         .select('email')
-        .eq('lehrer', cleanKuerzel)
+        .ilike('lehrer', cleanKuerzel)
         .single();
 
     if (error || !data || !data.email) {
@@ -4618,13 +4660,13 @@ window.handlePasswordReset = async function() {
 
     // 2. Supabase E-Mail-Reset auslösen
     const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(data.email, {
-        redirectTo: window.location.href, // Leitet die Lehrperson nach dem Klick auf den Link zurück zu deiner App
+        redirectTo: window.location.href,
     });
 
     if (resetError) {
         alert("Fehler beim Senden: " + resetError.message);
     } else {
-        alert(`Eine E-Mail zum Zurücksetzen des Passworts wurde erfolgreich an ${data.email} gesendet!`);
+        alert(`Eine E-Mail zum Zurücksetzen des Passworts wurde erfolgreich an deine E-Mail-Adresse gesendet!`);
     }
 };
 
@@ -4635,18 +4677,24 @@ window.handlePasswordReset = async function() {
 
 supabaseClient.auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY') {
-        const newPassword = prompt("Passwort-Reset erfolgreich verifiziert!\n\nBitte gib jetzt dein neues Wunsch-Passwort ein:");
-        
-        if (newPassword) {
+        let success = false;
+
+        while (!success) {
+            const newPassword = prompt("Passwort-Reset erfolgreich verifiziert!\n\nBitte gib dein neues Wunsch-Passwort ein (min. 6 Zeichen):");
+            
+            if (newPassword === null) {
+                break; 
+            }
+
             const { data, error } = await supabaseClient.auth.updateUser({
                 password: newPassword
             });
 
             if (error) {
-                alert("Fehler beim Speichern des neuen Passworts: " + error.message);
+                alert("Fehler: " + error.message + "\n\nBitte versuche es noch einmal.");
             } else {
                 alert("Dein Passwort wurde erfolgreich geändert! Du bist nun eingeloggt.");
-                // Optional: Seite aktualisieren oder direkt in die App springen
+                success = true;
                 window.location.reload();
             }
         }
