@@ -4595,7 +4595,7 @@ window.handleLogin = async function() {
 
 
 /* ============================================================
-   4. PASSWORT ZURÜCKSETZEN (Über Kürzel-Lookup in 'teachers')
+   3.1 PASSWORT ZURÜCKSETZEN (Über Kürzel-Lookup in 'teachers')
    ============================================================ */
 
 window.handlePasswordReset = async function() {
@@ -4628,6 +4628,32 @@ window.handlePasswordReset = async function() {
     }
 };
 
+
+/* ============================================================
+   3.2 PASSWORT-RESET-ABFANGEN (Wenn der User aus der E-Mail zurückkommt)
+   ============================================================ */
+
+supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        const newPassword = prompt("Passwort-Reset erfolgreich verifiziert!\n\nBitte gib jetzt dein neues Wunsch-Passwort ein:");
+        
+        if (newPassword) {
+            const { data, error } = await supabaseClient.auth.updateUser({
+                password: newPassword
+            });
+
+            if (error) {
+                alert("Fehler beim Speichern des neuen Passworts: " + error.message);
+            } else {
+                alert("Dein Passwort wurde erfolgreich geändert! Du bist nun eingeloggt.");
+                // Optional: Seite aktualisieren oder direkt in die App springen
+                window.location.reload();
+            }
+        }
+    }
+});
+
+    
     
 /* ============================================================
    4. REALTIME SYNCHRONISATION - in Supabase eingebaut
