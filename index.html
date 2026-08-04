@@ -4529,6 +4529,9 @@ window.handleLogin = async function() {
             return;
         }
 
+        // Standardmäßig nutzen wir zunächst das eingegebene Passwort
+        let activePassword = pwVal;
+
         // --- 3. SCHRITT: PRÜFEN OB DAS START-PASSWORT GEÄNDERT WERDEN MUSS ---
         if (teacherData.must_change_password) {
             let validNewPassword = false;
@@ -4568,9 +4571,12 @@ window.handleLogin = async function() {
                 .ilike('lehrer', kuerzelVal);
 
             alert("Passwort erfolgreich geändert! Du wirst nun eingeloggt.");
+            
+            // Das neue Passwort wird für die Session übernommen
+            activePassword = newPassword;
         }
 
-        userPw = pwVal;
+        userPw = activePassword;
         userKuerzel = kuerzelVal;
         
         // --- PARALLELES VORLADEN (Links, Materialien & Sperrzeiten-Cache) ---
