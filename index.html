@@ -13,45 +13,28 @@
 <style>
 
 
-/* Standardmäßig ist die App sichtbar */
-#app-content {
-    display: block;
+
+
+#gif-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #000000;
+    z-index: 99999;
+    justify-content: center;
+    align-items: center;
 }
 
-/* Wenn das Gerät im Hochformat (Portrait) ist, blende die App aus und zeige den Hinweis */
-@media screen and (max-width: 900px) and (orientation: portrait) {
-    #app-content {
-        display: none !important;
-    }
-    #rotate-warning {
-        display: flex !important;
-    }
+#gif-overlay img {
+    max-width: 150px;
+    height: auto;
 }
 
 
-/* Nur der Warnhinweis, ohne Schriftarten-Änderung für den Rest */
-        #rotate-warning {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #111111;
-            color: #ffffff;
-            z-index: 99999;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 20px;
-        }
-        
-        #rotate-warning h2 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-
-
+    
 
 /* 1. GLOBALE EINSTELLUNGEN & FONTS */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Oswald:wght@300;400;700&display=swap');
@@ -3590,12 +3573,10 @@ input.stellvertretung-input {
 
 
 
-<div id="rotate-warning">
-        <div>
-            <h2>📱 Bitte drehe dein Smartphone!</h2>
-            <p>Diese Website ist für das Querformat optimiert. Bitte drehe dein Gerät ins Querformat, um fortzufahren.</p>
-        </div>
-    </div>
+<!-- Das schwarze Overlay mit deinem GIF -->
+<div id="gif-overlay">
+    <img src="rotate.gif" alt="">
+</div>
 
    
 
@@ -4338,22 +4319,27 @@ input.stellvertretung-input {
 <script>
 
 
-function checkOrientation() {
-            const warning = document.getElementById('rotate-warning');
-            const content = document.getElementById('app-content');
-            
-            // Prüft, ob es ein Handy ist (Bildschirmbreite unter 900px) UND ob es hochkant steht
-            if (screen.width < 900 && window.innerHeight > window.innerWidth) {
-                warning.style.display = 'flex';
-                content.style.display = 'none';
-            } else {
-                warning.style.display = 'none';
-                content.style.display = 'block';
-            }
-        }
 
-        window.addEventListener('resize', checkOrientation);
-        window.addEventListener('load', checkOrientation);
+
+
+    let isLoggedIn = false;
+
+function pruefeAusrichtung() {
+    if (!isLoggedIn) return;
+
+    const gifOverlay = document.getElementById('gif-overlay');
+    
+    // Prüfen, ob das Handy senkrecht steht (Höhe ist grösser als Breite)
+    if (window.innerHeight > window.innerWidth) {
+        gifOverlay.style.display = 'flex';
+    } else {
+        gifOverlay.style.display = 'none';
+    }
+}
+
+window.addEventListener('resize', pruefeAusrichtung);
+window.addEventListener('orientationchange', pruefeAusrichtung);
+
 
 
     
@@ -4555,6 +4541,7 @@ window.handleLogin = async function() {
     const dp = document.getElementById('datePicker');
     const loginOverlay = document.getElementById('loginOverlay');
     const loadingOverlay = document.getElementById('loadingOverlay');
+    const gifOverlay = document.getElementById('gif-overlay');
     
     const kuerzelVal = document.getElementById('userKuerzel').value.trim();
     const pwVal = document.getElementById('pw').value;
@@ -4674,6 +4661,11 @@ window.handleLogin = async function() {
         if (loginOverlay) loginOverlay.classList.add('fade-out');
         await new Promise(resolve => setTimeout(resolve, 500));
         if (loginOverlay) loginOverlay.style.display = 'none';
+
+        // --- HIER AKTIVIEREN WIR DIE DREH-PFLICHT ---
+        isLoggedIn = true;
+        pruefeAusrichtung();
+        // ---------------------------------------------
         
         const newsContainer = document.getElementById('news-btn-container');
         if (newsContainer) newsContainer.style.display = 'block';
@@ -4777,6 +4769,19 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
         }
     }
 });
+
+
+
+
+function zeigeGifNachLogin() {
+    // 1. Login-Bereich verstecken (falls noch sichtbar)
+    // document.getElementById('dein-login-container').style.display = 'none';
+
+    // 2. Schwarzes Overlay mit GIF einblenden
+    document.getElementById('gif-overlay').style.display = 'flex';
+}
+    
+
 
     
     
