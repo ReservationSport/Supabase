@@ -28,23 +28,28 @@
     }
 }
 
-/* Der Warnhinweis ist standardmässig unsichtbar */
-#rotate-warning {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: #111;
-    color: #fff;
-    z-index: 99999;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    padding: 20px;
-    font-family: sans-serif;
-}
+
+/* Nur der Warnhinweis, ohne Schriftarten-Änderung für den Rest */
+        #rotate-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #111111;
+            color: #ffffff;
+            z-index: 99999;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #rotate-warning h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
 
 
 
@@ -3585,21 +3590,14 @@ input.stellvertretung-input {
 
 
 
-<!-- Der Warnhinweis -->
 <div id="rotate-warning">
-    <div>
-        <h2>📱 Bitte drehe dein Smartphone!</h2>
-        <p>Diese Website ist für das Querformat optimiert. Bitte drehe dein Gerät, um fortzufahren.</p>
+        <div>
+            <h2>📱 Bitte drehe dein Smartphone!</h2>
+            <p>Diese Website ist für das Querformat optimiert. Bitte drehe dein Gerät ins Querformat, um fortzufahren.</p>
+        </div>
     </div>
-</div>
 
-<!-- Deine echte Website / dein Inhalt -->
-<div id="app-content">
-    <h1>Meine Desktop-Ansicht auf dem Handy</h1>
-    <!-- Hier ist dein restlicher Code -->
-</div>
-
-
+   
 
 
     
@@ -4340,6 +4338,25 @@ input.stellvertretung-input {
 <script>
 
 
+function checkOrientation() {
+            const warning = document.getElementById('rotate-warning');
+            const content = document.getElementById('app-content');
+            
+            // Prüft, ob es ein Handy ist (Bildschirmbreite unter 900px) UND ob es hochkant steht
+            if (screen.width < 900 && window.innerHeight > window.innerWidth) {
+                warning.style.display = 'flex';
+                content.style.display = 'none';
+            } else {
+                warning.style.display = 'none';
+                content.style.display = 'block';
+            }
+        }
+
+        window.addEventListener('resize', checkOrientation);
+        window.addEventListener('load', checkOrientation);
+
+
+    
 
 /* ============================================================
     1. GLOBALE KONFIGURATION & VARIABLEN
