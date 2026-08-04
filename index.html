@@ -4535,8 +4535,7 @@ window.handleLogin = async function() {
             let newPassword = "";
 
             while (!validNewPassword) {
-                newPassword = prompt("Willkommen!\n\nDu hast dich mit dem Start-Passwort angemeldet. Bitte gib jetzt dein persönliches, neues Passwort ein (min. 6 Zeichen):");
-
+                newPassword = prompt(`Willkommen ${kuerzelVal}!\n\nDu hast dich mit dem Start-Passwort angemeldet.\nWähle nun ein EIGENES PASSWORT, welches du künftig zum Einloggen benötigst!\n\n(min. 6 Zeichen)`);
                 if (newPassword === null) {
                     await supabaseClient.auth.signOut();
                     if (errorDiv) errorDiv.innerText = "Passwortänderung abgebrochen.";
@@ -4641,7 +4640,7 @@ window.handleLogin = async function() {
    ============================================================ */
 
 window.handlePasswordReset = async function() {
-    const kuerzelVal = prompt("Bitte gib dein Lehrer-Kürzel ein (z.B. mue):");
+    const kuerzelVal = prompt("Gib dein Kürzel ein:");
     if (!kuerzelVal) return;
 
     const cleanKuerzel = kuerzelVal.trim();
