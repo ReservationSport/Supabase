@@ -4577,6 +4577,7 @@ window.handleLogin = async function() {
         }
 
         userPw = activePassword;
+        localStorage.setItem('userPw', activePassword); // <--- HIER: Direkt im localStorage sichern!
         userKuerzel = kuerzelVal;
         
         // --- PARALLELES VORLADEN (Links, Materialien & Sperrzeiten-Cache) ---
