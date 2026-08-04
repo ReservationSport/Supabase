@@ -2,8 +2,8 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SportDesk // BBZO</title>
+    <meta name="viewport" content="width=1024">
+    <title>Sport-Desk BBZO</title>
 
    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
@@ -11,6 +11,40 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
+
+
+/* Standardmäßig ist die App sichtbar */
+#app-content {
+    display: block;
+}
+
+/* Wenn das Gerät im Hochformat (Portrait) ist, blende die App aus und zeige den Hinweis */
+@media screen and (max-width: 900px) and (orientation: portrait) {
+    #app-content {
+        display: none !important;
+    }
+    #rotate-warning {
+        display: flex !important;
+    }
+}
+
+/* Der Warnhinweis ist standardmässig unsichtbar */
+#rotate-warning {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #111;
+    color: #fff;
+    z-index: 99999;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+    font-family: sans-serif;
+}
 
 
 
@@ -3549,6 +3583,26 @@ input.stellvertretung-input {
 
 <body>
 
+
+
+<!-- Der Warnhinweis -->
+<div id="rotate-warning">
+    <div>
+        <h2>📱 Bitte drehe dein Smartphone!</h2>
+        <p>Diese Website ist für das Querformat optimiert. Bitte drehe dein Gerät, um fortzufahren.</p>
+    </div>
+</div>
+
+<!-- Deine echte Website / dein Inhalt -->
+<div id="app-content">
+    <h1>Meine Desktop-Ansicht auf dem Handy</h1>
+    <!-- Hier ist dein restlicher Code -->
+</div>
+
+
+
+
+    
     <div id="loadingOverlay">
     <div class="spinner"></div>
     <p id="loadingText">Stundenplan wird geladen...</p>
@@ -3559,7 +3613,7 @@ input.stellvertretung-input {
 <div id="loginOverlay">
     <!-- Die zentrierte Login-Card vor dem Fullscreen-Hintergrund -->
     <div class="login-card-center">
-        <h2>SportDesk <span>BBZO</span></h2>
+        <h2>Sport-Desk <span>BBZO</span></h2>
         
         <input type="text" id="userKuerzel" placeholder="Kürzel" autocomplete="username"
                onfocus="document.getElementById('loginError').innerText=''"
