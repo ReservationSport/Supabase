@@ -4329,32 +4329,37 @@ input.stellvertretung-input {
 function pruefeAusrichtung() {
     const viewportMeta = document.getElementById('viewport-meta');
     const gifOverlay = document.getElementById('gif-overlay');
-    const appContent = document.getElementById('app-content');
 
     if (!isLoggedIn) {
-        // Solange man im Login ist: Zoom sperren
-        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        // Solange nicht eingeloggt: Zoom sperren
+        if (viewportMeta) {
+            viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
         return;
     }
 
     if (window.innerHeight > window.innerWidth) {
-        // Eingeloggt, aber Handy steht senkrecht -> GIF-Hinweis da, Zoom weiterhin sperren
-        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-        gifOverlay.style.display = 'flex';
-        appContent.style.display = 'none';
+        // Eingeloggt + Hochformat -> GIF zeigen, Zoom sperren
+        if (viewportMeta) {
+            viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
+        if (gifOverlay) {
+            gifOverlay.style.display = 'flex';
+        }
     } else {
-        // Eingeloggt im Querformat -> Plan ist da, Zoom wieder erlauben und perfekte Startgrösse erzwingen
-        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0');
-        gifOverlay.style.display = 'none';
-        appContent.style.display = 'block';
+        // Eingeloggt + Querformat -> GIF verstecken, Zoom wieder erlauben
+        if (viewportMeta) {
+            viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0');
+        }
+        if (gifOverlay) {
+            gifOverlay.style.display = 'none';
+        }
     }
 }
 
+// Event-Listener für das Drehen des Handys
 window.addEventListener('resize', pruefeAusrichtung);
 window.addEventListener('orientationchange', pruefeAusrichtung);
-
-
-
     
 
 /* ============================================================
