@@ -23,10 +23,10 @@
     width: 100vw;
     height: 100vh;
     background-color: #000000;
-    z-index: 99999;
+    z-index: 9999999; /* Höher als das Menü (999999), damit es garantiert über allem liegt */
     justify-content: center;
     align-items: center;
-}
+}    
 
     
 #gif-overlay img {
@@ -588,6 +588,15 @@ body {
     backdrop-filter: blur(2px); /* Optional: Blur gleich noch minimal verstärkt für einen schönen Tiefeneffekt */
 }
 
+
+
+@media screen and (max-width: 768px) {
+    #login-container {
+        width: 80% !important;
+        max-width: 280px !important; /* Noch etwas schmaler für kleine Bildschirme */
+        padding: 15px !important;    /* Kompakterer Innenabstand */
+    }
+}
     
 
 
