@@ -441,7 +441,7 @@ body {
 
 .login-card-center h2 { 
     color: #ffffff; 
-    font-size: 26px; 
+    font-size: 32px; 
     margin-bottom: 25px; 
     font-weight: 800; 
     letter-spacing: -0.5px; 
@@ -8700,7 +8700,8 @@ window.fuehreAbklebenAus = async function(klasse) {
         (localStorage.getItem('adminPw')) ||
         ""; 
 
-    if (gespeichertesPW && eingegebenesPW !== gespeichertesPW) {
+    // Strikte Prüfung: Wenn kein Passwort da ist oder es nicht übereinstimmt -> Abbruch!
+    if (!gespeichertesPW || eingegebenesPW !== gespeichertesPW) {
         pwFeld.style.borderColor = "#c0392b";
         pwFeld.value = "";
         pwFeld.placeholder = "Falsches Passwort!";
@@ -8846,9 +8847,6 @@ window.fuehreAbklebenAus = async function(klasse) {
         gridContainer.style.pointerEvents = "auto";
     }
 };
-
-
-
 
 
 /* ============================================================
