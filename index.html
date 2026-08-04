@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1024">
+    <meta name="viewport" id="viewport-meta" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sport-Desk BBZO</title>
 
    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
@@ -30,8 +30,8 @@
 
     
 #gif-overlay img {
-    width: 350px;       /* Feste Grösse, skaliert nicht mit dem Zoom */
-    max-width: 90vw;    /* Passt sich automatisch an, falls das Handy extrem schmal ist */
+    width: 90vw; /* Macht das GIF fast so breit wie den Bildschirm */
+    max-width: 800px; /* Maximale Obergrenze, damit es nicht völlig ausartet */
     height: auto;
 }
 
@@ -4327,15 +4327,26 @@ input.stellvertretung-input {
     let isLoggedIn = false;
 
 function pruefeAusrichtung() {
-    if (!isLoggedIn) return;
-
+    const viewportMeta = document.getElementById('viewport-meta');
     const gifOverlay = document.getElementById('gif-overlay');
-    
-    // Prüfen, ob das Handy senkrecht steht (Höhe ist grösser als Breite)
+    const appContent = document.getElementById('app-content');
+
+    if (!isLoggedIn) {
+        // Solange man im Login ist: Zoom sperren
+        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        return;
+    }
+
     if (window.innerHeight > window.innerWidth) {
+        // Eingeloggt, aber Handy steht senkrecht -> GIF-Hinweis da, Zoom weiterhin sperren
+        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
         gifOverlay.style.display = 'flex';
+        appContent.style.display = 'none';
     } else {
+        // Eingeloggt im Querformat -> Plan ist da, Zoom wieder erlauben und perfekte Startgrösse erzwingen
+        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0');
         gifOverlay.style.display = 'none';
+        appContent.style.display = 'block';
     }
 }
 
