@@ -1693,7 +1693,7 @@ body {
    14. ZUSATZ-MENU & MODAL
    ============================================================ */
 
-/* Das Haupt-Panel (Wird via JS positioniert) */
+/* Das Haupt-Panel (Wird via JS positioniert) - Keine Überlaufeinschränkung, damit Flyouts nicht abgeschnitten werden */
 .extra-menu-panel {
     position: fixed;
     background: #1a1a1a;
@@ -1756,13 +1756,15 @@ body {
     z-index: 1000000;
 }
 
-/* Das eigentliche Menü-Innere mit dem Rahmen, Hintergrund und Scroll-Funktion bei Überlänge */
+/* Das eigentliche Menü-Innere: Wird scrollbar, sobald es zu lang ist */
 .category-submenu-inner {
     background: #1a1a1a;
     border: 2px solid #e67e22;
     border-radius: 8px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     padding: 6px 0;
+    
+    /* NEU: Nur das Untermenü wird scrollbar, wenn es den Bildschirm sprengt */
     max-height: 75vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
