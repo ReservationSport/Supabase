@@ -1707,6 +1707,11 @@ body {
     transform-origin: top right;
     animation: menu-unfold 0.2s ease-out forwards;
     display: none;
+    
+    /* NEU / ANGEPASST: Ermöglicht das Scrollen auf kleinen Handy-Bildschirmen */
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Jede Hauptkategorie ist der Anker für das seitliche Untermenü */
@@ -1910,7 +1915,6 @@ body {
     color: #e67e22;
     opacity: 0.8;
 }
-
     
 
 /* ============================================================
