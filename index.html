@@ -1915,6 +1915,24 @@ body {
     color: #e67e22;
     opacity: 0.8;
 }
+
+
+
+
+/* Greift nur, wenn der Platz nach unten nicht ausreicht */
+.category-submenu.scroll-mode .category-submenu-inner {
+    max-height: 60vh;       /* Begrenzt die Höhe */
+    overflow-y: auto;       /* Macht es scrollbar */
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Optional: Wenn es unten anstößt, könnte es auch nach oben aufklappen, falls gewünscht */
+.category-submenu.flip-up {
+    top: auto !important;
+    bottom: 0 !important;
+}
+
+
     
 
 /* ============================================================
@@ -8987,6 +9005,13 @@ window.toggleExtraMenu = function() {
         // Zuerst sicherstellen, dass alles clean ist
         menu.querySelectorAll('.menu-category.active').forEach(cat => {
             cat.classList.remove('active');
+            // Auch Scroll-Modi beim Schließen zurücksetzen
+            const sub = cat.querySelector('.category-submenu');
+            if (sub) {
+                sub.classList.remove('scroll-mode', 'flip-up');
+                const inner = sub.querySelector('.category-submenu-inner');
+                if (inner) inner.style.maxHeight = '';
+            }
         });
 
         // Positionierung: Direkt unter der Unterkante des Buttons
@@ -9008,6 +9033,12 @@ window.closeExtraMenuCompletely = function() {
         menu.style.display = 'none';
         menu.querySelectorAll('.menu-category.active').forEach(cat => {
             cat.classList.remove('active');
+            const sub = cat.querySelector('.category-submenu');
+            if (sub) {
+                sub.classList.remove('scroll-mode', 'flip-up');
+                const inner = sub.querySelector('.category-submenu-inner');
+                if (inner) inner.style.maxHeight = '';
+            }
         });
     }
     if (backdrop) {
@@ -9033,6 +9064,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!isCategoryHeader) {
                 closeExtraMenuCompletely();
             }
+        });
+
+        // PC-HOVER: Automatische Positionsprüfung einbinden, wenn Maus auf Kategorie fährt
+        extraMenu.querySelectorAll('.menu-category').forEach(category => {
+            category.addEventListener('mouseenter', function() {
+                const submenu = this.querySelector('.category-submenu');
+                if (submenu) {
+                    setTimeout(() => {
+                        checkSubmenuPosition(submenu);
+                    }, 10);
+                }
+            });
         });
     }
 });
@@ -9074,12 +9117,58 @@ window.toggleCategory = function(headerElement, event) {
     allCategories.forEach(cat => {
         if (cat !== currentCategory) {
             cat.classList.remove('active');
+            const sub = cat.querySelector('.category-submenu');
+            if (sub) {
+                sub.classList.remove('scroll-mode', 'flip-up');
+                const inner = sub.querySelector('.category-submenu-inner');
+                if (inner) inner.style.maxHeight = '';
+            }
         }
     });
 
     currentCategory.classList.toggle('active');
+
+    // Wenn die Kategorie jetzt aktiv (geöffnet) ist -> Prüfe die Position des Untermenüs!
+    if (currentCategory.classList.contains('active')) {
+        const submenu = currentCategory.querySelector('.category-submenu');
+        if (submenu) {
+            setTimeout(() => {
+                checkSubmenuPosition(submenu);
+            }, 10);
+        }
+    }
 };
 
+// Funktion, die prüft, ob das Untermenü unten über den Bildschirm ragt
+function checkSubmenuPosition(submenuElement) {
+    const inner = submenuElement.querySelector('.category-submenu-inner');
+    if (!inner) return;
+
+    // Vorher zurücksetzen, um die echte Höhe zu messen
+    submenuElement.classList.remove('scroll-mode', 'flip-up');
+    inner.style.maxHeight = '';
+
+    // Position des Untermenüs im Browser-Fenster ermitteln
+    const rect = inner.getBoundingClientRect();
+    const windowHeight = window.innerHeight;
+
+    // Prüfen, ob das Untermenü unten den Bildschirm überschreitet
+    if (rect.bottom > windowHeight) {
+        // Berechne den verfügbaren Platz abzüglich etwas Puffer (z.B. 20px)
+        const availableHeight = windowHeight - rect.top - 20;
+        
+        if (availableHeight < 150) {
+            // Wenn extrem wenig Platz ist, klappen wir es alternativ nach oben
+            submenuElement.classList.add('flip-up');
+        }
+        
+        // Aktiviere den Scroll-Modus
+        submenuElement.classList.add('scroll-mode');
+        inner.style.maxHeight = Math.max(availableHeight, 150) + 'px';
+    }
+}
+
+    
     
    /* ============================================================
    11.1. MELDUNGEN (DEFEKTE)
