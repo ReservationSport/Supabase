@@ -1707,11 +1707,6 @@ body {
     transform-origin: top right;
     animation: menu-unfold 0.2s ease-out forwards;
     display: none;
-    
-    /* NEU / ANGEPASST: Ermöglicht das Scrollen auf kleinen Handy-Bildschirmen */
-    max-height: 80vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
 }
 
 /* Jede Hauptkategorie ist der Anker für das seitliche Untermenü */
@@ -1761,13 +1756,16 @@ body {
     z-index: 1000000;
 }
 
-/* Das eigentliche Menü-Innere mit dem Rahmen und Hintergrund */
+/* Das eigentliche Menü-Innere mit dem Rahmen, Hintergrund und Scroll-Funktion bei Überlänge */
 .category-submenu-inner {
     background: #1a1a1a;
     border: 2px solid #e67e22;
     border-radius: 8px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     padding: 6px 0;
+    max-height: 75vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* PC: Hover-Effekt mit exklusivem Anzeigen & Überschreiben von angeklickten (.active) Elementen */
