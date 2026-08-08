@@ -12778,20 +12778,38 @@ window.handleLogout = async function() {
         userPw = "";
         isLoggedIn = false;
 
-        // 3. Login-Overlay wieder einblenden
+        // 3. Extra-Menü sofort schliessen
+        const extraMenu = document.getElementById('extra-menu');
+        if (extraMenu) {
+            extraMenu.style.display = 'none';
+        }
+
+        // 4. Eventuellen Global-Loader (Schleier) ausblenden
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.remove('is-visible');
+        }
+
+        // 5. Login-Button aus dem Loader-State holen
+        const loginBtn = document.getElementById('loginBtn');
+        if (loginBtn) {
+            loginBtn.classList.remove('is-loading');
+        }
+
+        // 6. Login-Overlay wieder einblenden
         const loginOverlay = document.getElementById('loginOverlay');
         if (loginOverlay) {
             loginOverlay.style.display = 'flex';
             loginOverlay.classList.remove('fade-out');
         }
 
-        // 4. Eingeloggte UI-Elemente verstecken (z. B. News-Button)
+        // 7. Eingeloggte UI-Elemente verstecken (z. B. News-Button)
         const newsContainer = document.getElementById('news-btn-container');
         if (newsContainer) {
             newsContainer.style.display = 'none';
         }
 
-        // 5. Login-Felder leeren
+        // 8. Login-Felder leeren
         const kuerzelInput = document.getElementById('userKuerzel');
         const pwInput = document.getElementById('pw');
         const errorDiv = document.getElementById('loginError');
@@ -12799,7 +12817,7 @@ window.handleLogout = async function() {
         if (pwInput) pwInput.value = '';
         if (errorDiv) errorDiv.innerText = '';
 
-        // 6. App-Badge auf dem Handy löschen (falls vorhanden)
+        // 9. App-Badge auf dem Handy löschen (falls vorhanden)
         if ('clearAppBadge' in navigator) {
             try {
                 await navigator.clearAppBadge();
