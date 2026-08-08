@@ -4624,7 +4624,7 @@ async function checkUnreadNews(userKuerzel) {
     }
 }
 
-// Push-Registrierung
+// Push-Registrierung (Multi-Device fähig)
 async function subscribeUserToPush(userKuerzel) {
     try {
         const permission = await Notification.requestPermission();
@@ -4636,11 +4636,14 @@ async function subscribeUserToPush(userKuerzel) {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
+        // Wir speichern den Endpoint als eindeutige Kennung pro Gerät/Browser
         await window.supabaseClient.from('push_subscriptions').upsert({
             user_id: userKuerzel,
+            endpoint: subscription.endpoint,
             subscription_data: subscription
-        });
-        console.log("Push-Registrierung erfolgreich!");
+        }, { onConflict: 'endpoint' }); // <--- Konflikt-Ziel ist jetzt der Geräte-Endpoint!
+
+        console.log("Push-Registrierung für dieses Gerät erfolgreich!");
     } catch (err) { console.error("Push-Fehler:", err); }
 }
 
