@@ -4592,7 +4592,71 @@ window.initTeachersCache = async function() {
     }
 };
 
-    
+
+
+// 1. Funktion zum Setzen des App-Badges (Android)
+    async function updateAndroidBadge(count) {
+        if ('setAppBadge' in navigator) {
+            try {
+                if (count > 0) {
+                    await navigator.setAppBadge(count);
+                } else {
+                    await navigator.clearAppBadge();
+                }
+            } catch (error) {
+                console.error("Fehler beim Badge setzen:", error);
+            }
+        }
+    }
+
+    // 2. Ungelesene Nachrichten aus news_db zählen
+    async function checkUnreadNews(userKuerzel) {
+        if (!userKuerzel) return;
+
+        try {
+            // Zählt alle Zeilen für das Kürzel, die noch nicht gelesen sind
+            const { count, error } = await window.supabaseClient
+                .from('news_db')
+                .select('*', { count: 'exact', head: true })
+                .eq('empfänger', userKuerzel)
+                .eq('gelesen', false); // Passe 'gelesen' an, falls deine Spalte anders heißt
+
+            if (error) {
+                console.error("Datenbankfehler:", error);
+                return;
+            }
+
+            const unreadCount = count || 0;
+            await updateAndroidBadge(unreadCount);
+            console.log("Aktuelle ungelesene Nachrichten:", unreadCount);
+
+        } catch (err) {
+            console.error("Fehler beim Prüfen:", err);
+        }
+    }
+
+    // 3. Echtzeit-Lauscher (Supabase Realtime) für die offene/Hintergrund-App
+    function initNewsRealtime(userKuerzel) {
+        window.supabaseClient
+            .channel('badge-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'news_db',
+                    filter: `empfänger=eq.${userKuerzel}`
+                },
+                (payload) => {
+                    console.log("Neue Nachricht in Echtzeit eingetroffen!");
+                    // Sofort das Badge aktualisieren, wenn eine neue Zeile reinkommt
+                    checkUnreadNews(userKuerzel);
+                }
+            )
+            .subscribe();
+    }
+
+     
     
 /* ============================================================
    3. LOGIN (Mit Kürzel-Lookup, .ilike und Start-Passwort-Zwang)
