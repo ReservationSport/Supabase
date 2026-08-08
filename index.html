@@ -4612,10 +4612,16 @@ async function checkUnreadNews(userKuerzel) {
             .from('news_db')
             .select('*', { count: 'exact', head: true })
             .eq('empfänger', userKuerzel)
-            .or(`gelesen.is.null,gelesen.not.like.%${userKuerzel}%`);
+            .or(`gelesen.is.null,gelesen.not.like.%25${userKuerzel}%25`);
 
-        if (!error) await updateAndroidBadge(count || 0);
-    } catch (err) { console.error("Prüfung fehlgeschlagen:", err); }
+        if (error) {
+            console.error("Fehler beim Zählen ungelesener Nachrichten:", error);
+        } else {
+            await updateAndroidBadge(count || 0);
+        }
+    } catch (err) { 
+        console.error("Prüfung fehlgeschlagen:", err); 
+    }
 }
 
 // Push-Registrierung
