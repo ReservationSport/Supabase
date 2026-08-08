@@ -4596,22 +4596,17 @@ window.initTeachersCache = async function() {
 
 
 
-// 1. Funktion zum Setzen des App-Badges
+// 2. BADGE AKTUALISIEREN
     async function updateAndroidBadge(count) {
         if ('setAppBadge' in navigator) {
             try {
-                if (count > 0) {
-                    await navigator.setAppBadge(count);
-                } else {
-                    await navigator.clearAppBadge();
-                }
-            } catch (error) {
-                console.error("Fehler beim Badge setzen:", error);
-            }
+                if (count > 0) await navigator.setAppBadge(count);
+                else await navigator.clearAppBadge();
+            } catch (e) { console.error("Badge Fehler:", e); }
         }
     }
 
-    // 2. Ungelesene Nachrichten zählen
+    // 3. UNGELESENE NACHRICHTEN ZÄHLEN (Mit dem korrekten Filter!)
     async function checkUnreadNews(userKuerzel) {
         if (!userKuerzel) return;
         try {
@@ -4619,54 +4614,55 @@ window.initTeachersCache = async function() {
                 .from('news_db')
                 .select('*', { count: 'exact', head: true })
                 .eq('empfänger', userKuerzel)
-                .eq('gelesen', false);
+                .or(`gelesen.is.null,gelesen.not.like.%${userKuerzel}%`);
 
-            if (error) {
-                console.error("Datenbankfehler:", error);
-                return;
-            }
-
-            const unreadCount = count || 0;
-            await updateAndroidBadge(unreadCount);
-        } catch (err) {
-            console.error("Fehler beim Prüfen:", err);
-        }
+            if (!error) await updateAndroidBadge(count || 0);
+        } catch (err) { console.error("Prüfung fehlgeschlagen:", err); }
     }
 
-    // 3. Echtzeit-Lauscher
+    // 4. PUSH-REGISTRIERUNG (Handy bei Supabase anmelden)
+    async function subscribeUserToPush(userKuerzel) {
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: VAPID_PUBLIC_KEY
+            });
+
+            await window.supabaseClient.from('push_subscriptions').upsert({
+                user_id: userKuerzel,
+                subscription_data: subscription
+            });
+            console.log("Push-Registrierung erfolgreich!");
+        } catch (err) { console.error("Push-Fehler:", err); }
+    }
+
+    // 5. REALTIME LAUSCHER
     function initNewsRealtime(userKuerzel) {
         window.supabaseClient
-            .channel('badge-realtime')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'news_db',
-                    filter: `empfänger=eq.${userKuerzel}`
-                },
-                (payload) => {
-                    checkUnreadNews(userKuerzel);
-                }
-            )
+            .channel('news-channel')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfänger=eq.${userKuerzel}` }, 
+                () => checkUnreadNews(userKuerzel))
             .subscribe();
     }
 
-    // 4. NEU: Service Worker registrieren
+    // 6. INITIALISIERUNG
     async function registerServiceWorker() {
         if ('serviceWorker' in navigator) {
-            try {
-                const registration = await navigator.serviceWorker.register('./sw.js');
-                console.log("Service Worker erfolgreich registriert:", registration);
-            } catch (error) {
-                console.error("Service Worker Registrierung fehlgeschlagen:", error);
-            }
+            await navigator.serviceWorker.register('./sw.js');
         }
     }
 
-    // HIER WIRD ES AUSGEFÜHRT:
-    registerServiceWorker();
-
+    // START: Aufrufen nach Login
+    async function onLoginSuccess(userKuerzel) {
+        await registerServiceWorker();
+        await subscribeUserToPush(userKuerzel);
+        initNewsRealtime(userKuerzel);
+        checkUnreadNews(userKuerzel);
+    }
     
     
 /* ============================================================
