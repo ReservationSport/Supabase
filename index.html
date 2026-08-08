@@ -3816,15 +3816,15 @@ input.stellvertretung-input {
 
     <hr class="menu-divider">
 
-    <!-- 🚪 Kategorie 5: Abmelden -->
-    <div class="menu-category">
-        <div class="menu-category-header" onclick="window.handleLogout()" style="cursor: pointer;">
-            <span>
-                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px; margin: 0 8px;">logout</span>
-                <span>Abmelden</span>
-            </span>
-        </div>
+   <!-- 🚪 Kategorie 5: Abmelden -->
+<div class="menu-category">
+    <div class="menu-category-header" onclick="triggerLogout(event)" style="cursor: pointer;">
+        <span>
+            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px; margin: 0 8px;">logout</span>
+            <span>Abmelden</span>
+        </span>
     </div>
+</div>
 
 </div>
 
@@ -9231,16 +9231,17 @@ window.closeExtraMenuViaBackdrop = function() {
 };
 
 // Zentraler Listener für das gesamte Menü-Panel:
-// Schliesst alles (inkl. Schleier), sobald auf einen Untermenüpunkt, Link oder Inhalt geklickt wird – ausser auf die Hauptkategorien.
+// Schliesst alles (inkl. Schleier), sobald auf einen Untermenüpunkt, Link oder Inhalt geklickt wird – ausser auf die Hauptkategorien und Abmelden.
 document.addEventListener('DOMContentLoaded', function() {
     const extraMenu = document.getElementById('extra-menu');
     if (extraMenu) {
         extraMenu.addEventListener('click', function(e) {
-            // Prüfen, ob direkt auf einen Hauptkategorie-Header geklickt wurde
+            // Prüfen, ob direkt auf einen Hauptkategorie-Header ODER speziell auf "Abmelden" geklickt wurde
             const isCategoryHeader = e.target.closest('.menu-category-header');
+            const isLogoutAction = e.target.closest('[onclick*="triggerLogout"]');
             
-            // Wenn es KEIN Kategorie-Header war (also z.B. ein Link etc.), alles sofort schließen!
-            if (!isCategoryHeader) {
+            // Wenn es KEIN Kategorie-Header und KEIN Logout war, alles sofort schließen!
+            if (!isCategoryHeader && !isLogoutAction) {
                 closeExtraMenuCompletely();
             }
         });
@@ -12763,6 +12764,21 @@ async function getActiveBannersFromSupabase() {
     // 13. ABMELDEN
     // ============================================================
 
+
+// Spezielle Funktion, die das Menü sofort schliesst und danach den Logout ausführt
+window.triggerLogout = async function(event) {
+    if (event) event.stopPropagation();
+    
+    // 1. Menü und Backdrop sofort clean schließen
+    if (typeof closeExtraMenuCompletely === 'function') {
+        closeExtraMenuCompletely();
+    }
+    
+    // 2. Kurz warten/sicherstellen, dass das Menü zu ist, dann Logout ausführen
+    await window.handleLogout();
+};
+
+    
 window.handleLogout = async function() {
     try {
         // 1. Supabase Session beenden
