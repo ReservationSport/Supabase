@@ -4371,7 +4371,7 @@ input.stellvertretung-input {
 
 
 
-    let isLoggedIn = false;
+let isLoggedIn = false;
 
 function pruefeAusrichtung() {
     const viewportMeta = document.getElementById('viewport-meta');
@@ -4447,8 +4447,90 @@ window.currentInteractionMode = null;
    2. INITIALISIERUNG & PUSH-HELFER
    ============================================================ */
 
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Lokales Datum korrekt berechnen
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Prüfen, ob bereits eine aktive Supabase-Session existiert (Auto-Login / Eingeloggt bleiben)
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        
+        if (session) {
+            console.log("Aktive Session gefunden, überspringe Login-Overlay...");
+            
+            const loginOverlay = document.getElementById('loginOverlay');
+            if (loginOverlay) loginOverlay.style.display = 'none';
+
+            const savedKuerzel = localStorage.getItem('userKuerzel');
+            if (savedKuerzel) {
+                userKuerzel = savedKuerzel;
+                try {
+                    await registerServiceWorker();
+                    await subscribeUserToPush(userKuerzel);
+                    initNewsRealtime(userKuerzel);
+                    checkUnreadNews(userKuerzel);
+                } catch (pushErr) {
+                    console.error("Fehler bei Push-Init nach Auto-Login:", pushErr);
+                }
+            }
+
+            // Paralleles Vorladen der App-Daten
+            const linksPromise = supabaseClient.from('links').select('*');
+            const matPromise = supabaseClient.from('material').select('*');
+            const sperrzeitPromise = window.initSperrzeitenCache();
+            const teachersPromise = window.initTeachersCache();
+
+            const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
+
+            if (!linksRes.error) {
+                window.lastLinks = linksRes.data || [];
+                if (typeof window.renderLinks === 'function') {
+                    window.renderLinks();
+                }
+            }
+            
+            if (!matRes.error) {
+                window.verfügbareMaterialien = matRes.data || [];
+            }
+
+            isLoggedIn = true;
+            pruefeAusrichtung();
+            
+            const newsContainer = document.getElementById('news-btn-container');
+            if (newsContainer) newsContainer.style.display = 'block';
+            
+            if (typeof initNewsSystem === 'function') await initNewsSystem();
+
+            window.initialLoadDone = true;
+            
+            const dp = document.getElementById('datePicker');
+            if (dp) {
+                const now = new Date();
+                const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                dp.value = localDateStr;
+                updateDateText(dp.value);
+                updateNavButtons();
+                if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
+            }
+
+            // Live-Datum-Aktualisierung im Hintergrund
+            setInterval(async () => {
+                const jetzt = new Date();
+                const localToday = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
+                const datePicker = document.getElementById('datePicker');
+                
+                if (datePicker && datePicker.value !== localToday && datePicker.value <= localToday) {
+                    datePicker.value = localToday;
+                    if (typeof updateDateText === 'function') updateDateText(localToday);
+                    if (typeof updateNavButtons === 'function') updateNavButtons();
+                    if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(localToday);
+                }
+            }, 60000);
+
+            return; // Abbrechen, da Auto-Login erfolgreich durchlaufen
+        }
+    } catch (sessionErr) {
+        console.error("Fehler beim Prüfen der Session:", sessionErr);
+    }
+
+    // Standard-Ablauf, falls kein Login vorhanden ist
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
@@ -4638,7 +4720,6 @@ async function subscribeUserToPush(userKuerzel) {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        // Diagnose: Was liefert der Browser?
         console.log("Gesamtes Subscription-Objekt:", subscription);
         console.log("Extrahierter Endpoint:", subscription.endpoint);
 
@@ -4778,6 +4859,7 @@ window.handleLogin = async function() {
         userPw = activePassword;
         localStorage.setItem('userPw', activePassword);
         userKuerzel = kuerzelVal;
+        localStorage.setItem('userKuerzel', kuerzelVal);
         
         // --- PUSH & BADGE NACH LOGIN INITIALISIEREN ---
         try {
