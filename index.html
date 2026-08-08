@@ -4636,15 +4636,29 @@ async function subscribeUserToPush(userKuerzel) {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        // Wir speichern den Endpoint als eindeutige Kennung pro Gerät/Browser
-        await window.supabaseClient.from('push_subscriptions').upsert({
+        // Diagnose: Was liefert der Browser?
+        console.log("Gesamtes Subscription-Objekt:", subscription);
+        console.log("Extrahierter Endpoint:", subscription.endpoint);
+
+        if (!subscription.endpoint) {
+            console.error("Fehler: Browser hat keinen Endpoint geliefert!");
+            return;
+        }
+
+        const { error: upsertError } = await window.supabaseClient.from('push_subscriptions').upsert({
             user_id: userKuerzel,
             endpoint: subscription.endpoint,
             subscription_data: subscription
-        }, { onConflict: 'endpoint' }); // <--- Konflikt-Ziel ist jetzt der Geräte-Endpoint!
+        }, { onConflict: 'endpoint' });
 
-        console.log("Push-Registrierung für dieses Gerät erfolgreich!");
-    } catch (err) { console.error("Push-Fehler:", err); }
+        if (upsertError) {
+            console.error("Supabase Upsert Fehler:", upsertError);
+        } else {
+            console.log("Push-Registrierung für dieses Gerät erfolgreich gespeichert!");
+        }
+    } catch (err) { 
+        console.error("Push-Fehler:", err); 
+    }
 }
 
 // Realtime Lauscher
