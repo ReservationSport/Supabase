@@ -4611,8 +4611,8 @@ async function checkUnreadNews(userKuerzel) {
         const { count, error } = await window.supabaseClient
             .from('news_db')
             .select('*', { count: 'exact', head: true })
-            .eq('empfänger', userKuerzel)
-            .or(`gelesen.is.null,gelesen.not.like.%25${userKuerzel}%25`);
+            .eq('empfaenger', userKuerzel)
+            .or(`gelesen.is.null,gelesen.not.like."%25${userKuerzel}%25"`);
 
         if (error) {
             console.error("Fehler beim Zählen ungelesener Nachrichten:", error);
@@ -4648,11 +4648,11 @@ async function subscribeUserToPush(userKuerzel) {
 function initNewsRealtime(userKuerzel) {
     window.supabaseClient
         .channel('news-channel')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfänger=eq.${userKuerzel}` }, 
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfaenger=eq.${userKuerzel}` }, 
             () => checkUnreadNews(userKuerzel))
         .subscribe();
 }
-
+    
 // Service Worker Registrierung
 async function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
@@ -4772,7 +4772,7 @@ window.handleLogin = async function() {
 
         // --- PARALLELES VORLADEN ---
         const linksPromise = supabaseClient.from('links').select('*');
-        const matPromise = supabaseClient.from('materialien').select('*');
+        const matPromise = supabaseClient.from('material').select('*');
         const sperrzeitPromise = window.initSperrzeitenCache();
         const teachersPromise = window.initTeachersCache();
 
