@@ -3814,6 +3814,18 @@ input.stellvertretung-input {
         </div>
     </div>
 
+    <hr class="menu-divider">
+
+    <!-- 🚪 Kategorie 5: Abmelden -->
+    <div class="menu-category">
+        <div class="menu-category-header" onclick="window.handleLogout()" style="cursor: pointer;">
+            <span>
+                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px; margin: 0 8px;">logout</span>
+                <span>Abmelden</span>
+            </span>
+        </div>
+    </div>
+
 </div>
 
 
@@ -12727,10 +12739,6 @@ async function performPaste(targetSlot, data) {
 
 
 
-  
-
-
-
 async function getActiveBannersFromSupabase() {
     if (!window.supabaseClient) return [];
 
@@ -12746,6 +12754,65 @@ async function getActiveBannersFromSupabase() {
 
     return data;
 }
+
+
+
+
+
+    // ============================================================
+    // 13. ABMELDEN
+    // ============================================================
+
+window.handleLogout = async function() {
+    try {
+        // 1. Supabase Session beenden
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) {
+            console.error("Fehler beim Supabase Logout:", error);
+        }
+
+        // 2. Lokale Variablen und localStorage aufräumen
+        localStorage.removeItem('userKuerzel');
+        localStorage.removeItem('userPw');
+        userKuerzel = "";
+        userPw = "";
+        isLoggedIn = false;
+
+        // 3. Login-Overlay wieder einblenden
+        const loginOverlay = document.getElementById('loginOverlay');
+        if (loginOverlay) {
+            loginOverlay.style.display = 'flex';
+            loginOverlay.classList.remove('fade-out');
+        }
+
+        // 4. Eingeloggte UI-Elemente verstecken (z. B. News-Button)
+        const newsContainer = document.getElementById('news-btn-container');
+        if (newsContainer) {
+            newsContainer.style.display = 'none';
+        }
+
+        // 5. Login-Felder leeren
+        const kuerzelInput = document.getElementById('userKuerzel');
+        const pwInput = document.getElementById('pw');
+        const errorDiv = document.getElementById('loginError');
+        if (kuerzelInput) kuerzelInput.value = '';
+        if (pwInput) pwInput.value = '';
+        if (errorDiv) errorDiv.innerText = '';
+
+        // 6. App-Badge auf dem Handy löschen (falls vorhanden)
+        if ('clearAppBadge' in navigator) {
+            try {
+                await navigator.clearAppBadge();
+            } catch (e) {
+                console.error("Badge konnte nicht gelöscht werden:", e);
+            }
+        }
+
+        console.log("Erfolgreich abgemeldet.");
+    } catch (err) {
+        console.error("Unerwarteter Fehler beim Logout:", err);
+    }
+};
 
 
     
