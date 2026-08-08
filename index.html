@@ -4408,44 +4408,44 @@ window.addEventListener('orientationchange', pruefeAusrichtung);
     
 
 /* ============================================================
-    1. GLOBALE KONFIGURATION & VARIABLEN
-    ============================================================ */
-    // Supabase-Verbindung einrichten
-    const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
+   1. GLOBALE KONFIGURATION & VARIABLEN
+   ============================================================ */
+// Supabase-Verbindung einrichten
+const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
 
-    // Supabase-Client initialisieren
-    window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Supabase-Client initialisieren
+window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const VAPID_PUBLIC_KEY = "BH7dZXXh0gSvJSuohLCmGW8BN8-5cYP9h4ZQcSYdKk-vq38ZKXeDkJujH2Vh8n18ueLx4H7R-BJWWusfZRPm1jM";
-    
-    // Status-Variablen
-    let userPw = "", userKuerzel = "";
-    let currentPlanData = [];        // Speichert die Slots vom Server
-    window.lastPlanData = {};        // Kompatibilitäts-Alias für Material-Funktionen
-    let configFarben = {};           // Farben für Klassen aus dem Sheet
-    let allClassTeachers = {};       // Zuordnung Klasse -> Kürzel
-    window.verfügbareMaterialien = []; // Liste der Materialien aus ellem Sheet
-    
-    // Falls ein externer Server-Endpoint (z.B. Google Apps Script) genutzt wird:
-    let url = ""; // Hier ggf. die URL eintragen, falls 'fetch(url)' verwendet wird!
+const VAPID_PUBLIC_KEY = "BH7dZXXh0gSvJSuohLCmGW8BN8-5cYP9h4ZQcSYdKk-vq38ZKXeDkJujH2Vh8n18ueLx4H7R-BJWWusfZRPm1jM";
 
-    // UI-Variablen
-    let pendingNews = [];
-    let isSaving = false;            // Status für den Global Loader
+// Status-Variablen
+let userPw = "", userKuerzel = "";
+let currentPlanData = [];        // Speichert die Slots vom Server
+window.lastPlanData = {};        // Kompatibilitäts-Alias für Material-Funktionen
+let configFarben = {};            // Farben für Klassen aus dem Sheet
+let allClassTeachers = {};        // Zuordnung Klasse -> Kürzel
+window.verfügbareMaterialien = []; // Liste der Materialien aus dem Sheet
 
-    window.lastKnownChange = 0;
-    window.isSyncPaused = false; // Flag: Darf syncPlan gerade laufen?
-    window.syncPauseTimer = null; // Timer für die "Ruhephase" nach Aktionen
-    window.lockedSlots = {}; // Speichert: { "slotID": true }
-    window.currentInteractionMode = null;
+// Falls ein externer Server-Endpoint (z.B. Google Apps Script) genutzt wird:
+let url = ""; 
 
-    
+// UI-Variablen
+let pendingNews = [];
+let isSaving = false;            // Status für den Global Loader
+
+window.lastKnownChange = 0;
+window.isSyncPaused = false; 
+window.syncPauseTimer = null; 
+window.lockedSlots = {}; 
+window.currentInteractionMode = null;
+
+
 /* ============================================================
-   2. INITIALISIERUNG
+   2. INITIALISIERUNG & PUSH-HELFER
    ============================================================ */
 
-    document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     // 1. Lokales Datum korrekt berechnen
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -4462,18 +4462,15 @@ window.addEventListener('orientationchange', pruefeAusrichtung);
     }
 });
 
-
 /**
  * Lädt und berechnet alle Kalender- und Wochen-Kontexte für ein gegebenes Datum.
  */
 window.fetchKalenderContext = async function(dateObj) {
-    // 1. ISO-Kalenderwoche berechnen
     const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 
-    // 2. Kalender-Daten aus Supabase laden (Vergleich: kalenderwoche in DB == berechnete weekNo)
     let kalenderData = null;
     try {
         const { data, error } = await supabaseClient
@@ -4487,7 +4484,6 @@ window.fetchKalenderContext = async function(dateObj) {
         console.error("Fehler beim Laden der Kalender-Tabelle:", e);
     }
 
-    // 3. Werte auswerten
     let aktuelleSchulwoche = 1;
     let u21SlotIdx = null;
     let isEvenWeek = false;
@@ -4496,12 +4492,10 @@ window.fetchKalenderContext = async function(dateObj) {
         const schul = kalenderData.schulwoche !== undefined && kalenderData.schulwoche !== null ? kalenderData.schulwoche.toString().trim() : "";
         const u21 = kalenderData.u21_woche !== undefined && kalenderData.u21_woche !== null ? kalenderData.u21_woche.toString().trim() : "";
 
-        // A) Schulwoche ermitteln
         if (schul !== "" && !isNaN(schul)) {
             aktuelleSchulwoche = parseInt(schul);
         }
 
-        // B) U21 Slot-Index aus u21_woche ermitteln (HAT NICHTS MIT A/B ZU TUN!)
         if (u21 !== "" && !isNaN(u21)) {
             const val = parseInt(u21);
             if (val >= 1 && val <= 5) {
@@ -4509,7 +4503,6 @@ window.fetchKalenderContext = async function(dateObj) {
             }
         }
 
-        // C) A/B Logik: Prüft AUSSCHLIESSLICH, ob die Schulwoche gerade oder ungerade ist
         if (schul !== "" && !isNaN(schul)) {
             isEvenWeek = (parseInt(schul) % 2 === 0);
         }
@@ -4517,7 +4510,6 @@ window.fetchKalenderContext = async function(dateObj) {
 
     const istUngeradeWoche = !isEvenWeek;
 
-    // Klassen-Auflösung (A/B Logik via Leerzeichen am Slash)
     const resolveKlasse = (roheKlasse) => {
         if (!roheKlasse) return "";
         const trimmed = roheKlasse.toString().trim();
@@ -4542,7 +4534,6 @@ window.fetchKalenderContext = async function(dateObj) {
     };
 };
 
-    // Globale Map für den Sperrzeiten-Cache definieren
 window.sperrzeitenMap = {};
 window.initSperrzeitenCache = async function() {
     try {
@@ -4578,93 +4569,92 @@ window.initTeachersCache = async function() {
             });
         }
         
-        // Fallback falls master_db leer ist
         if (teachers.length === 0 && window.allClassTeachers) {
             teachers = Array.isArray(window.allClassTeachers) ? window.allClassTeachers : Object.values(window.allClassTeachers);
         }
         
         window.allTeachers = [...new Set(teachers.map(t => t.toString().trim().toUpperCase()))].filter(Boolean);
-        console.log("✅ Lehrer aus master_db erfolgreich im Cache:", window.allTeachers);
         return window.allTeachers;
         
     } catch (e) {
-        console.error("❌ Fehler beim Laden der Lehrer aus master_db:", e);
         window.allTeachers = [];
         return [];
     }
 };
 
-
-
-// 2. BADGE AKTUALISIEREN
-    async function updateAndroidBadge(count) {
-        if ('setAppBadge' in navigator) {
-            try {
-                if (count > 0) await navigator.setAppBadge(count);
-                else await navigator.clearAppBadge();
-            } catch (e) { console.error("Badge Fehler:", e); }
-        }
+// VAPID-Key Konvertierungs-Hilfsfunktion
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
     }
+    return outputArray;
+}
 
-    // 3. UNGELESENE NACHRICHTEN ZÄHLEN (Mit dem korrekten Filter!)
-    async function checkUnreadNews(userKuerzel) {
-        if (!userKuerzel) return;
+// Badge aktualisieren
+async function updateAndroidBadge(count) {
+    if ('setAppBadge' in navigator) {
         try {
-            const { count, error } = await window.supabaseClient
-                .from('news_db')
-                .select('*', { count: 'exact', head: true })
-                .eq('empfänger', userKuerzel)
-                .or(`gelesen.is.null,gelesen.not.like.%${userKuerzel}%`);
-
-            if (!error) await updateAndroidBadge(count || 0);
-        } catch (err) { console.error("Prüfung fehlgeschlagen:", err); }
+            if (count > 0) await navigator.setAppBadge(count);
+            else await navigator.clearAppBadge();
+        } catch (e) { console.error("Badge Fehler:", e); }
     }
+}
 
-    // 4. PUSH-REGISTRIERUNG (Handy bei Supabase anmelden)
-    async function subscribeUserToPush(userKuerzel) {
-        try {
-            const permission = await Notification.requestPermission();
-            if (permission !== 'granted') return;
+// Ungelesene Nachrichten zählen
+async function checkUnreadNews(userKuerzel) {
+    if (!userKuerzel) return;
+    try {
+        const { count, error } = await window.supabaseClient
+            .from('news_db')
+            .select('*', { count: 'exact', head: true })
+            .eq('empfänger', userKuerzel)
+            .or(`gelesen.is.null,gelesen.not.like.%${userKuerzel}%`);
 
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: VAPID_PUBLIC_KEY
-            });
+        if (!error) await updateAndroidBadge(count || 0);
+    } catch (err) { console.error("Prüfung fehlgeschlagen:", err); }
+}
 
-            await window.supabaseClient.from('push_subscriptions').upsert({
-                user_id: userKuerzel,
-                subscription_data: subscription
-            });
-            console.log("Push-Registrierung erfolgreich!");
-        } catch (err) { console.error("Push-Fehler:", err); }
+// Push-Registrierung
+async function subscribeUserToPush(userKuerzel) {
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+
+        await window.supabaseClient.from('push_subscriptions').upsert({
+            user_id: userKuerzel,
+            subscription_data: subscription
+        });
+        console.log("Push-Registrierung erfolgreich!");
+    } catch (err) { console.error("Push-Fehler:", err); }
+}
+
+// Realtime Lauscher
+function initNewsRealtime(userKuerzel) {
+    window.supabaseClient
+        .channel('news-channel')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfänger=eq.${userKuerzel}` }, 
+            () => checkUnreadNews(userKuerzel))
+        .subscribe();
+}
+
+// Service Worker Registrierung
+async function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        await navigator.serviceWorker.register('./sw.js');
     }
+}
 
-    // 5. REALTIME LAUSCHER
-    function initNewsRealtime(userKuerzel) {
-        window.supabaseClient
-            .channel('news-channel')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfänger=eq.${userKuerzel}` }, 
-                () => checkUnreadNews(userKuerzel))
-            .subscribe();
-    }
 
-    // 6. INITIALISIERUNG
-    async function registerServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            await navigator.serviceWorker.register('./sw.js');
-        }
-    }
-
-    // START: Aufrufen nach Login
-    async function onLoginSuccess(userKuerzel) {
-        await registerServiceWorker();
-        await subscribeUserToPush(userKuerzel);
-        initNewsRealtime(userKuerzel);
-        checkUnreadNews(userKuerzel);
-    }
-    
-    
 /* ============================================================
    3. LOGIN (Mit Kürzel-Lookup, .ilike und Start-Passwort-Zwang)
    ============================================================ */
@@ -4694,7 +4684,6 @@ window.handleLogin = async function() {
     if (errorDiv) errorDiv.innerText = "";
 
     try {
-        // --- 1. SCHRITT: E-MAIL & FLAG AUS DER 'teachers'-TABELLE ABRUFEN (.ilike ignoriert Groß/Klein) ---
         const { data: teacherData, error: teacherError } = await supabaseClient
             .from('teachers')
             .select('email, must_change_password')
@@ -4709,7 +4698,6 @@ window.handleLogin = async function() {
 
         const realEmail = teacherData.email;
 
-        // --- 2. SCHRITT: SUPABASE AUTHENTIFIZIERUNG ---
         const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
             email: realEmail,
             password: pwVal,
@@ -4721,10 +4709,8 @@ window.handleLogin = async function() {
             return;
         }
 
-        // Standardmäßig nutzen wir zunächst das eingegebene Passwort
         let activePassword = pwVal;
 
-        // --- 3. SCHRITT: PRÜFEN OB DAS START-PASSWORT GEÄNDERT WERDEN MUSS ---
         if (teacherData.must_change_password) {
             let validNewPassword = false;
             let newPassword = "";
@@ -4745,7 +4731,6 @@ window.handleLogin = async function() {
                 }
             }
 
-            // Neues Passwort bei Supabase Auth speichern
             const { error: updateError } = await supabaseClient.auth.updateUser({
                 password: newPassword
             });
@@ -4756,23 +4741,30 @@ window.handleLogin = async function() {
                 return;
             }
 
-            // In der teachers-Tabelle must_change_password auf false setzen
             await supabaseClient
                 .from('teachers')
                 .update({ must_change_password: false })
                 .ilike('lehrer', kuerzelVal);
 
             alert("Passwort erfolgreich geändert! Du wirst nun eingeloggt.");
-            
-            // Das neue Passwort wird für die Session übernommen
             activePassword = newPassword;
         }
 
         userPw = activePassword;
-        localStorage.setItem('userPw', activePassword); // <--- HIER: Direkt im localStorage sichern!
+        localStorage.setItem('userPw', activePassword);
         userKuerzel = kuerzelVal;
         
-        // --- PARALLELES VORLADEN (Links, Materialien & Sperrzeiten-Cache) ---
+        // --- PUSH & BADGE NACH LOGIN INITIALISIEREN ---
+        try {
+            await registerServiceWorker();
+            await subscribeUserToPush(kuerzelVal);
+            initNewsRealtime(kuerzelVal);
+            checkUnreadNews(kuerzelVal);
+        } catch (pushErr) {
+            console.error("Fehler bei Push-Initialisierung:", pushErr);
+        }
+
+        // --- PARALLELES VORLADEN ---
         const linksPromise = supabaseClient.from('links').select('*');
         const matPromise = supabaseClient.from('materialien').select('*');
         const sperrzeitPromise = window.initSperrzeitenCache();
@@ -4796,23 +4788,19 @@ window.handleLogin = async function() {
         await new Promise(resolve => setTimeout(resolve, 500));
         if (loginOverlay) loginOverlay.style.display = 'none';
 
-        // --- HIER AKTIVIEREN WIR DIE DREH-PFLICHT ---
         isLoggedIn = true;
         pruefeAusrichtung();
-        // ---------------------------------------------
         
         const newsContainer = document.getElementById('news-btn-container');
         if (newsContainer) newsContainer.style.display = 'block';
         
         if (typeof initNewsSystem === 'function') await initNewsSystem();
 
-        // Login erfolgreich -> Lade-Sperre aufheben und Plan laden
         window.initialLoadDone = true;
         if (dp && typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
         
         if (loadingOverlay) loadingOverlay.classList.remove('is-visible');
 
-        // --- TAGESWECHSEL-CHECK ---
         setInterval(async () => {
             const jetzt = new Date();
             const localToday = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
@@ -4838,6 +4826,7 @@ window.handleLogin = async function() {
     }
 };
 
+    
 
 /* ============================================================
    3.1 PASSWORT ZURÜCKSETZEN (Über Kürzel-Lookup in 'teachers')
