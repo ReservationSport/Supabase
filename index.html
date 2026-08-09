@@ -4667,6 +4667,23 @@ input.stellvertretung-input {
     </div>
 </div>
 
+
+
+<!-- ============================================================
+    USER-AUSWAHL MODAL (Für 1:1 Chats)
+    ============================================================ -->
+<div id="userSelectModal" class="chat-overlay" style="display: none; z-index: 10000;">
+    <div style="background: white; padding: 20px; border-radius: 12px; width: 320px; max-height: 450px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <h3 style="margin-top: 0; font-size: 1.1rem; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Kollegen auswählen</h3>
+        
+        <div id="userSelectList" style="flex: 1; overflow-y: auto; margin: 10px 0; display: flex; flex-direction: column; gap: 6px;">
+            <!-- Wird dynamisch gefüllt -->
+        </div>
+        
+        <button onclick="closeUserSelectModal()" style="padding: 10px; background: #e2e8f0; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; color: #475569; margin-top: 5px;">Abbrechen</button>
+    </div>
+</div>
+
     
     
 </body>
@@ -13578,20 +13595,138 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
-window.openNewChatModal = function() {
-    const zielKuerzel = prompt("Gib das Kürzel des Kollegen ein (z.B. für einen 1:1 Chat):");
-    if (!zielKuerzel) return;
+/* ============================================================
+    NEUER 1:1 CHAT (Auswahl-Liste statt Prompt)
+    ============================================================ */
 
-    const cleanZiel = zielKuerzel.toLowerCase().trim();
+window.openNewChatModal = async function() {
+    const modal = document.getElementById('userSelectModal');
+    const listEl = document.getElementById('userSelectList');
+    if (!modal || !listEl) return;
+
+    listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px; font-size: 0.9rem;">Lade Kollegen...</div>';
+    modal.style.display = 'flex';
+
+    const client = window.supabaseClient;
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    let usersSet = new Set();
 
-    if (cleanZiel === aktuellerUser) {
-        alert("Du kannst keinen Chat mit dir selbst starten.");
-        return;
+    try {
+        if (client) {
+            // 1. Bekannte User aus chat_room_members sammeln
+            const { data: members } = await client.from('chat_room_members').select('user_kuerzel');
+            if (members) members.forEach(m => { if (m.user_kuerzel) usersSet.add(m.user_kuerzel.toLowerCase().trim()); });
+
+            // 2. Bekannte User aus news_db (verfasser) sammeln, damit alle da sind
+            const { data: news } = await client.from('news_db').select('verfasser');
+            if (news) news.forEach(n => { if (n.verfasser) usersSet.add(n.verfasser.toLowerCase().trim()); });
+        }
+
+        // Eigenes Kürzel konsequent entfernen
+        usersSet.delete(aktuellerUser);
+
+        const usersArray = Array.from(usersSet).sort();
+
+        listEl.innerHTML = "";
+
+        if (usersArray.length === 0) {
+            listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px; font-size: 0.9rem;">Keine anderen Kollegen gefunden.</div>';
+            return;
+        }
+
+        usersArray.forEach(userKrz => {
+            const btn = document.createElement('div');
+            btn.style.cssText = "padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s;";
+            
+            btn.innerHTML = `
+                <div style="background: #cbd5e1; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #334155; font-size: 0.85rem;">
+                    ${userKrz.substring(0, 2).toUpperCase()}
+                </div>
+                <div style="font-weight: bold; color: #1e293b; text-transform: uppercase; font-size: 0.95rem;">${userKrz}</div>
+            `;
+
+            btn.onmouseover = () => btn.style.background = '#f1f5f9';
+            btn.onmouseout = () => btn.style.background = '#f8fafc';
+
+            btn.onclick = () => {
+                closeUserSelectModal();
+                startDirectChatWith(userKrz);
+            };
+
+            listEl.appendChild(btn);
+        });
+
+    } catch (e) {
+        console.error("Fehler beim Laden der User-Liste:", e);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px; font-size: 0.9rem;">Fehler beim Laden der Kollegen.</div>';
     }
-
-    alert(`1:1 Chat mit ${cleanZiel.toUpperCase()} wird vorbereitet...`);
 };
+
+window.closeUserSelectModal = function() {
+    const modal = document.getElementById('userSelectModal');
+    if (modal) modal.style.display = 'none';
+};
+
+// Hilfsfunktion zum Erstellen oder Öffnen des 1:1 Chats mit dem gewählten User
+async function startDirectChatWith(cleanZiel) {
+    const client = window.supabaseClient;
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    if (!client || !cleanZiel) return;
+
+    try {
+        // Prüfen, ob bereits ein Direct-Chat existiert
+        const { data: myMemberships } = await client
+            .from('chat_room_members')
+            .select('room_id')
+            .eq('user_kuerzel', aktuellerUser);
+
+        if (myMemberships && myMemberships.length > 0) {
+            const roomIds = myMemberships.map(m => m.room_id);
+            
+            const { data: sharedRooms } = await client
+                .from('chat_room_members')
+                .select('room_id')
+                .in('room_id', roomIds)
+                .eq('user_kuerzel', cleanZiel);
+
+            if (sharedRooms && sharedRooms.length > 0) {
+                const existingRoomId = sharedRooms[0].room_id;
+                selectRoom(existingRoomId, `Chat mit ${cleanZiel.toUpperCase()}`, 'direct');
+                loadChatRooms();
+                return;
+            }
+        }
+
+        // Neuen Raum anlegen
+        const { data: newRoom, error: roomError } = await client
+            .from('chat_rooms')
+            .insert([{
+                type: 'direct',
+                name: `${aktuellerUser.toUpperCase()} & ${cleanZiel.toUpperCase()}`
+            }])
+            .select()
+            .single();
+
+        if (roomError) throw roomError;
+
+        // Beide als Mitglieder eintragen
+        const { error: memError } = await client
+            .from('chat_room_members')
+            .insert([
+                { room_id: newRoom.id, user_kuerzel: aktuellerUser },
+                { room_id: newRoom.id, user_kuerzel: cleanZiel }
+            ]);
+
+        if (memError) throw memError;
+
+        await loadChatRooms();
+        selectRoom(newRoom.id, newRoom.name, 'direct');
+
+    } catch (e) {
+        console.error("Fehler beim Starten des 1:1-Chats:", e);
+        alert("Chat konnte nicht erstellt werden.");
+    }
+}
 
     
 
