@@ -4457,7 +4457,7 @@ window.currentInteractionMode = null;
 
 
 /* ============================================================
-   2. INITIALISIERUNG & PUSH-HELFER (KALTSTART-SICHER)
+   2. INITIALISIERUNG & PUSH-HELFER (KALTSTART-SICHER & DATEN-STABIL)
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -4466,7 +4466,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dp = document.getElementById('datePicker');
 
     // 🛡️ SICHERHEITS-TIMER FÜR KALTSTART: 
-    // Verhindert, dass die App im absoluten Notfall ewig blockiert.
     const kaltstartSicherheitsTimer = setTimeout(() => {
         console.warn("⚠️ Kaltstart-Sicherheits-Timer ausgelöst.");
         if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -4484,7 +4483,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
 
-        // UI sofort freigeben (kein Warten auf das Netzwerk)
+        // UI sofort freigeben
         if (loginOverlay) loginOverlay.style.display = 'none';
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         
@@ -4493,7 +4492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         pruefeAusrichtung();
 
-        // 2. Datum initialisieren und Plan laden
+        // 2. Datum initialisieren
         const now = new Date();
         const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         
@@ -4501,17 +4500,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             dp.value = localDateStr;
             if (typeof updateDateText === 'function') updateDateText(localDateStr);
             if (typeof updateNavButtons === 'function') updateNavButtons();
-            
-            if (typeof changeDayAndLoad === 'function') {
-                try {
-                    await changeDayAndLoad(localDateStr);
-                } catch (e) {
-                    console.warn("⚠️ Plan konnte beim Kaltstart nicht sofort geladen werden, verwende Cache.");
-                }
+        }
+
+        // 3. WICHTIGE BASIS-DATEN LADEN (Bevor der Plan gerendert wird, damit Schulwoche/Kalender stimmen)
+        try {
+            await Promise.all([
+                window.initSperrzeitenCache(),
+                window.initTeachersCache()
+            ]);
+        } catch (cacheErr) {
+            console.warn("⚠️ Basis-Caches konnten beim Kaltstart nicht geladen werden:", cacheErr);
+        }
+
+        // 4. Erst jetzt den Plan für den Starttag laden
+        if (dp && typeof changeDayAndLoad === 'function') {
+            try {
+                await changeDayAndLoad(dp.value);
+            } catch (e) {
+                console.warn("⚠️ Plan konnte beim Kaltstart nicht geladen werden:", e);
             }
         }
 
-        // 3. Im Hintergrund Supabase-Dienste & Vorladen initialisieren (nachdem UI sichtbar ist)
+        // 5. Im Hintergrund restliche Dienste (Push, Realtime, Links, Material) initialisieren
         setTimeout(async () => {
             try {
                 await registerServiceWorker();
@@ -4519,11 +4529,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initNewsRealtime(userKuerzel);
                 checkUnreadNews(userKuerzel);
 
-                const linksPromise = supabaseClient.from('links').select('*');
-                const matPromise = supabaseClient.from('material').select('*');
-                const sperrzeitPromise = window.initSperrzeitenCache();
-
-                const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
+                const linksRes = await supabaseClient.from('links').select('*');
+                const matRes = await supabaseClient.from('material').select('*');
 
                 if (!linksRes.error && linksRes.data) {
                     window.lastLinks = linksRes.data || [];
