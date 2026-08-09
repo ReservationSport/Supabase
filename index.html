@@ -4457,129 +4457,120 @@ window.currentInteractionMode = null;
 
 
 /* ============================================================
-   2. INITIALISIERUNG & PUSH-HELFER
+   2. INITIALISIERUNG & PUSH-HELFER (KALTSTART-SICHER)
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', async () => {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loginOverlay = document.getElementById('loginOverlay');
+    const dp = document.getElementById('datePicker');
+
     // 🛡️ SICHERHEITS-TIMER FÜR KALTSTART: 
-    // Verhindert, dass die App beim Start über die Taskleiste ewig auf dem Loader hängen bleibt, 
-    // falls das Netzwerk / Supabase beim Kaltstart verzögert antwortet.
+    // Verhindert, dass die App im absoluten Notfall ewig blockiert.
     const kaltstartSicherheitsTimer = setTimeout(() => {
-        console.warn("⚠️ Kaltstart-Sicherheits-Timer ausgelöst: Lade-Screen wird erzwungen entfernt.");
-        const loadingOverlay = document.getElementById('loadingOverlay');
+        console.warn("⚠️ Kaltstart-Sicherheits-Timer ausgelöst.");
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 3500);
 
-    try {
-        // 1. Prüfen, ob bereits eine aktive Supabase-Session existiert (Auto-Login / Eingeloggt bleiben)
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        
-        if (session) {
-            clearTimeout(kaltstartSicherheitsTimer);
-            console.log("Aktive Session gefunden, überspringe Login-Overlay...");
-            
-            const loginOverlay = document.getElementById('loginOverlay');
-            if (loginOverlay) loginOverlay.style.display = 'none';
+    // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert? (Offline-First Kaltstart)
+    const savedKuerzel = localStorage.getItem('userKuerzel');
+    const savedPw = localStorage.getItem('userPw');
 
-            const savedKuerzel = localStorage.getItem('userKuerzel');
-            if (savedKuerzel) {
-                userKuerzel = savedKuerzel;
+    if (savedKuerzel) {
+        clearTimeout(kaltstartSicherheitsTimer);
+        console.log("🚀 Kaltstart: Lokale Session für", savedKuerzel, "gefunden. Starte App direkt...");
+        
+        userKuerzel = savedKuerzel;
+        if (savedPw) userPw = savedPw;
+        isLoggedIn = true;
+
+        // UI sofort freigeben (kein Warten auf das Netzwerk)
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+        
+        const newsContainer = document.getElementById('news-btn-container');
+        if (newsContainer) newsContainer.style.display = 'block';
+
+        pruefeAusrichtung();
+
+        // 2. Datum initialisieren und Plan laden
+        const now = new Date();
+        const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        
+        if (dp) {
+            dp.value = localDateStr;
+            if (typeof updateDateText === 'function') updateDateText(localDateStr);
+            if (typeof updateNavButtons === 'function') updateNavButtons();
+            
+            if (typeof changeDayAndLoad === 'function') {
                 try {
-                    await registerServiceWorker();
-                    await subscribeUserToPush(userKuerzel);
-                    initNewsRealtime(userKuerzel);
-                    checkUnreadNews(userKuerzel);
-                } catch (pushErr) {
-                    console.error("Fehler bei Push-Init nach Auto-Login:", pushErr);
+                    await changeDayAndLoad(localDateStr);
+                } catch (e) {
+                    console.warn("⚠️ Plan konnte beim Kaltstart nicht sofort geladen werden, verwende Cache.");
                 }
             }
+        }
 
-            // Paralleles Vorladen der App-Daten (mit eigenem Catch gegen Hänger)
+        // 3. Im Hintergrund Supabase-Dienste & Vorladen initialisieren (nachdem UI sichtbar ist)
+        setTimeout(async () => {
             try {
+                await registerServiceWorker();
+                await subscribeUserToPush(userKuerzel);
+                initNewsRealtime(userKuerzel);
+                checkUnreadNews(userKuerzel);
+
                 const linksPromise = supabaseClient.from('links').select('*');
                 const matPromise = supabaseClient.from('material').select('*');
                 const sperrzeitPromise = window.initSperrzeitenCache();
-                const teachersPromise = window.initTeachersCache();
 
                 const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
 
-                if (!linksRes.error) {
+                if (!linksRes.error && linksRes.data) {
                     window.lastLinks = linksRes.data || [];
-                    if (typeof window.renderLinks === 'function') {
-                        window.renderLinks();
-                    }
+                    if (typeof window.renderLinks === 'function') window.renderLinks();
                 }
                 
-                if (!matRes.error) {
+                if (!matRes.error && matRes.data) {
                     window.verfügbareMaterialien = matRes.data || [];
                 }
-            } catch (loadErr) {
-                console.error("Fehler beim Vorladen der Hintergrunddaten:", loadErr);
+
+                if (typeof initNewsSystem === 'function') await initNewsSystem();
+            } catch (bgErr) {
+                console.log("Hintergrund-Dienste warten auf stabile Verbindung:", bgErr);
             }
+        }, 300);
 
-            isLoggedIn = true;
-            pruefeAusrichtung();
-            
-            const newsContainer = document.getElementById('news-btn-container');
-            if (newsContainer) newsContainer.style.display = 'block';
-            
-            if (typeof initNewsSystem === 'function') await initNewsSystem();
+        window.initialLoadDone = true;
 
-            window.initialLoadDone = true;
+        // Live-Datum-Aktualisierung im Hintergrund
+        setInterval(async () => {
+            const jetzt = new Date();
+            const localToday = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
+            const datePicker = document.getElementById('datePicker');
             
-            const dp = document.getElementById('datePicker');
-            if (dp) {
-                const now = new Date();
-                const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                dp.value = localDateStr;
-                updateDateText(dp.value);
-                updateNavButtons();
-                if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
+            if (datePicker && datePicker.value !== localToday && datePicker.value <= localToday) {
+                datePicker.value = localToday;
+                if (typeof updateDateText === 'function') updateDateText(localToday);
+                if (typeof updateNavButtons === 'function') updateNavButtons();
+                if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(localToday);
             }
+        }, 60000);
 
-            // Lade-Screen ausschalten
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            if (loadingOverlay) loadingOverlay.style.display = 'none';
-
-            // Live-Datum-Aktualisierung im Hintergrund
-            setInterval(async () => {
-                const jetzt = new Date();
-                const localToday = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
-                const datePicker = document.getElementById('datePicker');
-                
-                if (datePicker && datePicker.value !== localToday && datePicker.value <= localToday) {
-                    datePicker.value = localToday;
-                    if (typeof updateDateText === 'function') updateDateText(localToday);
-                    if (typeof updateNavButtons === 'function') updateNavButtons();
-                    if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(localToday);
-                }
-            }, 60000);
-
-            return; // Abbrechen, da Auto-Login erfolgreich durchlaufen
-        }
-    } catch (sessionErr) {
-        console.error("Fehler beim Prüfen der Session:", sessionErr);
+        return; // Direkt beenden, App läuft sofort!
     }
 
-    // Timer stoppen, da wir im Standard-Ablauf sind
+    // Wenn KEIN Benutzer gespeichert ist -> Standard Login-Ablauf
     clearTimeout(kaltstartSicherheitsTimer);
-
-    // Standard-Ablauf, falls kein Login vorhanden ist
-    const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (loginOverlay) loginOverlay.style.display = 'flex';
 
-    const now = new Date();
-    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
-    const dp = document.getElementById('datePicker');
-    
     if (dp) {
+        const now = new Date();
+        const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         dp.value = localDateStr;
         updateDateText(dp.value);
         updateNavButtons();
         changeDayAndLoad(dp.value); 
-    } else {
-        console.warn("Element mit ID 'datePicker' wurde nicht gefunden.");
     }
 });
 
@@ -4931,7 +4922,6 @@ window.handleLogin = async function() {
         const linksPromise = supabaseClient.from('links').select('*');
         const matPromise = supabaseClient.from('material').select('*');
         const sperrzeitPromise = window.initSperrzeitenCache();
-        const teachersPromise = window.initTeachersCache();
 
         const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
 
@@ -4988,7 +4978,6 @@ window.handleLogin = async function() {
         }
     }
 };
-
     
 
 /* ============================================================
