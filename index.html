@@ -4767,11 +4767,23 @@ async function subscribeUserToPush(userKuerzel) {
 // Realtime Lauscher
 function initNewsRealtime(userKuerzel) {
     window.supabaseClient
-        .channel('news-channel')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news_db', filter: `empfaenger=eq.${userKuerzel}` }, 
-            () => checkUnreadNews(userKuerzel))
+        .channel('news-channel-' + userKuerzel)
+        .on(
+            'postgres_changes', 
+            { event: 'INSERT', schema: 'public', table: 'news_db' }, 
+            (payload) => {
+                const empfaengerFeld = payload.new.empfaenger || "";
+                const empfaengerArray = empfaengerFeld.split(',').map(e => e.trim().toUpperCase());
+                const meinKuerzel = userKuerzel.trim().toUpperCase();
+
+                if (empfaengerArray.includes(meinKuerzel)) {
+                    checkUnreadNews(userKuerzel);
+                }
+            }
+        )
         .subscribe();
 }
+
     
 // Service Worker Registrierung
 async function registerServiceWorker() {
