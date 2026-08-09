@@ -13596,14 +13596,16 @@ function escapeHtml(text) {
 }
 
 /* ============================================================
-    NEUER 1:1 CHAT (Auswahl-Liste statt Prompt)
+    NEUER 1:1 CHAT (Mit 'teachers'-Tabelle und 'lehrer'-Spalte)
     ============================================================ */
 
 window.openNewChatModal = async function() {
     const modal = document.getElementById('userSelectModal');
     const listEl = document.getElementById('userSelectList');
+    const manualInput = document.getElementById('manualUserKuerzelInput');
     if (!modal || !listEl) return;
 
+    if (manualInput) manualInput.value = "";
     listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px; font-size: 0.9rem;">Lade Kollegen...</div>';
     modal.style.display = 'flex';
 
@@ -13613,13 +13615,17 @@ window.openNewChatModal = async function() {
 
     try {
         if (client) {
-            // 1. Bekannte User aus chat_room_members sammeln
+            // 1. Bereits bekannte Chat-Partner aus chat_room_members sammeln
             const { data: members } = await client.from('chat_room_members').select('user_kuerzel');
-            if (members) members.forEach(m => { if (m.user_kuerzel) usersSet.add(m.user_kuerzel.toLowerCase().trim()); });
+            if (members) {
+                members.forEach(m => { if (m.user_kuerzel) usersSet.add(m.user_kuerzel.toLowerCase().trim()); });
+            }
 
-            // 2. Bekannte User aus news_db (verfasser) sammeln, damit alle da sind
-            const { data: news } = await client.from('news_db').select('verfasser');
-            if (news) news.forEach(n => { if (n.verfasser) usersSet.add(n.verfasser.toLowerCase().trim()); });
+            // 2. Alle Lehrpersonen direkt aus der 'teachers'-Tabelle (Spalte 'lehrer') holen
+            const { data: teachers } = await client.from('teachers').select('lehrer');
+            if (teachers) {
+                teachers.forEach(t => { if (t.lehrer) usersSet.add(t.lehrer.toLowerCase().trim()); });
+            }
         }
 
         // Eigenes Kürzel konsequent entfernen
@@ -13630,7 +13636,7 @@ window.openNewChatModal = async function() {
         listEl.innerHTML = "";
 
         if (usersArray.length === 0) {
-            listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px; font-size: 0.9rem;">Keine anderen Kollegen gefunden.</div>';
+            listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 10px; font-size: 0.85rem; text-align: center;">Keine Lehrer gefunden.<br>Nutze das Feld oben für die manuelle Eingabe.</div>';
             return;
         }
 
@@ -13657,10 +13663,29 @@ window.openNewChatModal = async function() {
         });
 
     } catch (e) {
-        console.error("Fehler beim Laden der User-Liste:", e);
-        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px; font-size: 0.9rem;">Fehler beim Laden der Kollegen.</div>';
+        console.error("Fehler beim Laden der Lehrer-Liste:", e);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px; font-size: 0.9rem;">Fehler beim Laden. Nutze das Eingabefeld oben.</div>';
     }
 };
+
+// Hilfsfunktion für die manuelle Eingabe per Enter-Taste im Inputfeld
+function handleManualUserKey(event) {
+    if (event.key === 'Enter') {
+        const input = document.getElementById('manualUserKuerzelInput');
+        if (!input) return;
+        const val = input.value.toLowerCase().trim();
+        const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+
+        if (!val) return;
+        if (val === aktuellerUser) {
+            alert("Du kannst keinen Chat mit dir selbst starten.");
+            return;
+        }
+
+        closeUserSelectModal();
+        startDirectChatWith(val);
+    }
+}
 
 window.closeUserSelectModal = function() {
     const modal = document.getElementById('userSelectModal');
