@@ -1485,18 +1485,17 @@ body {
 }  
 
 
-  /* ============================================================
+ /* ============================================================
    12. OVERLAY BEIM LADEN
    ============================================================ */
     
-
-/* Schwarzer Hintergrund mit leichter Transparenz */
+/* Schwarzer Hintergrund mit leichter Transparenz - JETZT STANDARDMÄSSIG SICHTBAR BEIM START */
 #loadingOverlay {
-    display: none; 
+    display: flex; /* Sofort da beim Laden der Seite! */
     position: fixed; 
     top: 0; left: 0;
     width: 100vw; height: 100vh;
-    background: rgba(0, 0, 0, 0.80); /* Tiefschwarz */
+    background: rgba(0, 0, 0, 0.85); /* Etwas dunkler, damit man absolut nichts durchsieht */
     z-index: 999999;
     justify-content: center;
     align-items: center;
@@ -1505,7 +1504,7 @@ body {
     font-family: sans-serif;
 }
 
-/* Sichtbar machen via JS */
+/* Optional: Falls du ihn per JS wieder einblenden willst */
 #loadingOverlay.is-visible {
     display: flex !important;
 }
@@ -1525,7 +1524,6 @@ body {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
-   
 
 
 /* ============================================================
@@ -4429,7 +4427,7 @@ window.addEventListener('orientationchange', pruefeAusrichtung);
    ============================================================ */
 // Supabase-Verbindung einrichten
 const SUPABASE_URL = "https://wztxlatxorzcwwimsgem.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1zZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6dHhsYXR4b3J6Y3d3aW1sZ2VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTk4OTcsImV4cCI6MjEwMTA3NTg5N30.3REF3A5DNpqhXyKgSh3RuLojLafRb1UCYNneeFtiQh4";  
 
 // Supabase-Client initialisieren
 window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -4525,6 +4523,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
             }
 
+            // --- HIER WIRD BEIM AUTO-LOGIN DAS LADE-SCREEN-OVERLAY AUSGESCHALTET ---
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
+
             // Live-Datum-Aktualisierung im Hintergrund
             setInterval(async () => {
                 const jetzt = new Date();
@@ -4545,7 +4547,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Fehler beim Prüfen der Session:", sessionErr);
     }
 
-    // Standard-Ablauf, falls kein Login vorhanden ist
+    // Standard-Ablauf, falls kein Login vorhanden ist (Lade-Overlay hier ebenfalls entfernen, damit man sich einloggen kann)
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+
     const now = new Date();
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
