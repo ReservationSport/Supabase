@@ -3607,6 +3607,228 @@ input.stellvertretung-input {
 }
     
 
+
+/* ============================================================
+    26. CHAT DESIGN
+    ============================================================ */
+
+.chat-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(4px);
+}
+
+.chat-container {
+    display: flex;
+    width: 90vw;
+    max-width: 1100px;
+    height: 85vh;
+    background: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Linke Sidebar: Chat-Liste */
+.chat-sidebar {
+    width: 350px;
+    background: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-sidebar-header {
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.chat-sidebar-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #1e293b;
+}
+
+.chat-action-btn, .chat-close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #64748b;
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-action-btn:hover, .chat-close-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.chat-search-box {
+    padding: 10px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.chat-search-box input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.chat-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.chat-item {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.15s;
+}
+
+.chat-item:hover {
+    background: #f1f5f9;
+}
+
+.chat-item.active {
+    background: #e2e8f0;
+}
+
+/* Rechte Seite: Chat-Hauptbereich */
+.chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #efeae2; /* Der klassische helle WhatsApp-Hintergrundton */
+}
+
+.chat-main-header {
+    padding: 12px 20px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-active-info span {
+    display: block;
+    font-weight: bold;
+    color: #1e293b;
+}
+
+.chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-welcome-placeholder {
+    margin: auto;
+    text-align: center;
+    color: #64748b;
+}
+
+/* Sprechblasen */
+.message-bubble {
+    max-width: 65%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    position: relative;
+    word-break: break-word;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.message-bubble.incoming {
+    background: #ffffff;
+    align-self: flex-start;
+    border-top-left-radius: 0;
+}
+
+.message-bubble.outgoing {
+    background: #d9fdd3; /* WhatsApp-Grün für eigene Nachrichten */
+    align-self: flex-end;
+    border-top-right-radius: 0;
+}
+
+.message-sender {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #0284c7;
+    margin-bottom: 2px;
+}
+
+.message-time {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    text-align: right;
+    margin-top: 4px;
+}
+
+/* Eingabebereich */
+.chat-input-area {
+    padding: 12px 20px;
+    background: #f0f2f5;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.chat-input-area input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 20px;
+    border: none;
+    outline: none;
+    font-size: 0.95rem;
+    background: #ffffff;
+}
+
+.chat-send-btn {
+    background: #00a884; /* WhatsApp-Senden-Grün */
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.chat-send-btn:hover {
+    background: #008f72;
+}
+
+
     
     
 </style>
@@ -4384,6 +4606,66 @@ input.stellvertretung-input {
 </div>
 
 
+
+
+
+    <!-- ============================================================
+    CHAT OVERLAY / CONTAINER
+    ============================================================ -->
+<div id="chatOverlay" class="chat-overlay" style="display: none;">
+    <div class="chat-container">
+        
+        <!-- LINKE SEITE: Chat-Liste (Alle, Direct, Gruppen) -->
+        <div class="chat-sidebar">
+            <div class="chat-sidebar-header">
+                <h3>Team Chat</h3>
+                <!-- Button um einen neuen 1:1- oder Gruppenchat zu starten -->
+                <button class="chat-action-btn" onclick="openNewChatModal()" title="Neuer Chat">
+                    <span class="material-symbols-outlined">edit_square</span>
+                </button>
+            </div>
+            
+            <div class="chat-search-box">
+                <input type="text" id="chatSearchInput" placeholder="Chat suchen..." oninput="filterChats(this.value)">
+            </div>
+
+            <div id="chatList" class="chat-list">
+                <!-- Wird dynamisch per JS gefüllt (z.B. der "Alle"-Chat und persönliche Chats) -->
+            </div>
+        </div>
+
+        <!-- RECHTE SEITE: Aktiver Chat & Nachrichten -->
+        <div class="chat-main">
+            <!-- Header des aktiven Chats -->
+            <div class="chat-main-header">
+                <div class="chat-active-info">
+                    <span id="activeChatTitle">Wähle einen Chat aus</span>
+                    <span id="activeChatSub" style="font-size: 0.75rem; color: #666;"></span>
+                </div>
+                <button class="chat-close-btn" onclick="closeChat()">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <!-- Nachrichten-Verlauf -->
+            <div id="chatMessages" class="chat-messages">
+                <div class="chat-welcome-placeholder">
+                    <span class="material-symbols-outlined" style="font-size: 48px; color: #cbd5e1;">forum</span>
+                    <p>Wähle links einen Chat aus, um loszulegen.</p>
+                </div>
+            </div>
+
+            <!-- Eingabebereich am Boden -->
+            <div class="chat-input-area" id="chatInputArea" style="display: none;">
+                <input type="text" id="chatMessageInput" placeholder="Nachricht schreiben..." onkeydown="handleChatKeyPress(event)">
+                <button class="chat-send-btn" onclick="sendChatMessage()">
+                    <span class="material-symbols-outlined">send</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
     
     
@@ -12997,6 +13279,319 @@ document.addEventListener('DOMContentLoaded', () => {
     checkChatVisibility();
 });
     
+
+
+
+/* ============================================================
+    TEAM CHAT LOGIK (WhatsApp-Stil mit Supabase Realtime)
+    ============================================================ */
+
+let currentActiveRoomId = null;
+let chatRealtimeChannel = null;
+
+// 1. Chat öffnen und initialisieren
+window.openChat = function() {
+    const overlay = document.getElementById('chatOverlay');
+    if (overlay) overlay.style.display = 'flex';
+    loadChatRooms();
+};
+
+window.closeChat = function() {
+    const overlay = document.getElementById('chatOverlay');
+    if (overlay) overlay.style.display = 'none';
+    if (chatRealtimeChannel && window.supabaseClient) {
+        window.supabaseClient.removeChannel(chatRealtimeChannel);
+    }
+};
+
+// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume)
+async function loadChatRooms() {
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    const chatListEl = document.getElementById('chatList');
+    if (!chatListEl) return;
+
+    chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem;">Lade Chats...</div>';
+
+    try {
+        let roomsMap = new Map();
+
+        // Globalen Raum standardmäßig hinzufügen
+        roomsMap.set('00000000-0000-0000-0000-000000000001', {
+            id: '00000000-0000-0000-0000-000000000001',
+            type: 'global',
+            name: 'Alle (Team-Chat)'
+        });
+
+        // Räume laden, in denen der User Mitglied ist
+        const { data: memberships, error: memError } = await client
+            .from('chat_room_members')
+            .eq('user_kuerzel', aktuellerUser)
+            .select('room_id');
+
+        if (memError) throw memError;
+
+        if (memberships && memberships.length > 0) {
+            const roomIds = memberships.map(m => m.room_id);
+            const { data: userRooms, error: roomError } = await client
+                .from('chat_rooms')
+                .in('id', roomIds);
+
+            if (!roomError && userRooms) {
+                userRooms.forEach(r => roomsMap.set(r.id, r));
+            }
+        }
+
+        renderChatList(Array.from(roomsMap.values()));
+
+    } catch (e) {
+        console.error("Fehler beim Laden der Chat-Räume:", e);
+        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden.</div>';
+    }
+}
+
+// Chat-Liste ins HTML rendern
+function renderChatList(rooms) {
+    const chatListEl = document.getElementById('chatList');
+    if (!chatListEl) return;
+
+    chatListEl.innerHTML = "";
+
+    if (rooms.length === 0) {
+        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem;">Keine Chats vorhanden.</div>';
+        return;
+    }
+
+    rooms.forEach(room => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${currentActiveRoomId === room.id ? 'active' : ''}`;
+        
+        let iconName = 'group';
+        if (room.type === 'global') iconName = 'public';
+        if (room.type === 'direct') iconName = 'person';
+
+        item.innerHTML = `
+            <div style="background: #e2e8f0; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #475569;">
+                <span class="material-symbols-outlined">${iconName}</span>
+            </div>
+            <div style="flex: 1; overflow: hidden;">
+                <div style="font-weight: bold; font-size: 0.9rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${room.name || 'Chat'}</div>
+                <div style="font-size: 0.75rem; color: #64748b; text-transform: capitalize;">${room.type}</div>
+            </div>
+        `;
+
+        item.onclick = () => selectRoom(room.id, room.name || 'Chat', room.type);
+        chatListEl.appendChild(item);
+    });
+}
+
+// 3. Einen bestimmten Raum auswählen
+async function selectRoom(roomId, roomName, roomType) {
+    currentActiveRoomId = roomId;
+
+    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+
+    document.getElementById('activeChatTitle').innerText = roomName;
+    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Öffentlicher Team-Chat' : roomType;
+    document.getElementById('chatInputArea').style.display = 'flex';
+
+    if (chatRealtimeChannel && window.supabaseClient) {
+        window.supabaseClient.removeChannel(chatRealtimeChannel);
+    }
+
+    await loadMessages(roomId);
+    subscribeToRoomRealtime(roomId);
+}
+
+// 4. Nachrichten für einen Raum laden
+async function loadMessages(roomId) {
+    const client = window.supabaseClient;
+    const container = document.getElementById('chatMessages');
+    if (!container || !client) return;
+
+    container.innerHTML = '<div style="margin: auto; color: #64748b; font-size: 0.85rem;">Lade Nachrichten...</div>';
+
+    try {
+        const { data: messages, error } = await client
+            .from('chat_messages')
+            .select('*')
+            .eq('room_id', roomId)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        renderMessages(messages || []);
+    } catch (e) {
+        console.error("Fehler beim Laden der Nachrichten:", e);
+        container.innerHTML = '<div style="margin: auto; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden der Nachrichten.</div>';
+    }
+}
+
+// Nachrichten ins HTML rendern
+function renderMessages(messages) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="chat-welcome-placeholder">
+                <span class="material-symbols-outlined" style="font-size: 40px; color: #cbd5e1;">chat_bubble_outline</span>
+                <p style="margin-top: 8px; font-size: 0.85rem;">Noch keine Nachrichten in diesem Chat. Schreib die erste!</p>
+            </div>
+        `;
+        return;
+    }
+
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+
+    messages.forEach(msg => {
+        const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
+        
+        let timeString = "";
+        if (msg.created_at) {
+            const date = new Date(msg.created_at);
+            timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const bubble = document.createElement('div');
+        bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+        
+        let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toUpperCase()}</div>` : '';
+
+        bubble.innerHTML = `
+            ${senderHtml}
+            <div>${escapeHtml(msg.message)}</div>
+            <div class="message-time">${timeString}</div>
+        `;
+
+        container.appendChild(bubble);
+    });
+
+    container.scrollTop = container.scrollHeight;
+}
+
+// 5. Nachricht senden
+async function sendChatMessage() {
+    const input = document.getElementById('chatMessageInput');
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text || !currentActiveRoomId) return;
+
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    input.value = "";
+
+    try {
+        const { error } = await client
+            .from('chat_messages')
+            .insert([{
+                room_id: currentActiveRoomId,
+                sender_kuerzel: aktuellerUser,
+                message: text
+            }]);
+
+        if (error) throw error;
+    } catch (e) {
+        console.error("Fehler beim Senden der Nachricht:", e);
+        alert("Nachricht konnte nicht gesendet werden.");
+    }
+}
+
+function handleChatKeyPress(event) {
+    if (event.key === 'Enter') {
+        sendChatMessage();
+    }
+}
+
+// 6. Realtime Listener für den aktiven Raum
+function subscribeToRoomRealtime(roomId) {
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    chatRealtimeChannel = client
+        .channel(`room-${roomId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_messages',
+                filter: `room_id=eq.${roomId}`
+            },
+            (payload) => {
+                const newMsg = payload.new;
+                appendSingleMessage(newMsg);
+            }
+        )
+        .subscribe();
+}
+
+// Einzelne neue Nachricht live anhängen
+function appendSingleMessage(msg) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const placeholder = container.querySelector('.chat-welcome-placeholder');
+    if (placeholder) placeholder.remove();
+
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
+
+    let timeString = "";
+    if (msg.created_at) {
+        const date = new Date(msg.created_at);
+        timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+    
+    let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toUpperCase()}</div>` : '';
+
+    bubble.innerHTML = `
+        ${senderHtml}
+        <div>${escapeHtml(msg.message)}</div>
+        <div class="message-time">${timeString}</div>
+    `;
+
+    container.appendChild(bubble);
+    container.scrollTop = container.scrollHeight;
+}
+
+// 7. Hilfsfunktion gegen XSS
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+window.openNewChatModal = function() {
+    const zielKuerzel = prompt("Gib das Kürzel des Kollegen ein (z.B. für einen 1:1 Chat):");
+    if (!zielKuerzel) return;
+
+    const cleanZiel = zielKuerzel.toLowerCase().trim();
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+
+    if (cleanZiel === aktuellerUser) {
+        alert("Du kannst keinen Chat mit dir selbst starten.");
+        return;
+    }
+
+    alert(`1:1 Chat mit ${cleanZiel.toUpperCase()} wird vorbereitet...`);
+};
+
     
 
 /* ============================================================
