@@ -4457,7 +4457,7 @@ window.currentInteractionMode = null;
 
 
 /* ============================================================
-   2. INITIALISIERUNG & PUSH-HELFER (KALTSTART-SICHER & DATEN-STABIL)
+   2. INITIALISIERUNG & PUSH-HELFER (MIT SILENT-LOGIN BEI KALTSTART)
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -4469,14 +4469,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const kaltstartSicherheitsTimer = setTimeout(() => {
         console.warn("⚠️ Kaltstart-Sicherheits-Timer ausgelöst.");
         if (loadingOverlay) loadingOverlay.style.display = 'none';
-    }, 3500);
+    }, 4000);
 
-    // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert? (Offline-First Kaltstart)
+    // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert?
     const savedKuerzel = localStorage.getItem('userKuerzel');
     const savedPw = localStorage.getItem('userPw');
 
     if (savedKuerzel) {
-        clearTimeout(kaltstartSicherheitsTimer);
         console.log("🚀 Kaltstart: Lokale Session für", savedKuerzel, "gefunden. Starte App direkt...");
         
         userKuerzel = savedKuerzel;
@@ -4492,7 +4491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         pruefeAusrichtung();
 
-        // 2. Datum initialisieren
+        // Datum initialisieren
         const now = new Date();
         const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         
@@ -4502,17 +4501,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof updateNavButtons === 'function') updateNavButtons();
         }
 
-        // 3. WICHTIGE BASIS-DATEN LADEN (Bevor der Plan gerendert wird, damit Schulwoche/Kalender stimmen)
+        // 2. SUPABASE AUTH SICHERSTELLEN (Silent-Login, falls Client noch nicht authentifiziert ist)
+        try {
+            let { data: { session } } = await supabaseClient.auth.getSession();
+            
+            if (!session && savedPw) {
+                console.log("🔄 Supabase-Session fehlt beim Kaltstart, führe Silent-Login durch...");
+                // E-Mail über teachers-Tabelle ermitteln (genau wie bei handleLogin)
+                const { data: teacherData, error: tError } = await supabaseClient
+                    .from('teachers')
+                    .select('email')
+                    .ilike('lehrer', savedKuerzel)
+                    .single();
+
+                if (!tError && teacherData && teacherData.email) {
+                    const { error: authErr } = await supabaseClient.auth.signInWithPassword({
+                        email: teacherData.email,
+                        password: savedPw,
+                    });
+                    if (!authErr) {
+                        console.log("🟢 Silent-Login erfolgreich! Token wurde gesetzt.");
+                    } else {
+                        console.error("❌ Silent-Login fehlgeschlagen:", authErr);
+                    }
+                }
+            }
+        } catch (sessionErr) {
+            console.warn("⚠️ Fehler beim Wiederherstellen der Session:", sessionErr);
+        }
+
+        // 3. Basis-Caches laden
         try {
             await Promise.all([
                 window.initSperrzeitenCache(),
                 window.initTeachersCache()
             ]);
         } catch (cacheErr) {
-            console.warn("⚠️ Basis-Caches konnten beim Kaltstart nicht geladen werden:", cacheErr);
+            console.warn("⚠️ Caches konnten nicht geladen werden:", cacheErr);
         }
 
-        // 4. Erst jetzt den Plan für den Starttag laden
+        // 4. Jetzt wird der Plan für den Starttag fehlerfrei geladen (da Token nun existiert)
         if (dp && typeof changeDayAndLoad === 'function') {
             try {
                 await changeDayAndLoad(dp.value);
@@ -4521,7 +4549,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // 5. Im Hintergrund restliche Dienste (Push, Realtime, Links, Material) initialisieren
+        clearTimeout(kaltstartSicherheitsTimer);
+        window.initialLoadDone = true;
+
+        // 5. Im Hintergrund restliche Dienste initialisieren
         setTimeout(async () => {
             try {
                 await registerServiceWorker();
@@ -4545,9 +4576,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (bgErr) {
                 console.log("Hintergrund-Dienste warten auf stabile Verbindung:", bgErr);
             }
-        }, 300);
-
-        window.initialLoadDone = true;
+        }, 500);
 
         // Live-Datum-Aktualisierung im Hintergrund
         setInterval(async () => {
