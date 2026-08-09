@@ -6287,22 +6287,43 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         const empfaengerSet = new Set();
 
-        // Hole die Stundenplandaten aus currentMasterData oder globalen App-Variablen
+        // Alle möglichen Quellen für den Stundenplan im Speicher abgrasen
         const master = currentMasterData || window.currentMasterData || window.masterData || {};
-        const sp = master.stundenplan || master.timetable || master.entries || window.stundenplanDaten || [];
+        const sp = master.stundenplan || master.timetable || master.entries || window.stundenplanDaten || window.stundenplan || [];
+
+        console.log(`🔎 Suche Betroffene für Typ: [${rawTyp}], ZielTag: [${zielTag} / Index ${tagIndex}], Slot: [${slotNummer}], Klasse: [${klasse}]`);
+        console.log(`🔎 Anzahl gefundene Einträge im Stundenplan-Speicher:`, Array.isArray(sp) ? sp.length : "Kein Array gefunden");
 
         if (Array.isArray(sp) && sp.length > 0) {
-            sp.forEach(row => {
-                const rTag = row.tag_index !== undefined ? Number(row.tag_index) : (row.tag !== undefined ? Number(row.tag) : row.wochentag);
-                const rSlot = row.slot_index !== undefined ? Number(row.slot_index) : (row.slot !== undefined ? Number(row.slot) : Number(row.stunde));
-                
-                const matchTag = (rTag === tagIndex || rTag === zielTag || String(rTag).toLowerCase() === String(zielTag).toLowerCase());
+            sp.forEach((row, idx) => {
+                // Flexible Erkennung von Tag, Slot und Klasse in der Zeile
+                const rawTag = row.tag_index !== undefined ? row.tag_index : (row.tag !== undefined ? row.tag : row.wochentag);
+                const rawSlot = row.slot_index !== undefined ? row.slot_index : (row.slot !== undefined ? row.slot : row.stunde);
+                const rowKlasse = (row.klasse || row.class || "").toString().trim().toLowerCase();
+
+                const rSlot = parseInt(rawSlot, 10);
+
+                // Tag-Abgleich (akzeptiert Zahl, Wochentag-Namen oder Kürzel)
+                let matchTag = false;
+                if (rawTag !== undefined && rawTag !== null) {
+                    const rowTagStr = String(rawTag).trim().toLowerCase();
+                    const zielTagStr = String(zielTag).trim().toLowerCase();
+                    if (Number(rawTag) === tagIndex || rowTagStr === zielTagStr || rowTagStr === String(tagIndex)) {
+                        matchTag = true;
+                    }
+                } else {
+                    matchTag = true; // Falls kein Tag hinterlegt ist, temporär matchen lassen
+                }
+
                 const matchSlot = (rSlot === slotNummer);
-                const matchKlasse = !klasse || !row.klasse || row.klasse.toString().trim().toLowerCase() === klasse.toString().trim().toLowerCase();
+                const matchKlasse = !klasse || !rowKlasse || rowKlasse === klasse.toString().trim().toLowerCase();
 
                 if (matchTag && matchSlot && matchKlasse) {
                     const k = row.kuerzel || row.lehrer || row.teacher || row.lp || row.user;
-                    if (k) empfaengerSet.add(k.toString().trim().toUpperCase());
+                    if (k) {
+                        empfaengerSet.add(k.toString().trim().toUpperCase());
+                        console.log(`✅ Treffer in Zeile ${idx}:`, row);
+                    }
                 }
             });
         }
@@ -6311,7 +6332,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaengerSet.delete(handelndeLP);
         empfaengerList = Array.from(empfaengerSet);
 
-        console.log(`🔍 Slot-Check für [${rawTyp}] am Tag [${zielTag} / Index ${tagIndex}], Slot [${slotNummer}], Klasse [${klasse}]: Gefundene Empfänger ->`, empfaengerList);
+        console.log(`🎯 Finale Empfängerliste für Slot-Event:`, empfaengerList);
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
