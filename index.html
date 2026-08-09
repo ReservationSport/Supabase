@@ -4461,11 +4461,21 @@ window.currentInteractionMode = null;
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Prüfen, ob bereits eine aktive Supabase-Session existiert (Auto-Login / Eingeloggt bleiben)
+    // 🛡️ SICHERHEITS-TIMER FÜR KALTSTART: 
+    // Verhindert, dass die App beim Start über die Taskleiste ewig auf dem Loader hängen bleibt, 
+    // falls das Netzwerk / Supabase beim Kaltstart verzögert antwortet.
+    const kaltstartSicherheitsTimer = setTimeout(() => {
+        console.warn("⚠️ Kaltstart-Sicherheits-Timer ausgelöst: Lade-Screen wird erzwungen entfernt.");
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+    }, 3500);
+
     try {
+        // 1. Prüfen, ob bereits eine aktive Supabase-Session existiert (Auto-Login / Eingeloggt bleiben)
         const { data: { session } } = await supabaseClient.auth.getSession();
         
         if (session) {
+            clearTimeout(kaltstartSicherheitsTimer);
             console.log("Aktive Session gefunden, überspringe Login-Overlay...");
             
             const loginOverlay = document.getElementById('loginOverlay');
@@ -4484,23 +4494,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            // Paralleles Vorladen der App-Daten
-            const linksPromise = supabaseClient.from('links').select('*');
-            const matPromise = supabaseClient.from('material').select('*');
-            const sperrzeitPromise = window.initSperrzeitenCache();
-            const teachersPromise = window.initTeachersCache();
+            // Paralleles Vorladen der App-Daten (mit eigenem Catch gegen Hänger)
+            try {
+                const linksPromise = supabaseClient.from('links').select('*');
+                const matPromise = supabaseClient.from('material').select('*');
+                const sperrzeitPromise = window.initSperrzeitenCache();
+                const teachersPromise = window.initTeachersCache();
 
-            const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
+                const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
 
-            if (!linksRes.error) {
-                window.lastLinks = linksRes.data || [];
-                if (typeof window.renderLinks === 'function') {
-                    window.renderLinks();
+                if (!linksRes.error) {
+                    window.lastLinks = linksRes.data || [];
+                    if (typeof window.renderLinks === 'function') {
+                        window.renderLinks();
+                    }
                 }
-            }
-            
-            if (!matRes.error) {
-                window.verfügbareMaterialien = matRes.data || [];
+                
+                if (!matRes.error) {
+                    window.verfügbareMaterialien = matRes.data || [];
+                }
+            } catch (loadErr) {
+                console.error("Fehler beim Vorladen der Hintergrunddaten:", loadErr);
             }
 
             isLoggedIn = true;
@@ -4523,7 +4537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof changeDayAndLoad === 'function') await changeDayAndLoad(dp.value);
             }
 
-            // --- HIER WIRD BEIM AUTO-LOGIN DAS LADE-SCREEN-OVERLAY AUSGESCHALTET ---
+            // Lade-Screen ausschalten
             const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) loadingOverlay.style.display = 'none';
 
@@ -4547,7 +4561,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Fehler beim Prüfen der Session:", sessionErr);
     }
 
-    // Standard-Ablauf, falls kein Login vorhanden ist (Lade-Overlay hier ebenfalls entfernen, damit man sich einloggen kann)
+    // Timer stoppen, da wir im Standard-Ablauf sind
+    clearTimeout(kaltstartSicherheitsTimer);
+
+    // Standard-Ablauf, falls kein Login vorhanden ist
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.style.display = 'none';
 
@@ -4740,9 +4757,6 @@ async function subscribeUserToPush(userKuerzel) {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        console.log("Gesamtes Subscription-Objekt:", subscription);
-        console.log("Extrahierter Endpoint:", subscription.endpoint);
-
         if (!subscription.endpoint) {
             console.error("Fehler: Browser hat keinen Endpoint geliefert!");
             return;
@@ -4769,13 +4783,11 @@ function initNewsRealtime(userKuerzel) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
     if (!client) return;
 
-    // Falls schon ein alter Channel existiert, diesen erst sauber entfernen
     if (window.newsChannelInstance) {
         client.removeChannel(window.newsChannelInstance);
         window.newsChannelInstance = null;
     }
 
-    // Neuen Channel erstellen und in exakt dieser Reihenfolge verketten:
     window.newsChannelInstance = client.channel('news-channel-' + userKuerzel)
         .on(
             'postgres_changes', 
