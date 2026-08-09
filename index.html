@@ -4764,10 +4764,19 @@ async function subscribeUserToPush(userKuerzel) {
     }
 }
 
-// Realtime Lauscher
+// Realtime Lauscher (Sicher vor doppelten Subscriptions und Reihenfolge-Fehlern)
 function initNewsRealtime(userKuerzel) {
-    window.supabaseClient
-        .channel('news-channel-' + userKuerzel)
+    const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
+    if (!client) return;
+
+    // Falls schon ein alter Channel existiert, diesen erst sauber entfernen
+    if (window.newsChannelInstance) {
+        client.removeChannel(window.newsChannelInstance);
+        window.newsChannelInstance = null;
+    }
+
+    // Neuen Channel erstellen und in exakt dieser Reihenfolge verketten:
+    window.newsChannelInstance = client.channel('news-channel-' + userKuerzel)
         .on(
             'postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'news_db' }, 
@@ -4781,9 +4790,12 @@ function initNewsRealtime(userKuerzel) {
                 }
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('🟢 Realtime erfolgreich verbunden für:', userKuerzel);
+            }
+        });
 }
-
     
 // Service Worker Registrierung
 async function registerServiceWorker() {
