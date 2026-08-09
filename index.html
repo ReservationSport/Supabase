@@ -4721,7 +4721,8 @@ window.initTeachersCache = async function() {
             teachers = Array.isArray(window.allClassTeachers) ? window.allClassTeachers : Object.values(window.allClassTeachers);
         }
         
-        window.allTeachers = [...new Set(teachers.map(t => t.toString().trim().toUpperCase()))].filter(Boolean);
+        // 🛑 HIER GEÄNDERT: Alle Lehrer in der Liste systemweit kleinschreiben!
+        window.allTeachers = [...new Set(teachers.map(t => t.toString().trim().toLowerCase()))].filter(Boolean);
         return window.allTeachers;
         
     } catch (e) {
@@ -4815,14 +4816,18 @@ function initNewsRealtime(userKuerzel) {
         window.newsChannelInstance = null;
     }
 
-    window.newsChannelInstance = client.channel('news-channel-' + userKuerzel)
+    // Sicherstellen, dass auch der Channel-Name lowercase ist
+    const sauberesKuerzel = userKuerzel ? userKuerzel.trim().toLowerCase() : '';
+
+    window.newsChannelInstance = client.channel('news-channel-' + sauberesKuerzel)
         .on(
             'postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'news_db' }, 
             (payload) => {
                 const empfaengerFeld = payload.new.empfaenger || "";
-                const empfaengerArray = empfaengerFeld.split(',').map(e => e.trim().toUpperCase());
-                const meinKuerzel = userKuerzel.trim().toUpperCase();
+                // 🛑 HIER GEÄNDERT: Konsequent in Kleinbuchstaben umwandeln
+                const empfaengerArray = empfaengerFeld.split(',').map(e => e.trim().toLowerCase());
+                const meinKuerzel = sauberesKuerzel;
 
                 if (empfaengerArray.includes(meinKuerzel)) {
                     checkUnreadNews(userKuerzel);
@@ -4831,7 +4836,7 @@ function initNewsRealtime(userKuerzel) {
         )
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-                console.log('🟢 Realtime erfolgreich verbunden für:', userKuerzel);
+                console.log('🟢 Realtime erfolgreich verbunden für:', sauberesKuerzel);
             }
         });
 }
@@ -6174,10 +6179,10 @@ window.prepareUpdateData = function(slotId, neueHalle, neueKlasse, neuesMaterial
 
 
 /* ============================================================
-   9. NEWS-ZENTRALE
-   ============================================================ */
+    9. NEWS-ZENTRALE
+    ============================================================ */
 
-   
+    
 let meineRelevanteNews = []; 
 
 /**
@@ -6192,9 +6197,9 @@ async function initNewsSystem() {
         return;
     }
 
-    // 2. SCHUTZ: Benutzerkürzel sicher auslesen (egal ob als globale Variable oder unter window)
+    // 2. SCHUTZ: Benutzerkürzel sicher auslesen (konsequent in Kleinbuchstaben)
     const rawUser = typeof userKuerzel !== 'undefined' ? userKuerzel : (window.userKuerzel || "");
-    const aktuellerUser = (rawUser !== null && rawUser !== undefined) ? String(rawUser).toUpperCase().trim() : "";
+    const aktuellerUser = (rawUser !== null && rawUser !== undefined) ? String(rawUser).toLowerCase().trim() : "";
     
     if (!aktuellerUser) {
         console.warn("News-Init abgebrochen: Kein aktiver Benutzer (userKuerzel) vorhanden.");
@@ -6209,18 +6214,18 @@ async function initNewsSystem() {
 
         if (error) throw error;
 
-        // 3. SCHUTZ: Filter mit Typen-Konvertierung (String(...)) gegen toUpperCase-Fehler
+        // 3. SCHUTZ: Filter mit Typen-Konvertierung und Kleinbuchstaben-Abgleich
         meineRelevanteNews = (allNews || []).filter(n => {
             if (!n) return false;
 
-            // Sichere Umwandlung aller Datenbank-Felder in Text (selbst wenn sie null, undefined oder Zahlen sind)
+            // Sichere Umwandlung aller Datenbank-Felder in Text und Kleinbuchstaben
             const empfaengerStr = String(n.empfaenger || "");
             const geloeschtStr = String(n.geloescht || "");
 
-            const empfaenger = empfaengerStr.toUpperCase().split(',').map(e => e.trim());
-            const geloeschtVon = geloeschtStr.toUpperCase().split(',').map(s => s.trim());
+            const empfaenger = empfaengerStr.toLowerCase().split(',').map(e => e.trim());
+            const geloeschtVon = geloeschtStr.toLowerCase().split(',').map(s => s.trim());
             
-            const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
+            const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("alle");
             const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
             
             return istEmpfaenger && istNichtGeloescht;
@@ -6242,12 +6247,13 @@ async function initNewsSystem() {
  * Aktualisiert den roten Punkt (Badge).
  */
 function updateNewsDot() {
-    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
+    const aktuellerUser = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
     const dot = document.getElementById('news-dot');
     if (!dot) return;
 
     const hatUngelesene = meineRelevanteNews.some(n => {
-        const gelesenListe = (n.gelesen || "").toUpperCase().split(',').map(s => s.trim());
+        // Konsequent in Kleinbuchstaben umwandeln für den korrekten Abgleich
+        const gelesenListe = (n.gelesen || "").toLowerCase().split(',').map(s => s.trim());
         return !gelesenListe.includes(aktuellerUser);
     });
 
@@ -6475,7 +6481,7 @@ window.showNews = function() {
     const sidebar = document.getElementById('newsSidebar');  
     const newsContainer = document.getElementById('newsContent');  
     const backdrop = document.getElementById('newsSidebarBackdrop');  
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().toUpperCase().trim() : "";  
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().toLowerCase().trim() : "";  
 
     if (sidebar) sidebar.style.display = 'flex';  
     if (backdrop) backdrop.style.display = 'block';  
@@ -6484,7 +6490,7 @@ window.showNews = function() {
     const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];  
     const aktiveNews = sichereNewsListe.filter(n => {  
         if (!n) return false;  
-        const geloeschtVon = (n.geloescht || "").toString().toUpperCase().split(',').map(s => s.trim());  
+        const geloeschtVon = (n.geloescht || "").toString().toLowerCase().split(',').map(s => s.trim());  
         return !geloeschtVon.includes(aktuellerUser);  
     });  
 
@@ -6499,7 +6505,7 @@ window.showNews = function() {
     aktiveNews.forEach(news => {  
         if (!news) return;  
 
-        const gelesenListe = (news.gelesen || "").toString().toUpperCase().split(',').map(s => s.trim());  
+        const gelesenListe = (news.gelesen || "").toString().toLowerCase().split(',').map(s => s.trim());  
         const istGelesen = gelesenListe.includes(aktuellerUser);  
         
         // 1. Erstellungsdatum aus Spalte 'datum' (für unten links)
@@ -6550,7 +6556,7 @@ window.showNews = function() {
                 const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);  
                 if (newsInListe) {  
                     if (!newsInListe.gelesen) newsInListe.gelesen = "";  
-                    const gelesenStr = newsInListe.gelesen.toString().toUpperCase();
+                    const gelesenStr = newsInListe.gelesen.toString().toLowerCase();
                     if (!gelesenStr.includes(aktuellerUser)) {  
                         newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${aktuellerUser}` : aktuellerUser;  
                     }  
@@ -6604,7 +6610,7 @@ window.showNews = function() {
  * Sofortiges visuelles und logisches Entfernen der gesamten Card.
  */
 window.deleteNews = async function(newsId, btnElement) {
-    const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "";
+    const user = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "";
     if (!user) return;
 
     // 1. Visuelles Ausblenden der GANZEN Card (.news-item)
@@ -6669,13 +6675,13 @@ window.refreshAndShowNews = async function() {
 
         if (error) throw error;
 
-        const aktuellerUser = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toUpperCase().trim();
+        const aktuellerUser = (typeof userKuerzel !== 'undefined' ? userKuerzel : "").toLowerCase().trim();
         
         meineRelevanteNews = (allNews || []).filter(n => {
-            const empfaenger = (n.empfaenger || "").toUpperCase().split(',').map(e => e.trim());
-            const geloeschtVon = (n.geloescht || "").toUpperCase().split(',').map(s => s.trim());
+            const empfaenger = (n.empfaenger || "").toLowerCase().split(',').map(e => e.trim());
+            const geloeschtVon = (n.geloescht || "").toLowerCase().split(',').map(s => s.trim());
             
-            const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("ALLE");
+            const istEmpfaenger = empfaenger.includes(aktuellerUser) || empfaenger.includes("alle");
             const istNichtGeloescht = !geloeschtVon.includes(aktuellerUser);
             
             return istEmpfaenger && istNichtGeloescht;
@@ -6692,7 +6698,6 @@ window.refreshAndShowNews = async function() {
     }
 };
 
-
 window.blinkTimer = window.blinkTimer || {};
 
 
@@ -6703,7 +6708,7 @@ window.blinkTimer = window.blinkTimer || {};
 async function markAsReadAndJump(news, event) {
     if (!news) return;
 
-    const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toUpperCase().trim() : "";
+    const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
     
     // Einheitliche Typ-Erkennung über die Spalte 'typ' (und Fallback auf altes 'halle' falls vorhanden)
@@ -6723,7 +6728,8 @@ async function markAsReadAndJump(news, event) {
     
     if (newsInListe) {
         if (!newsInListe.gelesen) newsInListe.gelesen = "";
-        if (!newsInListe.gelesen.toUpperCase().includes(user)) {
+        // Konsequent auf .toLowerCase() angepasst für den Abgleich
+        if (!newsInListe.gelesen.toLowerCase().includes(user)) {
             newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${user}` : user;
         }
     }
@@ -10009,7 +10015,8 @@ window.saveKruecke = async function() {
 window.markKrueckeResolved = async function(id, btnElement) {
     if (btnElement) btnElement.classList.add('is-success');
     
-    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toUpperCase().trim() : "System";
+    // Konsequent auf .toLowerCase() umgestellt, passend zur einheitlichen Kleinschreibung
+    const userVal = typeof userKuerzel !== 'undefined' ? userKuerzel.toLowerCase().trim() : "system";
 
     try {
         // Zuerst Schüler und Klasse auslesen (für die News)
