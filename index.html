@@ -3664,13 +3664,23 @@ input.stellvertretung-input {
 
     
     
-    <div class="date-control">
+  <div class="date-control">
     <div class="nav-section nav-left">
+        <!-- News-Button -->
         <div id="news-btn-container" style="display: none;">
             <div class="news-btn-premium" onclick="refreshAndShowNews()">
                 <span class="btn-text">NEWS</span>
                 <span class="material-symbols-outlined bell-icon">notifications</span>
                 <div id="news-dot" class="badge" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Neuer Chat-Button (rechts daneben, standardmäßig unsichtbar) -->
+        <div id="chat-btn-container" style="display: none;">
+            <div class="news-btn-premium" onclick="openChat()" style="background: linear-gradient(135deg, #4f46e5, #3b82f6);">
+                <span class="btn-text">CHAT</span>
+                <span class="material-symbols-outlined">chat</span>
+                <div id="chat-dot" class="badge" style="display: none;"></div>
             </div>
         </div>
     </div>
@@ -3707,8 +3717,8 @@ input.stellvertretung-input {
 
     <div class="nav-section nav-right">
         <button class="refresh-btn" id="menu-trigger" onclick="toggleExtraMenu(event)" title="Mehr Optionen">
-    <span class="material-symbols-outlined">menu</span>
-</button>
+            <span class="material-symbols-outlined">menu</span>
+        </button>
 
         <button class="refresh-btn" onclick="changeDayAndLoad(document.getElementById('datePicker').value, 'refresh')" title="Aktualisieren">
             <span class="material-symbols-outlined">refresh</span>
@@ -4372,6 +4382,9 @@ input.stellvertretung-input {
         </div>
     </div>
 </div>
+
+
+
     
     
 </body>
@@ -12957,6 +12970,33 @@ window.handleLogout = async function() {
 };
 
 
+
+
+  // ============================================================
+    // 14. CHAT
+    // ============================================================
+
+function checkChatVisibility() {
+    // Trage hier dein eigenes Kürzel in Kleinbuchstaben ein
+    const meinAdminKuerzel = "bupa"; 
+    
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    const chatContainer = document.getElementById('chat-btn-container');
+
+    if (chatContainer) {
+        if (aktuellerUser === meinAdminKuerzel) {
+            chatContainer.style.display = 'block'; // Oder 'flex', je nach Layout-Bedürfnis
+        } else {
+            chatContainer.style.display = 'none';
+        }
+    }
+}
+
+// Beim Laden der Seite ausführen
+document.addEventListener('DOMContentLoaded', () => {
+    checkChatVisibility();
+});
+    
     
 
 /* ============================================================
