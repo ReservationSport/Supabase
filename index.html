@@ -6298,22 +6298,38 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         }
 
         const empfaengerSet = new Set();
-
-        // Direkt aus dem aktuellen Speicher (window.lastPlanData) auslesen
         const planData = window.lastPlanData || {};
-        const targetSlotData = planData[slotNummer];
 
-        if (targetSlotData) {
-            const zugewiesenerLehrer = targetSlotData.verfasser || targetSlotData.lehrer;
-            if (zugewiesenerLehrer) {
-                empfaengerSet.add(zugewiesenerLehrer.toString().trim().toUpperCase());
+        // Berechne die 5 parallelen Slots desselben Zeitslots
+        const rowIndex = Math.floor((slotNummer - 1) / 5);
+        const startSlot = (rowIndex * 5) + 1;
+
+        console.log(`🔎 Suche Empfänger im gesamten Zeitslot (Slots ${startSlot} bis ${startSlot + 4}) für Verfasser: [${handelndeLP}]`);
+
+        // Alle 5 parallelen Slots durchgehen und Lehrer einsammeln
+        for (let i = 0; i < 5; i++) {
+            const currentSlot = startSlot + i;
+            const slotData = planData[currentSlot];
+
+            if (slotData) {
+                const roherLehrerString = slotData.verfasser || slotData.lehrer || "";
+                if (roherLehrerString) {
+                    roherLehrerString.split(/[,/]+/).forEach(k => {
+                        const cleanK = k.trim().toUpperCase();
+                        if (cleanK) empfaengerSet.add(cleanK);
+                    });
+                }
             }
         }
 
+        // Fallback falls window.lastPlanData keine Daten liefert
         if (empfaengerSet.size === 0 && klasse && window.allClassTeachers) {
-            const klassenLehrer = window.allClassTeachers[klasse];
+            const klassenLehrer = window.allClassTeachers[klasse] || window.allClassTeachers[klasse.toUpperCase()];
             if (klassenLehrer) {
-                empfaengerSet.add(klassenLehrer.toString().trim().toUpperCase());
+                klassenLehrer.toString().split(/[,/]+/).forEach(k => {
+                    const cleanK = k.trim().toUpperCase();
+                    if (cleanK) empfaengerSet.add(cleanK);
+                });
             }
         }
 
@@ -6321,7 +6337,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         empfaengerSet.delete(handelndeLP);
         empfaengerList = Array.from(empfaengerSet);
 
-        console.log(`🎯 Finale Empfängerliste für Slot-Event aus window.lastPlanData:`, empfaengerList);
+        console.log(`🎯 Finale Empfängerliste für Slot-Event (alle Kollegen im Zeitslot minus Verfasser):`, empfaengerList);
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
@@ -6339,7 +6355,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         zeitfensterString = formatiertesEventDatum;
         if (!isNaN(slotNummer) && slotNummer > 0) {
-            const rowIndex = Math.floor((slotNummer - 1) / 5);
             const uhrzeit = zeiten[rowIndex] || "";
             if (uhrzeit) {
                 zeitfensterString = `${formatiertesEventDatum} / ${uhrzeit.replace(/\s*-\s*/g, '-')}`;
