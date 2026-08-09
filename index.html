@@ -4621,7 +4621,7 @@ input.stellvertretung-input {
                 <h3>Team Chat</h3>
                 <!-- Button um einen neuen 1:1- oder Gruppenchat zu starten -->
                 <button class="chat-action-btn" onclick="openNewChatModal()" title="Neuer Chat">
-                    <span class="material-symbols-outlined">edit_square</span>
+                    <span class="material-symbols-outlined">add_comment</span>
                 </button>
             </div>
             
@@ -4669,18 +4669,18 @@ input.stellvertretung-input {
 
 
 
-<!-- ============================================================
-    USER-AUSWAHL MODAL (Für 1:1 Chats)
-    ============================================================ -->
-<div id="userSelectModal" class="chat-overlay" style="display: none; z-index: 10000;">
-    <div style="background: white; padding: 20px; border-radius: 12px; width: 320px; max-height: 450px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
-        <h3 style="margin-top: 0; font-size: 1.1rem; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Kollegen auswählen</h3>
+<div id="newChatModal" class="chat-overlay" style="display: none; z-index: 10000;">
+    <div style="background: white; padding: 20px; border-radius: 12px; width: 340px; max-height: 500px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <h3 style="margin-top: 0; font-size: 1.1rem; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Neuer Chat</h3>
         
-        <div id="userSelectList" style="flex: 1; overflow-y: auto; margin: 10px 0; display: flex; flex-direction: column; gap: 6px;">
-            <!-- Wird dynamisch gefüllt -->
+        <div id="newChatList" style="flex: 1; overflow-y: auto; margin: 10px 0; display: flex; flex-direction: column; gap: 6px;">
+            <!-- Hier kommen die Checkboxen rein -->
         </div>
         
-        <button onclick="closeUserSelectModal()" style="padding: 10px; background: #e2e8f0; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; color: #475569; margin-top: 5px;">Abbrechen</button>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button onclick="closeNewChatModal()" style="flex: 1; padding: 10px; background: #e2e8f0; border: none; border-radius: 8px; font-weight: bold; color: #475569; cursor: pointer;">Abbrechen</button>
+            <button onclick="startChatFromSelection()" style="flex: 1; padding: 10px; background: #00a884; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;">Chat starten</button>
+        </div>
     </div>
 </div>
 
@@ -13298,7 +13298,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
 
 
-
 /* ============================================================
     TEAM CHAT LOGIK (WhatsApp-Stil mit Supabase Realtime)
     ============================================================ */
@@ -13342,7 +13341,6 @@ async function loadChatRooms() {
             name: 'Alle (Team-Chat)'
         });
 
-        // KORRIGIERT: .select() muss vor .eq() stehen!
         const { data: memberships, error: memError } = await client
             .from('chat_room_members')
             .select('room_id')
@@ -13596,159 +13594,115 @@ function escapeHtml(text) {
 }
 
 /* ============================================================
-    NEUER 1:1 CHAT (Mit 'teachers'-Tabelle und 'lehrer'-Spalte)
+    NEUER CHAT (Mit Checkboxen aus der 'teachers'-Tabelle)
     ============================================================ */
 
 window.openNewChatModal = async function() {
-    const modal = document.getElementById('userSelectModal');
-    const listEl = document.getElementById('userSelectList');
-    const manualInput = document.getElementById('manualUserKuerzelInput');
+    const modal = document.getElementById('newChatModal');
+    const listEl = document.getElementById('newChatList');
     if (!modal || !listEl) return;
 
-    if (manualInput) manualInput.value = "";
-    listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px; font-size: 0.9rem;">Lade Kollegen...</div>';
     modal.style.display = 'flex';
-
-    const client = window.supabaseClient;
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    let usersSet = new Set();
+    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Lade Lehrer...</div>';
 
     try {
-        if (client) {
-            // 1. Bereits bekannte Chat-Partner aus chat_room_members sammeln
-            const { data: members } = await client.from('chat_room_members').select('user_kuerzel');
-            if (members) {
-                members.forEach(m => { if (m.user_kuerzel) usersSet.add(m.user_kuerzel.toLowerCase().trim()); });
-            }
+        const { data: teachers, error } = await window.supabaseClient.from('teachers').select('lehrer');
+        if (error) throw error;
 
-            // 2. Alle Lehrpersonen direkt aus der 'teachers'-Tabelle (Spalte 'lehrer') holen
-            const { data: teachers } = await client.from('teachers').select('lehrer');
-            if (teachers) {
-                teachers.forEach(t => { if (t.lehrer) usersSet.add(t.lehrer.toLowerCase().trim()); });
-            }
-        }
-
-        // Eigenes Kürzel konsequent entfernen
-        usersSet.delete(aktuellerUser);
-
-        const usersArray = Array.from(usersSet).sort();
-
+        const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+        
         listEl.innerHTML = "";
-
-        if (usersArray.length === 0) {
-            listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 10px; font-size: 0.85rem; text-align: center;">Keine Lehrer gefunden.<br>Nutze das Feld oben für die manuelle Eingabe.</div>';
+        
+        if (!teachers || teachers.length === 0) {
+            listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Keine Lehrer gefunden.</div>';
             return;
         }
 
-        usersArray.forEach(userKrz => {
-            const btn = document.createElement('div');
-            btn.style.cssText = "padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s;";
+        teachers.forEach(t => {
+            if (!t.lehrer) return;
+            const name = t.lehrer.toLowerCase().trim();
+            if (name === aktuellerUser) return; // Eigenes Kürzel ausblenden
             
-            btn.innerHTML = `
-                <div style="background: #cbd5e1; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #334155; font-size: 0.85rem;">
-                    ${userKrz.substring(0, 2).toUpperCase()}
-                </div>
-                <div style="font-weight: bold; color: #1e293b; text-transform: uppercase; font-size: 0.95rem;">${userKrz}</div>
-            `;
-
-            btn.onmouseover = () => btn.style.background = '#f1f5f9';
-            btn.onmouseout = () => btn.style.background = '#f8fafc';
-
-            btn.onclick = () => {
-                closeUserSelectModal();
-                startDirectChatWith(userKrz);
-            };
-
-            listEl.appendChild(btn);
+            listEl.innerHTML += `
+                <label style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-bottom: 1px solid #f1f5f9; border-radius: 6px;">
+                    <input type="checkbox" value="${name}" class="new-chat-checkbox" style="width: 16px; height: 16px; accent-color: #00a884; cursor: pointer;">
+                    <span style="text-transform: uppercase; font-weight: bold; color: #1e293b; font-size: 0.9rem;">${name}</span>
+                </label>`;
         });
-
     } catch (e) {
-        console.error("Fehler beim Laden der Lehrer-Liste:", e);
-        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px; font-size: 0.9rem;">Fehler beim Laden. Nutze das Eingabefeld oben.</div>';
+        console.error("Fehler beim Laden der Lehrer:", e);
+        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444;">Fehler beim Laden der Lehrer.</div>';
     }
 };
 
-// Hilfsfunktion für die manuelle Eingabe per Enter-Taste im Inputfeld
-function handleManualUserKey(event) {
-    if (event.key === 'Enter') {
-        const input = document.getElementById('manualUserKuerzelInput');
-        if (!input) return;
-        const val = input.value.toLowerCase().trim();
-        const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-
-        if (!val) return;
-        if (val === aktuellerUser) {
-            alert("Du kannst keinen Chat mit dir selbst starten.");
-            return;
-        }
-
-        closeUserSelectModal();
-        startDirectChatWith(val);
-    }
-}
-
-window.closeUserSelectModal = function() {
-    const modal = document.getElementById('userSelectModal');
+window.closeNewChatModal = function() {
+    const modal = document.getElementById('newChatModal');
     if (modal) modal.style.display = 'none';
 };
 
-// Hilfsfunktion zum Erstellen oder Öffnen des 1:1 Chats mit dem gewählten User
-async function startDirectChatWith(cleanZiel) {
-    const client = window.supabaseClient;
+// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
+async function startChatFromSelection() {
+    const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    if (!client || !cleanZiel) return;
+    
+    if (selected.length === 0) {
+        alert("Wähle mindestens einen Kollegen aus!");
+        return;
+    }
+
+    const participants = [aktuellerUser, ...selected];
+    const client = window.supabaseClient;
+    if (!client) return;
 
     try {
-        // Prüfen, ob bereits ein Direct-Chat existiert
-        const { data: myMemberships } = await client
-            .from('chat_room_members')
-            .select('room_id')
-            .eq('user_kuerzel', aktuellerUser);
-
-        if (myMemberships && myMemberships.length > 0) {
-            const roomIds = myMemberships.map(m => m.room_id);
-            
-            const { data: sharedRooms } = await client
+        // FALL 1: 1:1 Chat (Genau 2 Personen gesamt) -> Prüfen ob Raum schon existiert
+        if (participants.length === 2) {
+            const partner = selected[0];
+            const { data: existing } = await client
                 .from('chat_room_members')
                 .select('room_id')
-                .in('room_id', roomIds)
-                .eq('user_kuerzel', cleanZiel);
-
-            if (sharedRooms && sharedRooms.length > 0) {
-                const existingRoomId = sharedRooms[0].room_id;
-                selectRoom(existingRoomId, `Chat mit ${cleanZiel.toUpperCase()}`, 'direct');
-                loadChatRooms();
-                return;
+                .eq('user_kuerzel', aktuellerUser);
+            
+            if (existing && existing.length > 0) {
+                const roomIds = existing.map(e => e.room_id);
+                const { data: match } = await client
+                    .from('chat_room_members')
+                    .select('room_id')
+                    .in('room_id', roomIds)
+                    .eq('user_kuerzel', partner);
+                
+                if (match && match.length > 0) {
+                    closeNewChatModal();
+                    selectRoom(match[0].room_id, `Chat mit ${partner.toUpperCase()}`, 'direct');
+                    loadChatRooms();
+                    return;
+                }
             }
         }
 
-        // Neuen Raum anlegen
+        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen
+        const roomName = participants.length > 2 ? "Gruppe: " + selected.join(', ').toUpperCase() : `Chat mit ${selected[0].toUpperCase()}`;
+        const roomType = participants.length > 2 ? 'group' : 'direct';
+
         const { data: newRoom, error: roomError } = await client
             .from('chat_rooms')
-            .insert([{
-                type: 'direct',
-                name: `${aktuellerUser.toUpperCase()} & ${cleanZiel.toUpperCase()}`
-            }])
+            .insert([{ type: roomType, name: roomName }])
             .select()
             .single();
 
         if (roomError) throw roomError;
 
-        // Beide als Mitglieder eintragen
-        const { error: memError } = await client
-            .from('chat_room_members')
-            .insert([
-                { room_id: newRoom.id, user_kuerzel: aktuellerUser },
-                { room_id: newRoom.id, user_kuerzel: cleanZiel }
-            ]);
+        const members = participants.map(p => ({ room_id: newRoom.id, user_kuerzel: p }));
+        const { error: memError } = await client.from('chat_room_members').insert(members);
 
         if (memError) throw memError;
 
+        closeNewChatModal();
         await loadChatRooms();
-        selectRoom(newRoom.id, newRoom.name, 'direct');
+        selectRoom(newRoom.id, newRoom.name, newRoom.type);
 
     } catch (e) {
-        console.error("Fehler beim Starten des 1:1-Chats:", e);
+        console.error("Fehler beim Erstellen des Chats:", e);
         alert("Chat konnte nicht erstellt werden.");
     }
 }
