@@ -4507,7 +4507,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (!session && savedPw) {
                 console.log("🔄 Supabase-Session fehlt beim Kaltstart, führe Silent-Login durch...");
-                // E-Mail über teachers-Tabelle ermitteln (genau wie bei handleLogin)
                 const { data: teacherData, error: tError } = await supabaseClient
                     .from('teachers')
                     .select('email')
@@ -4540,7 +4539,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn("⚠️ Caches konnten nicht geladen werden:", cacheErr);
         }
 
-        // 4. Jetzt wird der Plan für den Starttag fehlerfrei geladen (da Token nun existiert)
+        // 4. WICHTIG: Flag ZUERST setzen, damit Schutz-Abfragen den Plan nicht blockieren!
+        window.initialLoadDone = true;
+        clearTimeout(kaltstartSicherheitsTimer);
+
+        // 5. Jetzt den Plan für den Starttag fehlerfrei laden
         if (dp && typeof changeDayAndLoad === 'function') {
             try {
                 await changeDayAndLoad(dp.value);
@@ -4549,10 +4552,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        clearTimeout(kaltstartSicherheitsTimer);
-        window.initialLoadDone = true;
-
-        // 5. Im Hintergrund restliche Dienste initialisieren
+        // 6. Im Hintergrund restliche Dienste initialisieren
         setTimeout(async () => {
             try {
                 await registerServiceWorker();
