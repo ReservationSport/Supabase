@@ -6278,8 +6278,29 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 break;
         }
 
-        // Alle globalen Lehrer AUSSER dem Verfasser
-        empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
+        // NUR Lehrpersonen im selben Zeitslot ermitteln (direkt betroffen)
+        try {
+            const { data: slotData, error: slotError } = await client
+                .from('stundenplan')
+                .select('kuerzel, lehrer')
+                .eq('tag_index', tagIndex)
+                .eq('slot_index', slotNummer);
+
+            if (!slotError && slotData && slotData.length > 0) {
+                const kuerzelSet = new Set();
+                slotData.forEach(row => {
+                    const k = row.kuerzel || row.lehrer;
+                    if (k) kuerzelSet.add(k.toString().trim().toUpperCase());
+                });
+                empfaengerList = Array.from(kuerzelSet).filter(t => t !== handelndeLP);
+            } else {
+                // Fallback falls keine spezifischen Einträge im Zeitslot gefunden werden
+                empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
+            }
+        } catch (err) {
+            console.error("⚠️ Konnte betroffene Lehrpersonen für den Zeitslot nicht laden, nutze Fallback.", err);
+            empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
+        }
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
