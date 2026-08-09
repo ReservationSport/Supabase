@@ -6281,15 +6281,15 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     }
 
     // =========================================================================
-    // VERFASSER EXTRAHIEREN
+    // VERFASSER EXTRAHIEREN (Konsequent in Kleinbuchstaben)
     // =========================================================================
-    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || (typeof userKuerzel !== 'undefined' ? userKuerzel : null) || window.userKuerzel || "LP";
+    let rawVerfasser = payload.verfasser || payload.kuerzel || payload.user || (typeof userKuerzel !== 'undefined' ? userKuerzel : null) || window.userKuerzel || "lp";
     if (typeof rawVerfasser === 'object' && rawVerfasser !== null) {
-        rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || rawVerfasser.userKuerzel || "LP";
+        rawVerfasser = rawVerfasser.kuerzel || rawVerfasser.name || rawVerfasser.id || rawVerfasser.userKuerzel || "lp";
     }
-    let handelndeLP = rawVerfasser ? rawVerfasser.toString().trim().toUpperCase() : "LP";
-    if (handelndeLP === "[OBJECT OBJECT]" || handelndeLP === "{}" || handelndeLP === "USERKUERZEL") {
-        handelndeLP = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().trim().toUpperCase() : "LP";
+    let handelndeLP = rawVerfasser ? rawVerfasser.toString().trim().toLowerCase() : "lp";
+    if (handelndeLP === "[object object]" === true || handelndeLP === "{}" || handelndeLP === "userkuerzel") {
+        handelndeLP = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toString().trim().toLowerCase() : "lp";
     }
 
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
@@ -6352,7 +6352,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 const roherLehrerString = slotData.verfasser || slotData.lehrer || "";
                 if (roherLehrerString) {
                     roherLehrerString.split(/[,/]+/).forEach(k => {
-                        const cleanK = k.trim().toUpperCase();
+                        const cleanK = k.trim().toLowerCase(); // Konsequent lowercase
                         if (cleanK) empfaengerSet.add(cleanK);
                     });
                 }
@@ -6364,7 +6364,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             const klassenLehrer = window.allClassTeachers[klasse] || window.allClassTeachers[klasse.toUpperCase()];
             if (klassenLehrer) {
                 klassenLehrer.toString().split(/[,/]+/).forEach(k => {
-                    const cleanK = k.trim().toUpperCase();
+                    const cleanK = k.trim().toLowerCase(); // Konsequent lowercase
                     if (cleanK) empfaengerSet.add(cleanK);
                 });
             }
@@ -6414,20 +6414,20 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 const validChef = !chefError && chefRows ? chefRows.find(row => row.chef && row.chef.toString().trim() !== '')?.chef : null;
 
                 if (validChef) {
-                    empfaengerList = [validChef.toString().trim().toUpperCase()];
+                    empfaengerList = [validChef.toString().trim().toLowerCase()];
                 } else {
-                    empfaengerList = ["CHEF"];
+                    empfaengerList = ["chef"];
                 }
             } catch (err) {
                 console.error("⚠️ Konnte Chef nicht aus Tabelle 'material' laden, nutze Fallback.", err);
-                empfaengerList = ["CHEF"];
+                empfaengerList = ["chef"];
             }
         } else if (payload.empfaenger) {
             empfaengerList = Array.isArray(payload.empfaenger) 
-                ? payload.empfaenger 
-                : payload.empfaenger.split(',').map(e => e.trim());
+                ? payload.empfaenger.map(e => e.trim().toLowerCase()) 
+                : payload.empfaenger.split(',').map(e => e.trim().toLowerCase());
         } else {
-            empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
+            empfaengerList = (window.allTeachers || []).map(t => t.toLowerCase()).filter(t => t !== handelndeLP);
         }
         
         zeitfensterString = payload.zeitfenster || ""; 
