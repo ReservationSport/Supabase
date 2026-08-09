@@ -13271,7 +13271,7 @@ window.handleLogout = async function() {
 
 
 
-  // ============================================================
+// ============================================================
     // 14. CHAT
     // ============================================================
 
@@ -13338,7 +13338,7 @@ async function loadChatRooms() {
         roomsMap.set('00000000-0000-0000-0000-000000000001', {
             id: '00000000-0000-0000-0000-000000000001',
             type: 'global',
-            name: 'Alle (Team-Chat)'
+            name: 'alle (team-chat)'
         });
 
         const { data: memberships, error: memError } = await client
@@ -13388,17 +13388,19 @@ function renderChatList(rooms) {
         if (room.type === 'global') iconName = 'public';
         if (room.type === 'direct') iconName = 'person';
 
+        const displayName = (room.name || 'chat').toLowerCase();
+
         item.innerHTML = `
             <div style="background: #e2e8f0; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #475569;">
                 <span class="material-symbols-outlined">${iconName}</span>
             </div>
             <div style="flex: 1; overflow: hidden;">
-                <div style="font-weight: bold; font-size: 0.9rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${room.name || 'Chat'}</div>
+                <div style="font-weight: bold; font-size: 0.9rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
                 <div style="font-size: 0.75rem; color: #64748b; text-transform: capitalize;">${room.type}</div>
             </div>
         `;
 
-        item.onclick = () => selectRoom(room.id, room.name || 'Chat', room.type);
+        item.onclick = () => selectRoom(room.id, displayName, room.type);
         chatListEl.appendChild(item);
     });
 }
@@ -13409,8 +13411,8 @@ async function selectRoom(roomId, roomName, roomType) {
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
-    document.getElementById('activeChatTitle').innerText = roomName;
-    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Öffentlicher Team-Chat' : roomType;
+    document.getElementById('activeChatTitle').innerText = roomName.toLowerCase();
+    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'öffentlicher team-chat' : roomType;
     document.getElementById('chatInputArea').style.display = 'flex';
 
     if (chatRealtimeChannel && window.supabaseClient) {
@@ -13476,7 +13478,7 @@ function renderMessages(messages) {
         const bubble = document.createElement('div');
         bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
         
-        let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toUpperCase()}</div>` : '';
+        let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
         bubble.innerHTML = `
             ${senderHtml}
@@ -13569,7 +13571,7 @@ function appendSingleMessage(msg) {
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
     
-    let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toUpperCase()}</div>` : '';
+    let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
     bubble.innerHTML = `
         ${senderHtml}
@@ -13626,7 +13628,7 @@ window.openNewChatModal = async function() {
             listEl.innerHTML += `
                 <label style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-bottom: 1px solid #f1f5f9; border-radius: 6px;">
                     <input type="checkbox" value="${name}" class="new-chat-checkbox" style="width: 16px; height: 16px; accent-color: #00a884; cursor: pointer;">
-                    <span style="text-transform: uppercase; font-weight: bold; color: #1e293b; font-size: 0.9rem;">${name}</span>
+                    <span style="font-weight: bold; color: #1e293b; font-size: 0.9rem;">${name}</span>
                 </label>`;
         });
     } catch (e) {
@@ -13673,7 +13675,7 @@ async function startChatFromSelection() {
                 
                 if (match && match.length > 0) {
                     closeNewChatModal();
-                    selectRoom(match[0].room_id, `Chat mit ${partner.toUpperCase()}`, 'direct');
+                    selectRoom(match[0].room_id, `chat mit ${partner.toLowerCase()}`, 'direct');
                     loadChatRooms();
                     return;
                 }
@@ -13681,7 +13683,7 @@ async function startChatFromSelection() {
         }
 
         // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen
-        const roomName = participants.length > 2 ? "Gruppe: " + selected.join(', ').toUpperCase() : `Chat mit ${selected[0].toUpperCase()}`;
+        const roomName = participants.length > 2 ? "gruppe: " + selected.join(', ').toLowerCase() : `chat mit ${selected[0].toLowerCase()}`;
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
         const { data: newRoom, error: roomError } = await client
