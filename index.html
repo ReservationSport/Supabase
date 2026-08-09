@@ -3899,12 +3899,12 @@ input.stellvertretung-input {
 
         <!-- Neuer Chat-Button (rechts daneben, standardmäßig unsichtbar) -->
         <div id="chat-btn-container" style="display: none;">
-            <div class="news-btn-premium" onclick="openChat()" style="background: linear-gradient(135deg, #4f46e5, #3b82f6);">
-                <span class="btn-text">CHAT</span>
-                <span class="material-symbols-outlined">chat</span>
-                <div id="chat-dot" class="badge" style="display: none;"></div>
-            </div>
-        </div>
+    <div class="news-btn-premium" onclick="openChat()" style="background: linear-gradient(135deg, #4f46e5, #3b82f6);">
+        <span class="btn-text">CHAT</span>
+        <span class="material-symbols-outlined">chat</span>
+        <div id="chat-dot" class="badge" style="display: none;"></div>
+    </div>
+</div>
     </div>
 
     <div class="nav-section nav-center">
@@ -13325,11 +13325,11 @@ async function loadChatRooms() {
             name: 'Alle (Team-Chat)'
         });
 
-        // Räume laden, in denen der User Mitglied ist
+        // KORRIGIERT: .select() muss vor .eq() stehen!
         const { data: memberships, error: memError } = await client
             .from('chat_room_members')
-            .eq('user_kuerzel', aktuellerUser)
-            .select('room_id');
+            .select('room_id')
+            .eq('user_kuerzel', aktuellerUser);
 
         if (memError) throw memError;
 
@@ -13337,6 +13337,7 @@ async function loadChatRooms() {
             const roomIds = memberships.map(m => m.room_id);
             const { data: userRooms, error: roomError } = await client
                 .from('chat_rooms')
+                .select('*')
                 .in('id', roomIds);
 
             if (!roomError && userRooms) {
