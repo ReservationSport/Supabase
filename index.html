@@ -6275,58 +6275,31 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
         const empfaengerSet = new Set();
 
-        // Schritt A: Versuche, die Daten direkt aus currentMasterData (falls vorhanden) zu holen
-        if (currentMasterData) {
-            const sp = currentMasterData.stundenplan || currentMasterData.timetable || currentMasterData.entries;
-            if (Array.isArray(sp)) {
-                sp.forEach(row => {
-                    const rTag = row.tag_index !== undefined ? row.tag_index : (row.tag !== undefined ? row.tag : row.wochentag);
-                    const rSlot = row.slot_index !== undefined ? row.slot_index : (row.slot !== undefined ? row.slot : row.stunde);
-                    
-                    if (Number(rTag) === Number(tagIndex) && Number(rSlot) === Number(slotNummer)) {
-                        const k = row.kuerzel || row.lehrer || row.teacher || row.lp;
-                        if (k) empfaengerSet.add(k.toString().trim().toUpperCase());
-                    }
-                });
-            }
+        // Hole die Stundenplandaten aus currentMasterData oder globalen App-Variablen
+        const master = currentMasterData || window.currentMasterData || window.masterData || {};
+        const sp = master.stundenplan || master.timetable || master.entries || window.stundenplanDaten || [];
+
+        if (Array.isArray(sp) && sp.length > 0) {
+            sp.forEach(row => {
+                const rTag = row.tag_index !== undefined ? Number(row.tag_index) : (row.tag !== undefined ? Number(row.tag) : row.wochentag);
+                const rSlot = row.slot_index !== undefined ? Number(row.slot_index) : (row.slot !== undefined ? Number(row.slot) : Number(row.stunde));
+                
+                const matchTag = (rTag === tagIndex || rTag === zielTag || String(rTag).toLowerCase() === String(zielTag).toLowerCase());
+                const matchSlot = (rSlot === slotNummer);
+                const matchKlasse = !klasse || !row.klasse || row.klasse.toString().trim().toLowerCase() === klasse.toString().trim().toLowerCase();
+
+                if (matchTag && matchSlot && matchKlasse) {
+                    const k = row.kuerzel || row.lehrer || row.teacher || row.lp || row.user;
+                    if (k) empfaengerSet.add(k.toString().trim().toUpperCase());
+                }
+            });
         }
 
-        // Schritt B: Falls im Speicher nichts gefunden wurde, frage direkt in Supabase ab
-        if (empfaengerSet.size === 0) {
-            try {
-                // Versuch 1: Mit tag_index und slot_index
-                let { data: slotData, error: slotError } = await client
-                    .from('stundenplan')
-                    .select('*')
-                    .eq('tag_index', tagIndex)
-                    .eq('slot_index', slotNummer);
-
-                // Versuch 2: Falls das leer ist, probiere alternative Spaltennamen (tag/slot)
-                if ((slotError || !slotData || slotData.length === 0)) {
-                    const altRes = await client
-                        .from('stundenplan')
-                        .select('*')
-                        .eq('tag', tagIndex)
-                        .eq('slot', slotNummer);
-                    if (!altRes.error && altRes.data) {
-                        slotData = altRes.data;
-                    }
-                }
-
-                if (slotData && slotData.length > 0) {
-                    slotData.forEach(row => {
-                        const k = row.kuerzel || row.lehrer || row.teacher || row.lp;
-                        if (k) empfaengerSet.add(k.toString().trim().toUpperCase());
-                    });
-                }
-            } catch (err) {
-                console.error("⚠️ Fehler bei der Abfrage der betroffenen Lehrpersonen aus 'stundenplan':", err);
-            }
-        }
-
-        // Verfasser aus der Empfängerliste entfernen und als Array speichern
+        // Verfasser aus der Empfängerliste entfernen
         empfaengerSet.delete(handelndeLP);
         empfaengerList = Array.from(empfaengerSet);
+
+        console.log(`🔍 Slot-Check für [${rawTyp}] am Tag [${zielTag} / Index ${tagIndex}], Slot [${slotNummer}], Klasse [${klasse}]: Gefundene Empfänger ->`, empfaengerList);
 
         // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
@@ -6380,7 +6353,6 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 ? payload.empfaenger 
                 : payload.empfaenger.split(',').map(e => e.trim());
         } else {
-            // Hier ist der Fallback für Team-News gewollt (an alle ausser Verfasser)
             empfaengerList = (window.allTeachers || []).filter(t => t !== handelndeLP);
         }
         
