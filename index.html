@@ -5416,8 +5416,8 @@ function zeigeGifNachLogin() {
     
     
 /* ============================================================
-   4. REALTIME SYNCHRONISATION - in Supabase eingebaut
-   ============================================================ */
+    4. REALTIME SYNCHRONISATION - in Supabase eingebaut
+    ============================================================ */
 
     
 let planRealtimeChannel = null;
@@ -5455,9 +5455,27 @@ function setupRealtimeSync() {
             { event: '*', schema: 'public', table: 'news_db' },
             (payload) => {
                 console.log('⚡ Echtzeit-Update: news_db geändert', payload);
-                // Da es sich um News handelt, rufen wir hier das News-System auf
-                if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
-                    initNewsSystem();
+                
+                const neueNews = payload.new;
+                const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+
+                // Prüfen, ob ein Empfänger-Feld existiert
+                if (neueNews && neueNews.empfaenger) {
+                    // Den String am Komma auftrennen und Leerzeichen entfernen (z.B. "bupa, seni" -> ["bupa", "seni"])
+                    const empfaengerListe = neueNews.empfaenger.toLowerCase().split(',').map(e => e.trim());
+
+                    // Nur wenn der aktuelle User in dieser Liste enthalten ist, das News-System triggern
+                    if (empfaengerListe.includes(aktuellerUser)) {
+                        console.log('🎉 News-Eintrag betrifft diesen Benutzer!');
+                        if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
+                            initNewsSystem();
+                        }
+                    }
+                } else {
+                    // Fallback, falls das Feld leer ist oder für alle gilt
+                    if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
+                        initNewsSystem();
+                    }
                 }
             }
         )
@@ -5472,7 +5490,6 @@ function setupRealtimeSync() {
 document.addEventListener('DOMContentLoaded', () => {
     setupRealtimeSync();
 });
-
     
 
     
