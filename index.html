@@ -5419,7 +5419,6 @@ function zeigeGifNachLogin() {
     4. REALTIME SYNCHRONISATION - in Supabase eingebaut
     ============================================================ */
 
-    
 let planRealtimeChannel = null;
 
 function setupRealtimeSync() {
@@ -5460,22 +5459,39 @@ function setupRealtimeSync() {
                 const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
 
                 // Prüfen, ob ein Empfänger-Feld existiert
-                if (neueNews && neueNews.empfaenger) {
-                    // Den String am Komma auftrennen und Leerzeichen entfernen (z.B. "bupa, seni" -> ["bupa", "seni"])
-                    const empfaengerListe = neueNews.empfaenger.toLowerCase().split(',').map(e => e.trim());
-
-                    // Nur wenn der aktuelle User in dieser Liste enthalten ist, das News-System triggern
-                    if (empfaengerListe.includes(aktuellerUser)) {
-                        console.log('🎉 News-Eintrag betrifft diesen Benutzer!');
-                        if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
-                            initNewsSystem();
-                        }
-                    }
-                } else {
-                    // Fallback, falls das Feld leer ist oder für alle gilt
+                if (!neueNews || !neueNews.empfaenger) {
+                    console.log('⚠️ Keine Empfänger in dieser News gefunden.');
                     if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
                         initNewsSystem();
                     }
+                    return;
+                }
+
+                console.log('📬 Empfänger-Rohdaten aus DB:', neueNews.empfaenger, (typeof neueNews.empfaenger));
+
+                let empfaengerListe = [];
+
+                // 1. Fall: Es ist bereits ein JavaScript-Array
+                if (Array.isArray(neueNews.empfaenger)) {
+                    empfaengerListe = neueNews.empfaenger.map(e => String(e).toLowerCase().trim());
+                } 
+                // 2. Fall: Es ist ein String (z.B. "bupa, test" oder "{bupa,test}")
+                else if (typeof neueNews.empfaenger === 'string') {
+                    const cleaned = neueNews.empfaenger.replace(/[{}]/g, '');
+                    empfaengerListe = cleaned.toLowerCase().split(',').map(e => e.trim());
+                }
+
+                console.log('🔍 Aufbereitete Empfänger-Liste:', empfaengerListe);
+                console.log('👤 Aktueller User:', aktuellerUser);
+
+                // Nur wenn der aktuelle User in dieser Liste enthalten ist, das News-System triggern
+                if (empfaengerListe.includes(aktuellerUser)) {
+                    console.log('🎉 Treffer! Diese News ist für mich bestimmt.');
+                    if (typeof initNewsSystem === 'function' && document.visibilityState === 'visible') {
+                        initNewsSystem();
+                    }
+                } else {
+                    console.log('❌ Diese News ist nicht für mich bestimmt.');
                 }
             }
         )
