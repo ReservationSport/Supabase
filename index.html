@@ -3751,6 +3751,29 @@ input.stellvertretung-input {
     background: #3f3f46;
 }
 
+/* Icon-Container für exakte Zentrierung */
+.chat-item-icon {
+    background: #27272a;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f97316;
+    box-sizing: border-box;
+}
+
+.chat-item-icon .material-symbols-outlined {
+    font-size: 20px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Rechte Seite: Chat-Hauptbereich */
 .chat-main {
     flex: 1;
@@ -13696,7 +13719,7 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
         const unreadDot = isUnread ? '<span style="display: inline-block; width: 8px; height: 8px; background-color: #f97316; border-radius: 50%; margin-left: 6px; vertical-align: middle;"></span>' : '';
 
         item.innerHTML = `
-            <div style="background: #27272a; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f97316;">
+            <div class="chat-item-icon">
                 <span class="material-symbols-outlined">${iconName}</span>
             </div>
             <div style="flex: 1; overflow: hidden;">
