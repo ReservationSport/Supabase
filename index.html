@@ -13315,14 +13315,14 @@ window.handleLogout = async function() {
     // ============================================================
 
 function checkChatVisibility() {
-    // Trage hier dein eigenes Kürzel in Kleinbuchstaben ein
-    const meinAdminKuerzel = "bupa"; 
+    // Trage hier die erlaubten Kürzel in Kleinbuchstaben ein
+    const erlaubteKuerzel = ["bupa", "test"];  
     
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     const chatContainer = document.getElementById('chat-btn-container');
 
     if (chatContainer) {
-        if (aktuellerUser === meinAdminKuerzel) {
+        if (erlaubteKuerzel.includes(aktuellerUser)) {
             chatContainer.style.display = 'block'; // Oder 'flex', je nach Layout-Bedürfnis
         } else {
             chatContainer.style.display = 'none';
