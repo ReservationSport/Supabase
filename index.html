@@ -13483,10 +13483,12 @@ async function loadChatRooms() {
             displayName: 'alle (team-chat)'
         });
 
+        // WICHTIG: Nur Mitgliedschaften laden, bei denen hidden FALSE ist!
         const { data: memberships, error: memError } = await client
             .from('chat_room_members')
             .select('room_id')
-            .eq('user_kuerzel', aktuellerUser);
+            .eq('user_kuerzel', aktuellerUser)
+            .eq('hidden', false);
 
         if (memError) throw memError;
 
@@ -13681,7 +13683,7 @@ function renderMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-// 5. Nachricht senden
+// 5. Nachricht senden (schaltet hidden für alle Teilnehmer wieder auf false)
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
     if (!input) return;
@@ -13696,6 +13698,7 @@ async function sendChatMessage() {
     input.value = "";
 
     try {
+        // 1. Nachricht senden
         const { error } = await client
             .from('chat_messages')
             .insert([{
@@ -13705,6 +13708,13 @@ async function sendChatMessage() {
             }]);
 
         if (error) throw error;
+
+        // 2. Setze hidden = false für ALLE Teilnehmer dieses Raumes (lässt den Chat bei jedem wieder auftauchen)
+        await client
+            .from('chat_room_members')
+            .update({ hidden: false })
+            .eq('room_id', currentActiveRoomId);
+
     } catch (e) {
         console.error("Fehler beim Senden der Nachricht:", e);
         alert("Nachricht konnte nicht gesendet werden.");
@@ -13831,7 +13841,7 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
+// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen (stellt hidden auf false falls er existierte)
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13863,8 +13873,17 @@ async function startChatFromSelection() {
                     .eq('user_kuerzel', partner);
                 
                 if (match && match.length > 0) {
+                    const roomId = match[0].room_id;
+                    
+                    // Setze hidden wieder auf false (falls er ausgeblendet war)
+                    await client
+                        .from('chat_room_members')
+                        .update({ hidden: false })
+                        .eq('room_id', roomId)
+                        .eq('user_kuerzel', aktuellerUser);
+
                     closeNewChatModal();
-                    selectRoom(match[0].room_id, partner.toLowerCase(), 'direct');
+                    selectRoom(roomId, partner.toLowerCase(), 'direct');
                     loadChatRooms();
                     return;
                 }
@@ -13883,7 +13902,7 @@ async function startChatFromSelection() {
 
         if (roomError) throw roomError;
 
-        const members = participants.map(p => ({ room_id: newRoom.id, user_kuerzel: p }));
+        const members = participants.map(p => ({ room_id: newRoom.id, user_kuerzel: p, hidden: false }));
         const { error: memError } = await client.from('chat_room_members').insert(members);
 
         if (memError) throw memError;
@@ -13934,7 +13953,7 @@ window.closeHideChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Bestätigt das Ausblenden (löscht die Mitgliedschaft für den aktuellen User aus dem Raum)
+// Bestätigt das Ausblenden (setzt hidden auf true statt den Datensatz zu löschen)
 window.confirmHideChat = async function() {
     if (!roomToHideId) return;
     
@@ -13943,10 +13962,10 @@ window.confirmHideChat = async function() {
     if (!client || !aktuellerUser) return;
 
     try {
-        // Entfernt den User aus der Mitgliedschaftstabelle dieses Raumes
+        // Setzt das Flag auf true, statt den Datensatz zu löschen
         const { error } = await client
             .from('chat_room_members')
-            .delete()
+            .update({ hidden: true })
             .eq('room_id', roomToHideId)
             .eq('user_kuerzel', aktuellerUser);
 
@@ -13979,7 +13998,6 @@ window.confirmHideChat = async function() {
         alert("Chat konnte nicht ausgeblendet werden.");
     }
 };
-
 
     
 /* ============================================================
