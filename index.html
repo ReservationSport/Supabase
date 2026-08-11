@@ -13435,6 +13435,11 @@ function checkChatVisibility() {
 // Beim Laden der Seite ausführen
 document.addEventListener('DOMContentLoaded', () => {
     checkChatVisibility();
+    
+    // Realtime-Listener starten, damit neue Chats sofort auftauchen
+    if (window.supabaseClient) {
+        subscribeToNewChats();
+    }
 });
     
 
@@ -13445,6 +13450,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
+
+// Realtime-Listener für neue Chat-Zuweisungen (wenn man in einen neuen Chat hinzugefügt wird)
+function subscribeToNewChats() {
+    const client = window.supabaseClient;
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    if (!client || !aktuellerUser) return;
+
+    client.channel('new-chat-invites')
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_room_members',
+                filter: `user_kuerzel=eq.${aktuellerUser}`
+            },
+            (payload) => {
+                console.log("Neuer Chat-Eintritt erkannt:", payload);
+                loadChatRooms(); // Chatliste sofort neu laden
+            }
+        )
+        .subscribe();
+}
 
 // 1. Chat öffnen und initialisieren
 window.openChat = function() {
@@ -13973,20 +14001,26 @@ window.confirmHideChat = async function() {
 
         closeHideChatModal();
 
-        // Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht zurücksetzen
+        // Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht strikt zurücksetzen
         if (currentActiveRoomId === roomToHideId) {
             currentActiveRoomId = null;
             document.getElementById('activeChatTitle').innerText = 'Wähle einen Chat';
             document.getElementById('activeChatSub').innerText = '';
             document.getElementById('chatInputArea').style.display = 'none';
-            document.getElementById('chatMessages').innerHTML = `
-                <div class="chat-welcome-placeholder">
-                    <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat</span>
-                    <p style="margin-top: 8px; font-size: 0.85rem;">Wähle links einen Chat aus, um zu schreiben.</p>
-                </div>
-            `;
+            
+            const msgContainer = document.getElementById('chatMessages');
+            if (msgContainer) {
+                msgContainer.innerHTML = `
+                    <div class="chat-welcome-placeholder">
+                        <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat</span>
+                        <p style="margin-top: 8px; font-size: 0.85rem;">Chat wurde ausgeblendet.</p>
+                    </div>
+                `;
+            }
+
             if (chatRealtimeChannel) {
                 client.removeChannel(chatRealtimeChannel);
+                chatRealtimeChannel = null;
             }
         }
 
@@ -13999,6 +14033,10 @@ window.confirmHideChat = async function() {
     }
 };
 
+
+
+
+    
     
 /* ============================================================
     ALTE DATEN LÖSCHEN... aus news usw.   muss direkt in supabase rein...
