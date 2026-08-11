@@ -13492,7 +13492,7 @@ window.closeChat = function() {
     }
 };
 
-// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume mit dynamischer Namenserkennung)
+// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume mit dynamischer Namenserkennung für 1:1 und Gruppen)
 async function loadChatRooms() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13530,7 +13530,7 @@ async function loadChatRooms() {
                 .select('*')
                 .in('id', roomIds);
 
-            // Alle Mitglieder dieser Räume laden, um den Partner für 1:1 Chats zu ermitteln
+            // Alle Mitglieder dieser Räume laden, um die Namen der anderen Partner/Teilnehmer zu ermitteln
             const { data: allMembers, error: memberError } = await client
                 .from('chat_room_members')
                 .select('room_id, user_kuerzel')
@@ -13540,20 +13540,26 @@ async function loadChatRooms() {
             if (!memberError && allMembers) {
                 allMembers.forEach(m => {
                     if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
-                    roomMembersMap[m.room_id].push(m.user_kuerzel);
+                    roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase().trim());
                 });
             }
 
             if (!roomError && userRooms) {
                 userRooms.forEach(r => {
                     let displayName = r.name || 'chat';
-                    
-                    // Wenn es ein 1:1 Chat ist, nimm den Namen des Partners
+                    const members = roomMembersMap[r.id] || [];
+                    // Filtere den eigenen Namen heraus, damit er nirgends auftaucht
+                    const otherMembers = members.filter(m => m !== aktuellerUser);
+
                     if (r.type === 'direct') {
-                        const members = roomMembersMap[r.id] || [];
-                        const partner = members.find(m => m !== aktuellerUser);
-                        if (partner) {
-                            displayName = partner;
+                        // 1:1 Chat: Name des Partners anzeigen
+                        if (otherMembers.length > 0) {
+                            displayName = otherMembers[0];
+                        }
+                    } else if (r.type === 'group') {
+                        // Gruppenchat: Nur die Namen der anderen Teilnehmer anzeigen (durch Komma getrennt)
+                        if (otherMembers.length > 0) {
+                            displayName = otherMembers.join(', ');
                         }
                     }
 
@@ -13585,7 +13591,6 @@ function renderChatList(rooms, aktuellerUser) {
 
     rooms.forEach(room => {
         const item = document.createElement('div');
-        // Sicherer Abgleich via String für die aktive Klasse
         const isActive = currentActiveRoomId && (String(currentActiveRoomId) === String(room.id));
         item.className = `chat-item ${isActive ? 'active' : ''}`;
         
@@ -13923,7 +13928,9 @@ async function startChatFromSelection() {
             }
         }
 
-        const roomName = participants.length > 2 ? selected.join(', ').toLowerCase() : selected[0].toLowerCase();
+        // Bei Gruppenchats oder neuen 1:1 Chats: Generiere den Namen aus den anderen Teilnehmern
+        const otherParticipants = selected.map(p => p.toLowerCase());
+        const roomName = otherParticipants.join(', ');
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
         const { data: newRoom, error: roomError } = await client
@@ -13941,7 +13948,7 @@ async function startChatFromSelection() {
 
         closeNewChatModal();
         await loadChatRooms();
-        selectRoom(newRoom.id, roomName, newRoom.type);
+        selectRoom(newRoom.id, roomName, newRoomType = roomType);
 
     } catch (e) {
         console.error("Fehler beim Erstellen des Chats:", e);
@@ -13993,7 +14000,6 @@ window.confirmHideChat = async function() {
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     if (!client || !aktuellerUser) return;
 
-    // Strenger String-Vergleich, ob der aktuell offene Chat ausgeblendet wird
     const isHidingActiveChat = currentActiveRoomId && (String(currentActiveRoomId) === String(roomToHideId));
 
     try {
@@ -14007,7 +14013,6 @@ window.confirmHideChat = async function() {
 
         closeHideChatModal();
 
-        // Wenn der aktive Chat ausgeblendet wurde, Ansicht strikt und sofort leeren
         if (isHidingActiveChat) {
             currentActiveRoomId = null;
             
@@ -14035,7 +14040,6 @@ window.confirmHideChat = async function() {
             }
         }
 
-        // Chat-Liste neu laden
         loadChatRooms();
 
     } catch (e) {
