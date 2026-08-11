@@ -3853,6 +3853,75 @@ input.stellvertretung-input {
     background: #ea580c; /* Satteres Orange beim Hover */
 }
 
+
+
+.chat-modal-content {
+    background: #18181b;
+    padding: 20px;
+    border-radius: 12px;
+    width: 340px;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    border: 1px solid #27272a;
+}
+
+.chat-modal-title {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: #f4f4f5;
+    border-bottom: 1px solid #27272a;
+    padding-bottom: 10px;
+}
+
+.chat-modal-list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: #18181b;
+}
+
+.chat-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.chat-modal-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.chat-btn-cancel {
+    background: #27272a;
+    color: #a1a1aa;
+    border: 1px solid #3f3f46;
+}
+
+.chat-btn-cancel:hover {
+    background: #3f3f46;
+    color: #ffffff;
+}
+
+.chat-btn-start {
+    background: #f97316;
+    color: #ffffff;
+}
+
+.chat-btn-start:hover {
+    background: #ea580c;
+}
+
+    
     
     
 </style>
@@ -4693,21 +4762,20 @@ input.stellvertretung-input {
 
 
 
-<div id="newChatModal" class="chat-overlay" style="display: none; z-index: 10000;">
-    <div style="background: white; padding: 20px; border-radius: 12px; width: 340px; max-height: 500px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
-        <h3 style="margin-top: 0; font-size: 1.1rem; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Neuer Chat</h3>
+<div id="newChatModal" class="chat-overlay" style="display: none;">
+    <div class="chat-modal-content">
+        <h3 class="chat-modal-title">Neuer Chat</h3>
         
-        <div id="newChatList" style="flex: 1; overflow-y: auto; margin: 10px 0; display: flex; flex-direction: column; gap: 6px;">
+        <div id="newChatList" class="chat-modal-list">
             <!-- Hier kommen die Checkboxen rein -->
         </div>
         
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <button onclick="closeNewChatModal()" style="flex: 1; padding: 10px; background: #e2e8f0; border: none; border-radius: 8px; font-weight: bold; color: #475569; cursor: pointer;">Abbrechen</button>
-            <button onclick="startChatFromSelection()" style="flex: 1; padding: 10px; background: #00a884; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;">Chat starten</button>
+        <div class="chat-modal-actions">
+            <button onclick="closeNewChatModal()" class="chat-modal-btn chat-btn-cancel">Abbrechen</button>
+            <button onclick="startChatFromSelection()" class="chat-modal-btn chat-btn-start">Chat starten</button>
         </div>
     </div>
 </div>
-
     
     
 </body>
