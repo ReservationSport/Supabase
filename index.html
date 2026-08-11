@@ -4710,7 +4710,7 @@ input.stellvertretung-input {
         <!-- LINKE SEITE: Chat-Liste (Alle, Direct, Gruppen) -->
         <div class="chat-sidebar">
             <div class="chat-sidebar-header">
-                <h3>Team Chat</h3>
+                <h2>CHAT</h2>
                 <!-- Button um einen neuen 1:1- oder Gruppenchat zu starten -->
                 <button class="chat-action-btn" onclick="openNewChatModal()" title="Neuer Chat">
                     <span class="material-symbols-outlined">add_comment</span>
@@ -13410,7 +13410,6 @@ window.handleLogout = async function() {
 
 
 
-
 // ============================================================
     // 14. CHAT
     // ============================================================
@@ -13435,9 +13434,10 @@ function checkChatVisibility() {
 document.addEventListener('DOMContentLoaded', () => {
     checkChatVisibility();
     
-    // Realtime-Listener starten, damit neue Chats sofort auftauchen
+    // Realtime-Listener starten
     if (window.supabaseClient) {
         subscribeToChatMemberships();
+        subscribeToGlobalMessages();
     }
 });
     
@@ -13450,7 +13450,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
 
-// Realtime-Listener für jegliche Änderungen an Mitgliedschaften (INSERT, UPDATE, DELETE)
+// Realtime-Listener für jegliche Änderungen an Mitgliedschaften
 function subscribeToChatMemberships() {
     const client = window.supabaseClient;
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13464,14 +13464,38 @@ function subscribeToChatMemberships() {
         .on(
             'postgres_changes',
             {
-                event: '*', // Fängt INSERT, UPDATE und DELETE ab
+                event: '*',
                 schema: 'public',
                 table: 'chat_room_members',
                 filter: `user_kuerzel=eq.${aktuellerUser}`
             },
             (payload) => {
                 console.log("Chat-Mitgliedschaft geändert:", payload);
-                loadChatRooms(); // Chatliste sofort neu laden
+                loadChatRooms();
+            }
+        )
+        .subscribe();
+}
+
+// Globaler Realtime-Listener für neue Nachrichten in ALLEN Räumen (für Live-Aktualisierung von Orangen Punkten & Sortierung)
+function subscribeToGlobalMessages() {
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    if (window.globalMessagesChannel) {
+        client.removeChannel(window.globalMessagesChannel);
+    }
+
+    window.globalMessagesChannel = client.channel('global-messages-realtime')
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_messages'
+            },
+            (payload) => {
+                loadChatRooms();
             }
         )
         .subscribe();
@@ -13492,7 +13516,7 @@ window.closeChat = function() {
     }
 };
 
-// 2. Chat-Räume laden (Inklusive Sortierung nach neuester Nachricht und Fix für globale Pin-Position)
+// 2. Chat-Räume laden
 async function loadChatRooms() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13506,16 +13530,15 @@ async function loadChatRooms() {
     try {
         let roomsMap = new Map();
 
-        // Globalen Raum standardmäßig hinzufügen
+        // Globalen Raum als "Team-Chat" hinzufügen
         const globalRoomId = '00000000-0000-0000-0000-000000000001';
         roomsMap.set(globalRoomId, {
             id: globalRoomId,
             type: 'global',
-            name: 'alle (team-chat)',
-            displayName: 'alle (team-chat)'
+            name: 'Team-Chat',
+            displayName: 'Team-Chat'
         });
 
-        // WICHTIG: Nur Mitgliedschaften laden, bei denen hidden FALSE ist!
         const { data: memberships, error: memError } = await client
             .from('chat_room_members')
             .select('room_id')
@@ -13535,7 +13558,6 @@ async function loadChatRooms() {
                 .select('*')
                 .in('id', roomIds);
 
-            // Alle Mitglieder dieser Räume laden, um die Namen der anderen Partner/Teilnehmer für die Anzeige zu ermitteln
             const { data: allMembers, error: memberError } = await client
                 .from('chat_room_members')
                 .select('room_id, user_kuerzel')
@@ -13571,7 +13593,6 @@ async function loadChatRooms() {
             }
         }
 
-        // Neueste Nachrichten für Sortierung & ungelesene Markierung ermitteln
         let unreadRoomsSet = new Set();
         let latestPerRoom = {};
 
@@ -13604,7 +13625,7 @@ async function loadChatRooms() {
 
         let roomsArray = Array.from(roomsMap.values());
 
-        // Sortieren: Global-Chat immer ganz oben, danach nach neuester Nachricht absteigend
+        // Sortieren: Team-Chat immer ganz oben, danach nach neuester Nachricht absteigend
         roomsArray.sort((a, b) => {
             if (a.type === 'global') return -1;
             if (b.type === 'global') return 1;
@@ -13646,14 +13667,14 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
         if (room.type === 'global') iconName = 'public';
         if (room.type === 'direct') iconName = 'person';
 
-        let displayName = (room.displayName || room.name || 'chat').toLowerCase();
+        let displayName = (room.displayName || room.name || 'chat');
         
-        if (displayName.startsWith('chat mit ')) {
-            displayName = displayName.replace('chat mit ', '');
+        if (displayName.toLowerCase().startsWith('chat mit ')) {
+            displayName = displayName.replace(/^chat mit /i, '');
         }
 
         const textColor = isUnread ? '#f97316' : '#f4f4f5';
-        const fontWeight = isUnread ? 'bold' : 'bold';
+        const fontWeight = 'bold';
         const unreadDot = isUnread ? '<span style="display: inline-block; width: 8px; height: 8px; background-color: #f97316; border-radius: 50%; margin-left: 6px; vertical-align: middle;"></span>' : '';
 
         item.innerHTML = `
@@ -13665,10 +13686,8 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
             </div>
         `;
 
-        // Klick zum Öffnen des Chats
         item.onclick = () => selectRoom(room.id, displayName, room.type);
 
-        // Rechtsklick zum Ausblenden
         item.oncontextmenu = (e) => {
             e.preventDefault();
             if (room.type === 'global') {
@@ -13681,6 +13700,7 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
         chatListEl.appendChild(item);
     });
 }
+
 // 3. Einen bestimmten Raum auswählen
 async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
@@ -13689,13 +13709,13 @@ async function selectRoom(roomId, roomName, roomType) {
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
-    let cleanName = roomName.toLowerCase();
-    if (cleanName.startsWith('chat mit ')) {
-        cleanName = cleanName.replace('chat mit ', '');
+    let cleanName = roomName;
+    if (cleanName.toLowerCase().startsWith('chat mit ')) {
+        cleanName = cleanName.replace(/^chat mit /i, '');
     }
 
     document.getElementById('activeChatTitle').innerText = cleanName;
-    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'team-chat' : '';
+    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Team-Chat' : '';
     document.getElementById('chatInputArea').style.display = 'flex';
 
     if (chatRealtimeChannel && window.supabaseClient) {
@@ -13842,8 +13862,6 @@ function subscribeToRoomRealtime(roomId) {
                 if (String(currentActiveRoomId) === String(roomId)) {
                     appendSingleMessage(newMsg);
                     localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
-                } else {
-                    loadChatRooms();
                 }
             }
         )
@@ -13941,7 +13959,7 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen (unhide für alle Teilnehmer)
+// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13974,7 +13992,6 @@ async function startChatFromSelection() {
                 if (match && match.length > 0) {
                     const roomId = match[0].room_id;
                     
-                    // WICHTIG: Setze hidden auf false für ALLE Mitglieder dieses Raumes, damit er bei allen wieder erscheint
                     await client
                         .from('chat_room_members')
                         .update({ hidden: false })
