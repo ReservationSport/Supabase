@@ -4777,6 +4777,22 @@ input.stellvertretung-input {
     </div>
 </div>
     
+
+<div id="hideChatModal" class="chat-overlay" style="display: none;">
+    <div class="chat-modal-content">
+        <h3 class="chat-modal-title">Chat ausblenden</h3>
+        <p id="hideChatModalText" style="color: #a1a1aa; font-size: 0.9rem; margin: 10px 0; line-height: 1.4;">
+            Möchtest du diesen Chat ausblenden?
+        </p>
+        <div class="chat-modal-actions">
+            <button onclick="closeHideChatModal()" class="chat-modal-btn chat-btn-cancel">Abbrechen</button>
+            <button onclick="confirmHideChat()" class="chat-modal-btn" style="background: #ef4444; color: white;">Ausblenden</button>
+        </div>
+    </div>
+</div>
+
+
+
     
 </body>
 
@@ -13557,11 +13573,22 @@ function renderChatList(rooms, aktuellerUser) {
             </div>
         `;
 
+        // Klick zum Öffnen des Chats
         item.onclick = () => selectRoom(room.id, displayName, room.type);
+
+        // Rechtsklick zum Ausblenden über das eigene Modal
+        item.oncontextmenu = (e) => {
+            e.preventDefault();
+            if (room.type === 'global') {
+                alert("Der Team-Chat kann nicht ausgeblendet werden.");
+                return;
+            }
+            openHideChatModal(room.id, displayName);
+        };
+
         chatListEl.appendChild(item);
     });
 }
-
 // 3. Einen bestimmten Raum auswählen
 async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
@@ -13887,6 +13914,74 @@ function filterChats(searchTerm) {
 }
     
 
+let roomToHideId = null;
+
+// Öffnet das Ausblenden-Modal beim Rechtsklick
+function openHideChatModal(roomId, roomName) {
+    roomToHideId = roomId;
+    const modal = document.getElementById('hideChatModal');
+    const textEl = document.getElementById('hideChatModalText');
+    if (modal && textEl) {
+        textEl.innerHTML = `Möchtest du den Chat mit <b style="color: #f4f4f5;">${roomName}</b> ausblenden?`;
+        modal.style.display = 'flex';
+    }
+}
+
+// Schließt das Modal
+window.closeHideChatModal = function() {
+    roomToHideId = null;
+    const modal = document.getElementById('hideChatModal');
+    if (modal) modal.style.display = 'none';
+};
+
+// Bestätigt das Ausblenden (löscht die Mitgliedschaft für den aktuellen User aus dem Raum)
+window.confirmHideChat = async function() {
+    if (!roomToHideId) return;
+    
+    const client = window.supabaseClient;
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    if (!client || !aktuellerUser) return;
+
+    try {
+        // Entfernt den User aus der Mitgliedschaftstabelle dieses Raumes
+        const { error } = await client
+            .from('chat_room_members')
+            .delete()
+            .eq('room_id', roomToHideId)
+            .eq('user_kuerzel', aktuellerUser);
+
+        if (error) throw error;
+
+        closeHideChatModal();
+
+        // Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht zurücksetzen
+        if (currentActiveRoomId === roomToHideId) {
+            currentActiveRoomId = null;
+            document.getElementById('activeChatTitle').innerText = 'Wähle einen Chat';
+            document.getElementById('activeChatSub').innerText = '';
+            document.getElementById('chatInputArea').style.display = 'none';
+            document.getElementById('chatMessages').innerHTML = `
+                <div class="chat-welcome-placeholder">
+                    <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat</span>
+                    <p style="margin-top: 8px; font-size: 0.85rem;">Wähle links einen Chat aus, um zu schreiben.</p>
+                </div>
+            `;
+            if (chatRealtimeChannel) {
+                client.removeChannel(chatRealtimeChannel);
+            }
+        }
+
+        // Chat-Liste neu laden
+        loadChatRooms();
+
+    } catch (e) {
+        console.error("Fehler beim Ausblenden des Chats:", e);
+        alert("Chat konnte nicht ausgeblendet werden.");
+    }
+};
+
+
+    
 /* ============================================================
     ALTE DATEN LÖSCHEN... aus news usw.   muss direkt in supabase rein...
     ============================================================ */
