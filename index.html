@@ -13445,7 +13445,7 @@ window.closeChat = function() {
     }
 };
 
-// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume)
+// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume mit dynamischer Namenserkennung)
 async function loadChatRooms() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13463,7 +13463,8 @@ async function loadChatRooms() {
         roomsMap.set('00000000-0000-0000-0000-000000000001', {
             id: '00000000-0000-0000-0000-000000000001',
             type: 'global',
-            name: 'alle (team-chat)'
+            name: 'alle (team-chat)',
+            displayName: 'alle (team-chat)'
         });
 
         const { data: memberships, error: memError } = await client
@@ -13480,12 +13481,40 @@ async function loadChatRooms() {
                 .select('*')
                 .in('id', roomIds);
 
+            // Alle Mitglieder dieser Räume laden, um den Partner für 1:1 Chats zu ermitteln
+            const { data: allMembers, error: memberError } = await client
+                .from('chat_room_members')
+                .select('room_id, user_kuerzel')
+                .in('room_id', roomIds);
+
+            let roomMembersMap = {};
+            if (!memberError && allMembers) {
+                allMembers.forEach(m => {
+                    if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
+                    roomMembersMap[m.room_id].push(m.user_kuerzel);
+                });
+            }
+
             if (!roomError && userRooms) {
-                userRooms.forEach(r => roomsMap.set(r.id, r));
+                userRooms.forEach(r => {
+                    let displayName = r.name || 'chat';
+                    
+                    // Wenn es ein 1:1 Chat ist, nimm den Namen des Partners
+                    if (r.type === 'direct') {
+                        const members = roomMembersMap[r.id] || [];
+                        const partner = members.find(m => m !== aktuellerUser);
+                        if (partner) {
+                            displayName = partner;
+                        }
+                    }
+
+                    r.displayName = displayName;
+                    roomsMap.set(r.id, r);
+                });
             }
         }
 
-        renderChatList(Array.from(roomsMap.values()));
+        renderChatList(Array.from(roomsMap.values()), aktuellerUser);
 
     } catch (e) {
         console.error("Fehler beim Laden der Chat-Räume:", e);
@@ -13494,7 +13523,7 @@ async function loadChatRooms() {
 }
 
 // Chat-Liste ins HTML rendern
-function renderChatList(rooms) {
+function renderChatList(rooms, aktuellerUser) {
     const chatListEl = document.getElementById('chatList');
     if (!chatListEl) return;
 
@@ -13513,9 +13542,8 @@ function renderChatList(rooms) {
         if (room.type === 'global') iconName = 'public';
         if (room.type === 'direct') iconName = 'person';
 
-        let displayName = (room.name || 'chat').toLowerCase();
+        let displayName = (room.displayName || room.name || 'chat').toLowerCase();
         
-        // Entferne internes "chat mit " falls noch irgendwo vorhanden in alten Räumen
         if (displayName.startsWith('chat mit ')) {
             displayName = displayName.replace('chat mit ', '');
         }
@@ -13540,7 +13568,6 @@ async function selectRoom(roomId, roomName, roomType) {
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
-    // Subtitel und Präfix entfernt – zeigt direkt den sauberen Namen
     let cleanName = roomName.toLowerCase();
     if (cleanName.startsWith('chat mit ')) {
         cleanName = cleanName.replace('chat mit ', '');
@@ -13817,7 +13844,7 @@ async function startChatFromSelection() {
             }
         }
 
-        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen (ohne "chat mit" im Namen)
+        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen
         const roomName = participants.length > 2 ? selected.join(', ').toLowerCase() : selected[0].toLowerCase();
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
@@ -13836,7 +13863,7 @@ async function startChatFromSelection() {
 
         closeNewChatModal();
         await loadChatRooms();
-        selectRoom(newRoom.id, newRoom.name, newRoom.type);
+        selectRoom(newRoom.id, roomName, newRoom.type);
 
     } catch (e) {
         console.error("Fehler beim Erstellen des Chats:", e);
