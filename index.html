@@ -3614,7 +3614,7 @@ input.stellvertretung-input {
 
 
 /* ============================================================
-    26. CHAT DESIGN
+    26. CHAT DESIGN - Dark & Orange Theme
     ============================================================ */
 
 .chat-overlay {
@@ -3623,7 +3623,7 @@ input.stellvertretung-input {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.7);
     z-index: 9999;
     display: flex;
     justify-content: center;
@@ -3636,17 +3636,18 @@ input.stellvertretung-input {
     width: 90vw;
     max-width: 1100px;
     height: 85vh;
-    background: #ffffff;
+    background: #121212;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    border: 1px solid #27272a;
 }
 
 /* Linke Sidebar: Chat-Liste */
 .chat-sidebar {
     width: 350px;
-    background: #f8fafc;
-    border-right: 1px solid #e2e8f0;
+    background: #18181b;
+    border-right: 1px solid #27272a;
     display: flex;
     flex-direction: column;
 }
@@ -3656,21 +3657,21 @@ input.stellvertretung-input {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #e2e8f0;
-    background: #ffffff;
+    border-bottom: 1px solid #27272a;
+    background: #18181b;
 }
 
 .chat-sidebar-header h3 {
     margin: 0;
     font-size: 1.1rem;
-    color: #1e293b;
+    color: #f4f4f5;
 }
 
 .chat-action-btn, .chat-close-btn {
     background: none;
     border: none;
     cursor: pointer;
-    color: #64748b;
+    color: #a1a1aa;
     padding: 4px;
     border-radius: 50%;
     display: flex;
@@ -3679,23 +3680,29 @@ input.stellvertretung-input {
 }
 
 .chat-action-btn:hover, .chat-close-btn:hover {
-    background: #f1f5f9;
-    color: #0f172a;
+    background: #27272a;
+    color: #ffffff;
 }
 
 .chat-search-box {
     padding: 10px 16px;
-    background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    background: #18181b;
+    border-bottom: 1px solid #27272a;
 }
 
 .chat-search-box input {
     width: 100%;
     padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #ffffff;
     font-size: 0.9rem;
     outline: none;
+}
+
+.chat-search-box input::placeholder {
+    color: #a1a1aa;
 }
 
 .chat-list {
@@ -3709,16 +3716,17 @@ input.stellvertretung-input {
     align-items: center;
     gap: 12px;
     cursor: pointer;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #27272a;
     transition: background 0.15s;
+    color: #f4f4f5;
 }
 
 .chat-item:hover {
-    background: #f1f5f9;
+    background: #27272a;
 }
 
 .chat-item.active {
-    background: #e2e8f0;
+    background: #3f3f46;
 }
 
 /* Rechte Seite: Chat-Hauptbereich */
@@ -3726,13 +3734,13 @@ input.stellvertretung-input {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: #efeae2; /* Der klassische helle WhatsApp-Hintergrundton */
+    background: #0f0f10; /* Tiefes Schwarz für den Chat-Hintergrund */
 }
 
 .chat-main-header {
     padding: 12px 20px;
-    background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    background: #18181b;
+    border-bottom: 1px solid #27272a;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -3741,7 +3749,7 @@ input.stellvertretung-input {
 .chat-active-info span {
     display: block;
     font-weight: bold;
-    color: #1e293b;
+    color: #f4f4f5;
 }
 
 .chat-messages {
@@ -3756,7 +3764,7 @@ input.stellvertretung-input {
 .chat-welcome-placeholder {
     margin: auto;
     text-align: center;
-    color: #64748b;
+    color: #a1a1aa;
 }
 
 /* Sprechblasen */
@@ -3767,17 +3775,19 @@ input.stellvertretung-input {
     font-size: 0.9rem;
     position: relative;
     word-break: break-word;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .message-bubble.incoming {
-    background: #ffffff;
+    background: #27272a; /* Dunkelgrau für fremde Nachrichten */
+    color: #f4f4f5;
     align-self: flex-start;
     border-top-left-radius: 0;
 }
 
 .message-bubble.outgoing {
-    background: #d9fdd3; /* WhatsApp-Grün für eigene Nachrichten */
+    background: #f97316; /* Markantes System-Orange für eigene Nachrichten */
+    color: #ffffff;
     align-self: flex-end;
     border-top-right-radius: 0;
 }
@@ -3785,13 +3795,13 @@ input.stellvertretung-input {
 .message-sender {
     font-size: 0.75rem;
     font-weight: bold;
-    color: #0284c7;
+    color: #fb923c; /* Helles Orange für Absender */
     margin-bottom: 2px;
 }
 
 .message-time {
     font-size: 0.65rem;
-    color: #94a3b8;
+    color: #a1a1aa;
     text-align: right;
     margin-top: 4px;
 }
@@ -3799,7 +3809,8 @@ input.stellvertretung-input {
 /* Eingabebereich */
 .chat-input-area {
     padding: 12px 20px;
-    background: #f0f2f5;
+    background: #18181b;
+    border-top: 1px solid #27272a;
     display: flex;
     gap: 10px;
     align-items: center;
@@ -3809,14 +3820,19 @@ input.stellvertretung-input {
     flex: 1;
     padding: 10px 14px;
     border-radius: 20px;
-    border: none;
+    border: 1px solid #3f3f46;
     outline: none;
     font-size: 0.95rem;
-    background: #ffffff;
+    background: #27272a;
+    color: #ffffff;
+}
+
+.chat-input-area input::placeholder {
+    color: #a1a1aa;
 }
 
 .chat-send-btn {
-    background: #00a884; /* WhatsApp-Senden-Grün */
+    background: #f97316; /* System-Orange für Senden-Button */
     color: white;
     border: none;
     border-radius: 50%;
@@ -3830,7 +3846,7 @@ input.stellvertretung-input {
 }
 
 .chat-send-btn:hover {
-    background: #008f72;
+    background: #ea580c; /* Satteres Orange beim Hover */
 }
 
 
