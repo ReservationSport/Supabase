@@ -3654,12 +3654,13 @@ input.stellvertretung-input {
 }
 
 .chat-sidebar-header {
-    padding: 16px;
+    padding: 14.5px 20px; /* Exakt angepasst an die Höhe des rechten Headers */
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid #27272a;
     background: #18181b;
+    box-sizing: border-box;
 }
 
 .chat-sidebar-header h3 {
@@ -3668,7 +3669,25 @@ input.stellvertretung-input {
     color: #f4f4f5;
 }
 
-.chat-action-btn, .chat-close-btn {
+.chat-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #f97316; /* In System-Orange eingefärbt */
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem; /* Etwas größer gemacht */
+}
+
+.chat-action-btn:hover {
+    background: #27272a;
+    color: #ea580c;
+}
+
+.chat-close-btn {
     background: none;
     border: none;
     cursor: pointer;
@@ -3680,7 +3699,7 @@ input.stellvertretung-input {
     justify-content: center;
 }
 
-.chat-action-btn:hover, .chat-close-btn:hover {
+.chat-close-btn:hover {
     background: #27272a;
     color: #ffffff;
 }
@@ -3740,12 +3759,13 @@ input.stellvertretung-input {
 }
 
 .chat-main-header {
-    padding: 12px 20px;
+    padding: 14.5px 20px; /* Identische Innenabstände wie der linke Header */
     background: #18181b;
     border-bottom: 1px solid #27272a;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-sizing: border-box;
 }
 
 .chat-active-info span {
@@ -3852,8 +3872,6 @@ input.stellvertretung-input {
     background: #ea580c; /* Satteres Orange beim Hover */
 }
 
-
-
 .chat-modal-content {
     background: #18181b;
     padding: 20px;
@@ -3919,7 +3937,6 @@ input.stellvertretung-input {
 .chat-btn-start:hover {
     background: #ea580c;
 }
-
     
     
     
