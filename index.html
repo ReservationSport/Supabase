@@ -13464,7 +13464,7 @@ function subscribeToChatMemberships() {
         .on(
             'postgres_changes',
             {
-                event: '*', // Fängt INSERT, UPDATE und DELETE ab (wichtig für neue Chats & Unhide)
+                event: '*', // Fängt INSERT, UPDATE und DELETE ab
                 schema: 'public',
                 table: 'chat_room_members',
                 filter: `user_kuerzel=eq.${aktuellerUser}`
@@ -13492,7 +13492,7 @@ window.closeChat = function() {
     }
 };
 
-// 2. Chat-Räume laden (Globaler "Alle"-Chat + eigene Räume mit dynamischer Namenserkennung für 1:1 und Gruppen)
+// 2. Chat-Räume laden (Inklusive Erkennung ungelesener Nachrichten)
 async function loadChatRooms() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13507,8 +13507,9 @@ async function loadChatRooms() {
         let roomsMap = new Map();
 
         // Globalen Raum standardmäßig hinzufügen
-        roomsMap.set('00000000-0000-0000-0000-000000000001', {
-            id: '00000000-0000-0000-0000-000000000001',
+        const globalRoomId = '00000000-0000-0000-0000-000000000001';
+        roomsMap.set(globalRoomId, {
+            id: globalRoomId,
             type: 'global',
             name: 'alle (team-chat)',
             displayName: 'alle (team-chat)'
@@ -13523,14 +13524,18 @@ async function loadChatRooms() {
 
         if (memError) throw memError;
 
+        let roomIds = [globalRoomId];
         if (memberships && memberships.length > 0) {
-            const roomIds = memberships.map(m => m.room_id);
+            memberships.forEach(m => {
+                if (!roomIds.includes(m.room_id)) roomIds.push(m.room_id);
+            });
+
             const { data: userRooms, error: roomError } = await client
                 .from('chat_rooms')
                 .select('*')
                 .in('id', roomIds);
 
-            // Alle Mitglieder dieser Räume laden, um die Namen der anderen Partner/Teilnehmer zu ermitteln
+            // Alle Mitglieder dieser Räume laden, um die Namen der anderen Partner/Teilnehmer für die Anzeige zu ermitteln
             const { data: allMembers, error: memberError } = await client
                 .from('chat_room_members')
                 .select('room_id, user_kuerzel')
@@ -13548,16 +13553,13 @@ async function loadChatRooms() {
                 userRooms.forEach(r => {
                     let displayName = r.name || 'chat';
                     const members = roomMembersMap[r.id] || [];
-                    // Filtere den eigenen Namen heraus, damit er nirgends auftaucht
                     const otherMembers = members.filter(m => m !== aktuellerUser);
 
                     if (r.type === 'direct') {
-                        // 1:1 Chat: Name des Partners anzeigen
                         if (otherMembers.length > 0) {
                             displayName = otherMembers[0];
                         }
                     } else if (r.type === 'group') {
-                        // Gruppenchat: Nur die Namen der anderen Teilnehmer anzeigen (durch Komma getrennt)
                         if (otherMembers.length > 0) {
                             displayName = otherMembers.join(', ');
                         }
@@ -13569,7 +13571,37 @@ async function loadChatRooms() {
             }
         }
 
-        renderChatList(Array.from(roomsMap.values()), aktuellerUser);
+        // Ungelesene Nachrichten ermitteln (über localStorage & neueste Nachricht)
+        let unreadRoomsSet = new Set();
+        if (roomIds.length > 0) {
+            const { data: latestMsgs, error: msgError } = await client
+                .from('chat_messages')
+                .select('room_id, created_at, sender_kuerzel')
+                .in('room_id', roomIds)
+                .order('created_at', { ascending: false });
+
+            if (!msgError && latestMsgs) {
+                let latestPerRoom = {};
+                latestMsgs.forEach(m => {
+                    if (!latestPerRoom[m.room_id]) {
+                        latestPerRoom[m.room_id] = m;
+                    }
+                });
+
+                Object.keys(latestPerRoom).forEach(roomId => {
+                    if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return; // Aktiver Raum ist immer gelesen
+                    const msg = latestPerRoom[roomId];
+                    if (msg.sender_kuerzel.toLowerCase() === aktuellerUser) return; // Eigene letzte Nachricht zählt nicht als ungelesen
+
+                    const lastRead = localStorage.getItem('chat_read_' + roomId);
+                    if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
+                        unreadRoomsSet.add(roomId);
+                    }
+                });
+            }
+        }
+
+        renderChatList(Array.from(roomsMap.values()), aktuellerUser, unreadRoomsSet);
 
     } catch (e) {
         console.error("Fehler beim Laden der Chat-Räume:", e);
@@ -13577,8 +13609,8 @@ async function loadChatRooms() {
     }
 }
 
-// Chat-Liste ins HTML rendern
-function renderChatList(rooms, aktuellerUser) {
+// Chat-Liste ins HTML rendern (mit Orangemarkierung für ungelesene Chats)
+function renderChatList(rooms, aktuellerUser, unreadRooms) {
     const chatListEl = document.getElementById('chatList');
     if (!chatListEl) return;
 
@@ -13592,6 +13624,8 @@ function renderChatList(rooms, aktuellerUser) {
     rooms.forEach(room => {
         const item = document.createElement('div');
         const isActive = currentActiveRoomId && (String(currentActiveRoomId) === String(room.id));
+        const isUnread = unreadRooms && unreadRooms.has(room.id);
+
         item.className = `chat-item ${isActive ? 'active' : ''}`;
         
         let iconName = 'group';
@@ -13604,19 +13638,24 @@ function renderChatList(rooms, aktuellerUser) {
             displayName = displayName.replace('chat mit ', '');
         }
 
+        // Farbliche Hervorhebung & Punkt für ungelesene Nachrichten
+        const textColor = isUnread ? '#f97316' : '#f4f4f5';
+        const fontWeight = isUnread ? 'bold' : 'bold';
+        const unreadDot = isUnread ? '<span style="display: inline-block; width: 8px; height: 8px; background-color: #f97316; border-radius: 50%; margin-left: 6px; vertical-align: middle;"></span>' : '';
+
         item.innerHTML = `
             <div style="background: #27272a; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f97316;">
                 <span class="material-symbols-outlined">${iconName}</span>
             </div>
             <div style="flex: 1; overflow: hidden;">
-                <div style="font-weight: bold; font-size: 0.9rem; color: #f4f4f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
+                <div style="font-weight: ${fontWeight}; font-size: 0.9rem; color: ${textColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName} ${unreadDot}</div>
             </div>
         `;
 
         // Klick zum Öffnen des Chats
         item.onclick = () => selectRoom(room.id, displayName, room.type);
 
-        // Rechtsklick zum Ausblenden über das eigene Modal
+        // Rechtsklick zum Ausblenden
         item.oncontextmenu = (e) => {
             e.preventDefault();
             if (room.type === 'global') {
@@ -13632,6 +13671,9 @@ function renderChatList(rooms, aktuellerUser) {
 // 3. Einen bestimmten Raum auswählen
 async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
+
+    // Als gelesen markieren und lokal speichern
+    localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
@@ -13650,6 +13692,9 @@ async function selectRoom(roomId, roomName, roomType) {
 
     await loadMessages(roomId);
     subscribeToRoomRealtime(roomId);
+    
+    // Chatliste aktualisieren, damit die Orangen Markierung sofort verschwindet
+    loadChatRooms();
 }
 
 // 4. Nachrichten für einen Raum laden
@@ -13669,7 +13714,6 @@ async function loadMessages(roomId) {
 
         if (error) throw error;
 
-        // Race Condition Schutz
         if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
@@ -13725,7 +13769,7 @@ function renderMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-// 5. Nachricht senden (schaltet hidden für alle Teilnehmer wieder auf false)
+// 5. Nachricht senden
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
     if (!input) return;
@@ -13784,7 +13828,13 @@ function subscribeToRoomRealtime(roomId) {
             },
             (payload) => {
                 const newMsg = payload.new;
-                appendSingleMessage(newMsg);
+                if (String(currentActiveRoomId) === String(roomId)) {
+                    appendSingleMessage(newMsg);
+                    localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
+                } else {
+                    // Wenn Nachricht in einem anderen (Hintergrund-)Chat ankommt, Chatliste aktualisieren für Orangen Marker
+                    loadChatRooms();
+                }
             }
         )
         .subscribe();
@@ -13881,7 +13931,7 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
+// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen (schließt alle Mitglieder im Namen ein)
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13928,9 +13978,9 @@ async function startChatFromSelection() {
             }
         }
 
-        // Bei Gruppenchats oder neuen 1:1 Chats: Generiere den Namen aus den anderen Teilnehmern
-        const otherParticipants = selected.map(p => p.toLowerCase());
-        const roomName = otherParticipants.join(', ');
+        // Alle Mitglieder (inkl. mir) im Datenbank-Namen speichern (sortiert)
+        const allParticipantsSorted = participants.map(p => p.toLowerCase()).sort();
+        const roomName = allParticipantsSorted.join(', ');
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
         const { data: newRoom, error: roomError } = await client
@@ -13948,7 +13998,11 @@ async function startChatFromSelection() {
 
         closeNewChatModal();
         await loadChatRooms();
-        selectRoom(newRoom.id, roomName, newRoomType = roomType);
+        
+        // Für den Funktionsaufruf des selektierten Raums übergeben wir den Partner/Gruppennamen ohne uns selbst
+        const otherMembersForDisplay = selected.map(p => p.toLowerCase());
+        const displayTitle = otherMembersForDisplay.length === 1 ? otherMembersForDisplay[0] : otherMembersForDisplay.join(', ');
+        selectRoom(newRoom.id, displayTitle, roomType);
 
     } catch (e) {
         console.error("Fehler beim Erstellen des Chats:", e);
@@ -13992,7 +14046,7 @@ window.closeHideChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Bestätigt das Ausblenden (setzt hidden auf true statt den Datensatz zu löschen)
+// Bestätigt das Ausblenden
 window.confirmHideChat = async function() {
     if (!roomToHideId) return;
     
