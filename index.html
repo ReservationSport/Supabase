@@ -13385,7 +13385,7 @@ async function loadChatRooms() {
     const chatListEl = document.getElementById('chatList');
     if (!chatListEl) return;
 
-    chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem;">Lade Chats...</div>';
+    chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Lade Chats...</div>';
 
     try {
         let roomsMap = new Map();
@@ -13432,7 +13432,7 @@ function renderChatList(rooms) {
     chatListEl.innerHTML = "";
 
     if (rooms.length === 0) {
-        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem;">Keine Chats vorhanden.</div>';
+        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Keine Chats vorhanden.</div>';
         return;
     }
 
@@ -13444,15 +13444,19 @@ function renderChatList(rooms) {
         if (room.type === 'global') iconName = 'public';
         if (room.type === 'direct') iconName = 'person';
 
-        const displayName = (room.name || 'chat').toLowerCase();
+        let displayName = (room.name || 'chat').toLowerCase();
+        
+        // Entferne internes "chat mit " falls noch irgendwo vorhanden in alten Räumen
+        if (displayName.startsWith('chat mit ')) {
+            displayName = displayName.replace('chat mit ', '');
+        }
 
         item.innerHTML = `
-            <div style="background: #e2e8f0; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #475569;">
+            <div style="background: #27272a; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f97316;">
                 <span class="material-symbols-outlined">${iconName}</span>
             </div>
             <div style="flex: 1; overflow: hidden;">
-                <div style="font-weight: bold; font-size: 0.9rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
-                <div style="font-size: 0.75rem; color: #64748b; text-transform: capitalize;">${room.type}</div>
+                <div style="font-weight: bold; font-size: 0.9rem; color: #f4f4f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
             </div>
         `;
 
@@ -13467,8 +13471,14 @@ async function selectRoom(roomId, roomName, roomType) {
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
-    document.getElementById('activeChatTitle').innerText = roomName.toLowerCase();
-    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'öffentlicher team-chat' : roomType;
+    // Subtitel und Präfix entfernt – zeigt direkt den sauberen Namen
+    let cleanName = roomName.toLowerCase();
+    if (cleanName.startsWith('chat mit ')) {
+        cleanName = cleanName.replace('chat mit ', '');
+    }
+
+    document.getElementById('activeChatTitle').innerText = cleanName;
+    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'team-chat' : '';
     document.getElementById('chatInputArea').style.display = 'flex';
 
     if (chatRealtimeChannel && window.supabaseClient) {
@@ -13485,7 +13495,7 @@ async function loadMessages(roomId) {
     const container = document.getElementById('chatMessages');
     if (!container || !client) return;
 
-    container.innerHTML = '<div style="margin: auto; color: #64748b; font-size: 0.85rem;">Lade Nachrichten...</div>';
+    container.innerHTML = '<div style="margin: auto; color: #a1a1aa; font-size: 0.85rem;">Lade Nachrichten...</div>';
 
     try {
         const { data: messages, error } = await client
@@ -13513,7 +13523,7 @@ function renderMessages(messages) {
     if (messages.length === 0) {
         container.innerHTML = `
             <div class="chat-welcome-placeholder">
-                <span class="material-symbols-outlined" style="font-size: 40px; color: #cbd5e1;">chat_bubble_outline</span>
+                <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat_bubble_outline</span>
                 <p style="margin-top: 8px; font-size: 0.85rem;">Noch keine Nachrichten in diesem Chat. Schreib die erste!</p>
             </div>
         `;
@@ -13661,7 +13671,7 @@ window.openNewChatModal = async function() {
     if (!modal || !listEl) return;
 
     modal.style.display = 'flex';
-    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Lade Lehrer...</div>';
+    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #a1a1aa;">Lade Lehrer...</div>';
 
     try {
         const { data: teachers, error } = await window.supabaseClient.from('teachers').select('lehrer');
@@ -13672,7 +13682,7 @@ window.openNewChatModal = async function() {
         listEl.innerHTML = "";
         
         if (!teachers || teachers.length === 0) {
-            listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Keine Lehrer gefunden.</div>';
+            listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #a1a1aa;">Keine Lehrer gefunden.</div>';
             return;
         }
 
@@ -13682,9 +13692,9 @@ window.openNewChatModal = async function() {
             if (name === aktuellerUser) return; // Eigenes Kürzel ausblenden
             
             listEl.innerHTML += `
-                <label style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-bottom: 1px solid #f1f5f9; border-radius: 6px;">
-                    <input type="checkbox" value="${name}" class="new-chat-checkbox" style="width: 16px; height: 16px; accent-color: #00a884; cursor: pointer;">
-                    <span style="font-weight: bold; color: #1e293b; font-size: 0.9rem;">${name}</span>
+                <label style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-bottom: 1px solid #27272a; border-radius: 6px;">
+                    <input type="checkbox" value="${name}" class="new-chat-checkbox" style="width: 16px; height: 16px; accent-color: #f97316; cursor: pointer;">
+                    <span style="font-weight: bold; color: #f4f4f5; font-size: 0.9rem;">${name}</span>
                 </label>`;
         });
     } catch (e) {
@@ -13731,15 +13741,15 @@ async function startChatFromSelection() {
                 
                 if (match && match.length > 0) {
                     closeNewChatModal();
-                    selectRoom(match[0].room_id, `chat mit ${partner.toLowerCase()}`, 'direct');
+                    selectRoom(match[0].room_id, partner.toLowerCase(), 'direct');
                     loadChatRooms();
                     return;
                 }
             }
         }
 
-        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen
-        const roomName = participants.length > 2 ? "gruppe: " + selected.join(', ').toLowerCase() : `chat mit ${selected[0].toLowerCase()}`;
+        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen (ohne "chat mit" im Namen)
+        const roomName = participants.length > 2 ? selected.join(', ').toLowerCase() : selected[0].toLowerCase();
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
         const { data: newRoom, error: roomError } = await client
@@ -13765,6 +13775,20 @@ async function startChatFromSelection() {
     }
 }
 
+// Funktion zum Filtern der Chat-Liste über das Suchfeld
+function filterChats(searchTerm) {
+    const query = searchTerm.toLowerCase().trim();
+    const chatItems = document.querySelectorAll('.chat-item');
+
+    chatItems.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(query)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
     
 
 /* ============================================================
