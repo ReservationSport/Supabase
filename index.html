@@ -13437,7 +13437,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Realtime-Listener starten, damit neue Chats sofort auftauchen
     if (window.supabaseClient) {
-        subscribeToNewChats();
+        subscribeToChatMemberships();
     }
 });
     
@@ -13450,23 +13450,27 @@ document.addEventListener('DOMContentLoaded', () => {
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
 
-// Realtime-Listener für neue Chat-Zuweisungen (wenn man in einen neuen Chat hinzugefügt wird)
-function subscribeToNewChats() {
+// Realtime-Listener für jegliche Änderungen an Mitgliedschaften (INSERT, UPDATE, DELETE)
+function subscribeToChatMemberships() {
     const client = window.supabaseClient;
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     if (!client || !aktuellerUser) return;
 
-    client.channel('new-chat-invites')
+    if (window.chatMembershipsChannel) {
+        client.removeChannel(window.chatMembershipsChannel);
+    }
+
+    window.chatMembershipsChannel = client.channel('user-memberships-realtime')
         .on(
             'postgres_changes',
             {
-                event: 'INSERT',
+                event: '*', // Fängt INSERT, UPDATE und DELETE ab (wichtig für neue Chats & Unhide)
                 schema: 'public',
                 table: 'chat_room_members',
                 filter: `user_kuerzel=eq.${aktuellerUser}`
             },
             (payload) => {
-                console.log("Neuer Chat-Eintritt erkannt:", payload);
+                console.log("Chat-Mitgliedschaft geändert:", payload);
                 loadChatRooms(); // Chatliste sofort neu laden
             }
         )
@@ -13581,7 +13585,9 @@ function renderChatList(rooms, aktuellerUser) {
 
     rooms.forEach(room => {
         const item = document.createElement('div');
-        item.className = `chat-item ${currentActiveRoomId === room.id ? 'active' : ''}`;
+        // Sicherer Abgleich via String für die aktive Klasse
+        const isActive = currentActiveRoomId && (String(currentActiveRoomId) === String(room.id));
+        item.className = `chat-item ${isActive ? 'active' : ''}`;
         
         let iconName = 'group';
         if (room.type === 'global') iconName = 'public';
@@ -13658,12 +13664,12 @@ async function loadMessages(roomId) {
 
         if (error) throw error;
 
-        // RACE CONDITION SCHUTZ: Wenn der Chat in der Zwischenzeit gewechselt oder geschlossen wurde, abbrechen
-        if (currentActiveRoomId !== roomId) return;
+        // Race Condition Schutz
+        if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
     } catch (e) {
-        if (currentActiveRoomId !== roomId) return;
+        if (String(currentActiveRoomId) !== String(roomId)) return;
         console.error("Fehler beim Laden der Nachrichten:", e);
         container.innerHTML = '<div style="margin: auto; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden der Nachrichten.</div>';
     }
@@ -13729,7 +13735,6 @@ async function sendChatMessage() {
     input.value = "";
 
     try {
-        // 1. Nachricht senden
         const { error } = await client
             .from('chat_messages')
             .insert([{
@@ -13740,7 +13745,6 @@ async function sendChatMessage() {
 
         if (error) throw error;
 
-        // 2. Setze hidden = false für ALLE Teilnehmer dieses Raumes (lässt den Chat bei jedem wieder auftauchen)
         await client
             .from('chat_room_members')
             .update({ hidden: false })
@@ -13853,7 +13857,7 @@ window.openNewChatModal = async function() {
         teachers.forEach(t => {
             if (!t.lehrer) return;
             const name = t.lehrer.toLowerCase().trim();
-            if (name === aktuellerUser) return; // Eigenes Kürzel ausblenden
+            if (name === aktuellerUser) return;
             
             listEl.innerHTML += `
                 <label style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-bottom: 1px solid #27272a; border-radius: 6px;">
@@ -13872,7 +13876,7 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen (stellt hidden auf false falls er existierte)
+// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13887,7 +13891,6 @@ async function startChatFromSelection() {
     if (!client) return;
 
     try {
-        // FALL 1: 1:1 Chat (Genau 2 Personen gesamt) -> Prüfen ob Raum schon existiert
         if (participants.length === 2) {
             const partner = selected[0];
             const { data: existing } = await client
@@ -13906,7 +13909,6 @@ async function startChatFromSelection() {
                 if (match && match.length > 0) {
                     const roomId = match[0].room_id;
                     
-                    // Setze hidden wieder auf false (falls er ausgeblendet war)
                     await client
                         .from('chat_room_members')
                         .update({ hidden: false })
@@ -13921,7 +13923,6 @@ async function startChatFromSelection() {
             }
         }
 
-        // FALL 2: Gruppen-Chat oder neuer 1:1 Chat -> Neu anlegen
         const roomName = participants.length > 2 ? selected.join(', ').toLowerCase() : selected[0].toLowerCase();
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
@@ -13992,8 +13993,10 @@ window.confirmHideChat = async function() {
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     if (!client || !aktuellerUser) return;
 
+    // Strenger String-Vergleich, ob der aktuell offene Chat ausgeblendet wird
+    const isHidingActiveChat = currentActiveRoomId && (String(currentActiveRoomId) === String(roomToHideId));
+
     try {
-        // 1. Setzt das Flag auf true in der Datenbank
         const { error } = await client
             .from('chat_room_members')
             .update({ hidden: true })
@@ -14004,15 +14007,19 @@ window.confirmHideChat = async function() {
 
         closeHideChatModal();
 
-        // 2. Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht sofort und sicher zurücksetzen
-        if (String(currentActiveRoomId) === String(roomToHideId)) {
+        // Wenn der aktive Chat ausgeblendet wurde, Ansicht strikt und sofort leeren
+        if (isHidingActiveChat) {
             currentActiveRoomId = null;
             
-            document.getElementById('activeChatTitle').innerText = 'Wähle einen Chat';
-            document.getElementById('activeChatSub').innerText = '';
-            document.getElementById('chatInputArea').style.display = 'none';
-            
+            const titleEl = document.getElementById('activeChatTitle');
+            const subEl = document.getElementById('activeChatSub');
+            const inputAreaEl = document.getElementById('chatInputArea');
             const msgContainer = document.getElementById('chatMessages');
+
+            if (titleEl) titleEl.innerText = 'Wähle einen Chat';
+            if (subEl) subEl.innerText = '';
+            if (inputAreaEl) inputAreaEl.style.display = 'none';
+            
             if (msgContainer) {
                 msgContainer.innerHTML = `
                     <div class="chat-welcome-placeholder">
@@ -14028,7 +14035,7 @@ window.confirmHideChat = async function() {
             }
         }
 
-        // 3. Chat-Liste neu laden
+        // Chat-Liste neu laden
         loadChatRooms();
 
     } catch (e) {
