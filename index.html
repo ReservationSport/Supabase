@@ -13659,8 +13659,12 @@ async function loadMessages(roomId) {
 
         if (error) throw error;
 
+        // RACE CONDITION SCHUTZ: Wenn der Chat in der Zwischenzeit gewechselt oder geschlossen wurde, abbrechen
+        if (currentActiveRoomId !== roomId) return;
+
         renderMessages(messages || []);
     } catch (e) {
+        if (currentActiveRoomId !== roomId) return;
         console.error("Fehler beim Laden der Nachrichten:", e);
         container.innerHTML = '<div style="margin: auto; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden der Nachrichten.</div>';
     }
@@ -13990,7 +13994,7 @@ window.confirmHideChat = async function() {
     if (!client || !aktuellerUser) return;
 
     try {
-        // Setzt das Flag auf true, statt den Datensatz zu löschen
+        // 1. Setzt das Flag auf true in der Datenbank
         const { error } = await client
             .from('chat_room_members')
             .update({ hidden: true })
@@ -14001,9 +14005,10 @@ window.confirmHideChat = async function() {
 
         closeHideChatModal();
 
-        // Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht strikt zurücksetzen
-        if (currentActiveRoomId === roomToHideId) {
+        // 2. Wenn der gerade aktive Chat ausgeblendet wurde, Ansicht sofort und sicher zurücksetzen
+        if (String(currentActiveRoomId) === String(roomToHideId)) {
             currentActiveRoomId = null;
+            
             document.getElementById('activeChatTitle').innerText = 'Wähle einen Chat';
             document.getElementById('activeChatSub').innerText = '';
             document.getElementById('chatInputArea').style.display = 'none';
@@ -14024,7 +14029,7 @@ window.confirmHideChat = async function() {
             }
         }
 
-        // Chat-Liste neu laden
+        // 3. Chat-Liste neu laden
         loadChatRooms();
 
     } catch (e) {
