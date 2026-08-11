@@ -13477,7 +13477,7 @@ function subscribeToChatMemberships() {
         .subscribe();
 }
 
-// Globaler Realtime-Listener für neue Nachrichten in ALLEN Räumen (für Live-Aktualisierung von Orangen Punkten & Sortierung)
+// Globaler Realtime-Listener für neue Nachrichten in ALLEN Räumen
 function subscribeToGlobalMessages() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13715,7 +13715,7 @@ async function selectRoom(roomId, roomName, roomType) {
     }
 
     document.getElementById('activeChatTitle').innerText = cleanName;
-    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Fachschaft Sport' : '';
+    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Team-Chat' : '';
     document.getElementById('chatInputArea').style.display = 'flex';
 
     if (chatRealtimeChannel && window.supabaseClient) {
@@ -13959,7 +13959,7 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und Chat öffnen/erstellen
+// Logik: Ausgewählte Personen einsammeln und exakt prüfen, ob der Raum schon existiert
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13969,43 +13969,66 @@ async function startChatFromSelection() {
         return;
     }
 
-    const participants = [aktuellerUser, ...selected];
+    const participants = [aktuellerUser, ...selected].map(p => p.toLowerCase().trim());
     const client = window.supabaseClient;
     if (!client) return;
 
     try {
-        if (participants.length === 2) {
-            const partner = selected[0];
-            const { data: existing } = await client
-                .from('chat_room_members')
-                .select('room_id')
-                .eq('user_kuerzel', aktuellerUser);
-            
-            if (existing && existing.length > 0) {
-                const roomIds = existing.map(e => e.room_id);
-                const { data: match } = await client
-                    .from('chat_room_members')
-                    .select('room_id')
-                    .in('room_id', roomIds)
-                    .eq('user_kuerzel', partner);
-                
-                if (match && match.length > 0) {
-                    const roomId = match[0].room_id;
-                    
-                    await client
-                        .from('chat_room_members')
-                        .update({ hidden: false })
-                        .eq('room_id', roomId);
+        // Exakte Suche nach einem bestehenden Raum mit genau DIESEN Teilnehmern (weder mehr noch weniger)
+        const { data: myMemberships, error: memErr } = await client
+            .from('chat_room_members')
+            .select('room_id')
+            .eq('user_kuerzel', aktuellerUser);
 
-                    closeNewChatModal();
-                    selectRoom(roomId, partner.toLowerCase(), 'direct');
-                    loadChatRooms();
-                    return;
+        if (memErr) throw memErr;
+
+        let existingRoomId = null;
+
+        if (myMemberships && myMemberships.length > 0) {
+            const roomIds = myMemberships.map(m => m.room_id);
+
+            const { data: allMembersInMyRooms, error: allMemErr } = await client
+                .from('chat_room_members')
+                .select('room_id, user_kuerzel')
+                .in('room_id', roomIds);
+
+            if (!allMemErr && allMembersInMyRooms) {
+                let roomMembersMap = {};
+                allMembersInMyRooms.forEach(m => {
+                    if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
+                    roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase().trim());
+                });
+
+                // Prüfen welcher Raum exakt dieselben Teilnehmer enthält
+                for (const [rId, members] of Object.entries(roomMembersMap)) {
+                    if (members.length === participants.length && members.every(m => participants.includes(m))) {
+                        existingRoomId = rId;
+                        break;
+                    }
                 }
             }
         }
 
-        const allParticipantsSorted = participants.map(p => p.toLowerCase()).sort();
+        if (existingRoomId) {
+            // Raum existiert -> Unhide für ALLE Mitglieder durchführen und direkt öffnen
+            await client
+                .from('chat_room_members')
+                .update({ hidden: false })
+                .eq('room_id', existingRoomId);
+
+            closeNewChatModal();
+            await loadChatRooms();
+
+            const otherMembersForDisplay = selected.map(p => p.toLowerCase());
+            const displayTitle = otherMembersForDisplay.length === 1 ? otherMembersForDisplay[0] : otherMembersForDisplay.join(', ');
+            const roomType = participants.length > 2 ? 'group' : 'direct';
+
+            selectRoom(existingRoomId, displayTitle, roomType);
+            return;
+        }
+
+        // Wenn kein exakter Raum existiert, neuen erstellen
+        const allParticipantsSorted = [...participants].sort();
         const roomName = allParticipantsSorted.join(', ');
         const roomType = participants.length > 2 ? 'group' : 'direct';
 
@@ -14030,8 +14053,8 @@ async function startChatFromSelection() {
         selectRoom(newRoom.id, displayTitle, roomType);
 
     } catch (e) {
-        console.error("Fehler beim Erstellen des Chats:", e);
-        alert("Chat konnte nicht erstellt werden.");
+        console.error("Fehler beim Erstellen/Öffnen des Chats:", e);
+        alert("Chat konnte nicht geöffnet werden.");
     }
 }
 
