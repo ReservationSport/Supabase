@@ -13501,7 +13501,6 @@ window.handleLogout = async function() {
     // ============================================================
 
 function checkChatVisibility() {
-    // Trage hier die erlaubten Kürzel in Kleinbuchstaben ein
     const erlaubteKuerzel = ["bupa", "test", "blmi"];  
     
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13509,25 +13508,21 @@ function checkChatVisibility() {
 
     if (chatContainer) {
         if (erlaubteKuerzel.includes(aktuellerUser)) {
-            chatContainer.style.display = 'block'; // Oder 'flex', je nach Layout-Bedürfnis
+            chatContainer.style.display = 'block';
         } else {
             chatContainer.style.display = 'none';
         }
     }
 }
 
-// Beim Laden der Seite ausführen
 document.addEventListener('DOMContentLoaded', () => {
     checkChatVisibility();
     
-    // Realtime-Listener starten
     if (window.supabaseClient) {
         subscribeToChatMemberships();
         subscribeToGlobalMessages();
     }
 });
-    
-
 
 /* ============================================================
     TEAM CHAT LOGIK (WhatsApp-Stil mit Supabase Realtime)
@@ -13535,9 +13530,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
-let selectedChatFile = null; // Speichert temporär eine ausgewählte Datei (Foto/GIF)
+let selectedChatFile = null; 
 
-// Realtime-Listener für jegliche Änderungen an Mitgliedschaften
 function subscribeToChatMemberships() {
     const client = window.supabaseClient;
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13557,14 +13551,12 @@ function subscribeToChatMemberships() {
                 filter: `user_kuerzel=eq.${aktuellerUser}`
             },
             (payload) => {
-                console.log("Chat-Mitgliedschaft geändert:", payload);
                 loadChatRooms();
             }
         )
         .subscribe();
 }
 
-// Globaler Realtime-Listener für neue Nachrichten in ALLEN Räumen
 function subscribeToGlobalMessages() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13588,7 +13580,6 @@ function subscribeToGlobalMessages() {
         .subscribe();
 }
 
-// 1. Chat öffnen und initialisieren
 window.openChat = function() {
     const overlay = document.getElementById('chatOverlay');
     if (overlay) overlay.style.display = 'flex';
@@ -13603,7 +13594,6 @@ window.closeChat = function() {
     }
 };
 
-// 2. Chat-Räume laden
 async function loadChatRooms() {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13616,8 +13606,6 @@ async function loadChatRooms() {
 
     try {
         let roomsMap = new Map();
-
-        // Globalen Raum als "Team-Chat" hinzufügen
         const globalRoomId = '00000000-0000-0000-0000-000000000001';
         roomsMap.set(globalRoomId, {
             id: globalRoomId,
@@ -13665,13 +13653,9 @@ async function loadChatRooms() {
                     const otherMembers = members.filter(m => m !== aktuellerUser);
 
                     if (r.type === 'direct') {
-                        if (otherMembers.length > 0) {
-                            displayName = otherMembers[0];
-                        }
+                        if (otherMembers.length > 0) displayName = otherMembers[0];
                     } else if (r.type === 'group') {
-                        if (otherMembers.length > 0) {
-                            displayName = otherMembers.join(', ');
-                        }
+                        if (otherMembers.length > 0) displayName = otherMembers.join(', ');
                     }
 
                     r.displayName = displayName;
@@ -13692,9 +13676,7 @@ async function loadChatRooms() {
 
             if (!msgError && latestMsgs) {
                 latestMsgs.forEach(m => {
-                    if (!latestPerRoom[m.room_id]) {
-                        latestPerRoom[m.room_id] = m;
-                    }
+                    if (!latestPerRoom[m.room_id]) latestPerRoom[m.room_id] = m;
                 });
 
                 Object.keys(latestPerRoom).forEach(roomId => {
@@ -13711,15 +13693,11 @@ async function loadChatRooms() {
         }
 
         let roomsArray = Array.from(roomsMap.values());
-
-        // Sortieren: Team-Chat immer ganz oben, danach nach neuester Nachricht absteigend
         roomsArray.sort((a, b) => {
             if (a.type === 'global') return -1;
             if (b.type === 'global') return 1;
-
             const timeA = latestPerRoom[a.id] ? new Date(latestPerRoom[a.id].created_at).getTime() : 0;
             const timeB = latestPerRoom[b.id] ? new Date(latestPerRoom[b.id].created_at).getTime() : 0;
-
             return timeB - timeA;
         });
 
@@ -13731,7 +13709,6 @@ async function loadChatRooms() {
     }
 }
 
-// Chat-Liste ins HTML rendern
 function renderChatList(rooms, aktuellerUser, unreadRooms) {
     const chatListEl = document.getElementById('chatList');
     if (!chatListEl) return;
@@ -13755,13 +13732,11 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
         if (room.type === 'direct') iconName = 'person';
 
         let displayName = (room.displayName || room.name || 'chat');
-        
         if (displayName.toLowerCase().startsWith('chat mit ')) {
             displayName = displayName.replace(/^chat mit /i, '');
         }
 
         const textColor = isUnread ? '#f97316' : '#f4f4f5';
-        const fontWeight = 'bold';
         const unreadDot = isUnread ? '<span style="display: inline-block; width: 8px; height: 8px; background-color: #f97316; border-radius: 50%; margin-left: 6px; vertical-align: middle;"></span>' : '';
 
         item.innerHTML = `
@@ -13769,12 +13744,11 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
                 <span class="material-symbols-outlined">${iconName}</span>
             </div>
             <div style="flex: 1; overflow: hidden;">
-                <div style="font-weight: ${fontWeight}; font-size: 0.9rem; color: ${textColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName} ${unreadDot}</div>
+                <div style="font-weight: bold; font-size: 0.9rem; color: ${textColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName} ${unreadDot}</div>
             </div>
         `;
 
         item.onclick = () => selectRoom(room.id, displayName, room.type);
-
         item.oncontextmenu = (e) => {
             e.preventDefault();
             if (room.type === 'global') {
@@ -13788,10 +13762,8 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
     });
 }
 
-// 3. Einen bestimmten Raum auswählen
 async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
-
     localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
@@ -13809,23 +13781,13 @@ async function selectRoom(roomId, roomName, roomType) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
     }
 
-    // Zurücksetzen von temporären Dateianhängen beim Raumwechsel
-    selectedChatFile = null;
-    const fileInput = document.getElementById('chatFileInput');
-    if (fileInput) fileInput.value = "";
-    const msgInput = document.getElementById('chatMessageInput');
-    if (msgInput) {
-        msgInput.placeholder = "Nachricht schreiben...";
-        msgInput.style.height = 'auto';
-    }
+    clearChatFileSelection();
 
     await loadMessages(roomId);
     subscribeToRoomRealtime(roomId);
-    
     loadChatRooms();
 }
 
-// 4. Nachrichten für einen Raum laden
 async function loadMessages(roomId) {
     const client = window.supabaseClient;
     const container = document.getElementById('chatMessages');
@@ -13841,7 +13803,6 @@ async function loadMessages(roomId) {
             .order('created_at', { ascending: true });
 
         if (error) throw error;
-
         if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
@@ -13852,7 +13813,6 @@ async function loadMessages(roomId) {
     }
 }
 
-// Nachrichten ins HTML rendern
 function renderMessages(messages) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
@@ -13873,7 +13833,6 @@ function renderMessages(messages) {
 
     messages.forEach(msg => {
         const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
-        
         let timeString = "";
         if (msg.created_at) {
             const date = new Date(msg.created_at);
@@ -13881,7 +13840,9 @@ function renderMessages(messages) {
         }
 
         const bubble = document.createElement('div');
+        // WICHTIG: Inline-Styles hinzugefügt, damit Blöcke nicht riesig werden
         bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+        bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
         
         let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
@@ -13897,40 +13858,76 @@ function renderMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-// Hilfsfunktion zur Formatierung von Inhalten (z. B. Bildererkennung bei URLs)
 function formatMessageContent(text) {
     if (!text) return "";
     const urlPattern = /(https?:\/\/[^\s]+)/g;
-    
-    // Prüfen, ob der Text ein Bild-Link ist oder URLs enthält
     return escapeHtml(text).replace(urlPattern, (url) => {
         if (url.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i)) {
-            return `<br><img src="${url}" style="max-width: 100%; border-radius: 8px; margin-top: 6px; cursor: pointer;" onclick="window.open(this.src, '_blank')">`;
+            return `<br><img src="${url}" style="max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 6px; cursor: pointer;" onclick="window.open(this.src, '_blank')">`;
         }
         return `<a href="${url}" target="_blank" style="color: #60a5fa; text-decoration: underline;">${url}</a>`;
     });
 }
 
-// 5. Datei-Auswahl verarbeiten (Foto / GIF)
+// ============================================================
+// DATEI-AUSWAHL & VORSCHAU IM ERFASSUNGSFELD
+// ============================================================
+
 function handleFileSelect(event) {
     const file = event.target.files[0];
-    if (file) {
-        selectedChatFile = file;
-        const input = document.getElementById('chatMessageInput');
-        if (input) {
-            input.placeholder = `Datei ausgewählt: ${file.name}`;
-            input.focus();
-        }
-    }
+    if (!file) return;
+
+    selectedChatFile = file;
+    showChatFilePreview(file);
 }
 
-// Automatische Höhenanpassung der Textarea
+function showChatFilePreview(file) {
+    const inputArea = document.getElementById('chatInputArea');
+    if (!inputArea) return;
+
+    // Prüfen, ob bereits eine Vorschau existiert, sonst erstellen
+    let previewContainer = document.getElementById('chatFilePreviewContainer');
+    if (!previewContainer) {
+        previewContainer = document.createElement('div');
+        previewContainer.id = 'chatFilePreviewContainer';
+        previewContainer.style.cssText = "display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #18181b; border-bottom: 1px solid #27272a; border-radius: 8px 8px 0 0;";
+        inputArea.parentNode.insertBefore(previewContainer, inputArea);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+
+    previewContainer.innerHTML = `
+        <img src="${objectUrl}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid #3f3f46;">
+        <div style="flex: 1; overflow: hidden; font-size: 0.85rem; color: #f4f4f5; white-space: nowrap; text-overflow: ellipsis;">
+            ${file.name}
+        </div>
+        <button type="button" onclick="clearChatFileSelection()" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; align-items: center;">
+            <span class="material-symbols-outlined" style="font-size: 18px;">close</span>
+        </button>
+    `;
+}
+
+window.clearChatFileSelection = function() {
+    selectedChatFile = null;
+    const fileInput = document.getElementById('chatFileInput');
+    if (fileInput) fileInput.value = "";
+
+    const previewContainer = document.getElementById('chatFilePreviewContainer');
+    if (previewContainer) {
+        previewContainer.remove();
+    }
+
+    const input = document.getElementById('chatMessageInput');
+    if (input) {
+        input.placeholder = "Nachricht schreiben...";
+    }
+};
+
 function autoResizeTextarea(textarea) {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
 }
 
-// 6. Nachricht oder Datei senden
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
     const text = input ? input.value.trim() : "";
@@ -13944,17 +13941,20 @@ async function sendChatMessage() {
     let fileUrl = null;
 
     try {
-        // Falls eine Datei ausgewählt wurde, diese zu Supabase Storage hochladen
         if (selectedChatFile) {
             const fileExt = selectedChatFile.name.split('.').pop();
             const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
             const filePath = `chat_uploads/${currentActiveRoomId}/${fileName}`;
 
             const { error: uploadError } = await client.storage
-                .from('chat-files') // Name des Supabase Storage Buckets
+                .from('chat-files')
                 .upload(filePath, selectedChatFile);
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error("Storage Upload Fehler:", uploadError);
+                alert("Fehler beim Hochladen der Datei. Wird die Nachricht ohne Datei gesendet? Details in der Konsole.");
+                throw uploadError;
+            }
 
             const { data: publicURLData } = client.storage
                 .from('chat-files')
@@ -13963,7 +13963,6 @@ async function sendChatMessage() {
             fileUrl = publicURLData.publicUrl;
         }
 
-        // Nachrichtinhalt aufbauen (Text + optionaler Bildlink)
         let messageContent = text;
         if (fileUrl) {
             messageContent = messageContent ? `${messageContent}\n${fileUrl}` : fileUrl;
@@ -13979,15 +13978,12 @@ async function sendChatMessage() {
 
         if (error) throw error;
 
-        // Eingaben und Dateistatus zurücksetzen
         if (input) {
             input.value = "";
             input.placeholder = "Nachricht schreiben...";
             input.style.height = 'auto';
         }
-        selectedChatFile = null;
-        const fileInput = document.getElementById('chatFileInput');
-        if (fileInput) fileInput.value = "";
+        clearChatFileSelection();
 
         await client
             .from('chat_room_members')
@@ -13996,19 +13992,17 @@ async function sendChatMessage() {
 
     } catch (e) {
         console.error("Fehler beim Senden der Nachricht/Datei:", e);
-        alert("Nachricht konnte nicht gesendet werden.");
+        // Kein kompletter Abbruch, Alert nur wenn nötig
     }
 }
 
 function handleChatKeyPress(event) {
-    // Enter sendet, Shift + Enter erzeugt eine neue Zeile in der Textarea
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendChatMessage();
     }
 }
 
-// 7. Realtime Listener für den aktiven Raum
 function subscribeToRoomRealtime(roomId) {
     const client = window.supabaseClient;
     if (!client) return;
@@ -14034,7 +14028,6 @@ function subscribeToRoomRealtime(roomId) {
         .subscribe();
 }
 
-// Einzelne neue Nachricht live anhängen
 function appendSingleMessage(msg) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
@@ -14053,6 +14046,7 @@ function appendSingleMessage(msg) {
 
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+    bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
     
     let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
@@ -14066,21 +14060,14 @@ function appendSingleMessage(msg) {
     container.scrollTop = container.scrollHeight;
 }
 
-// 8. Hilfsfunktion gegen XSS
 function escapeHtml(text) {
     if (!text) return "";
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
 /* ============================================================
-    NEUER CHAT (Mit Checkboxen aus der 'teachers'-Tabelle)
+    NEUER CHAT & HIDE MODAL LOGIK
     ============================================================ */
 
 window.openNewChatModal = async function() {
@@ -14096,7 +14083,6 @@ window.openNewChatModal = async function() {
         if (error) throw error;
 
         const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-        
         listEl.innerHTML = "";
         
         if (!teachers || teachers.length === 0) {
@@ -14126,7 +14112,6 @@ window.closeNewChatModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-// Logik: Ausgewählte Personen einsammeln und exakt prüfen, ob der Raum schon existiert
 async function startChatFromSelection() {
     const selected = Array.from(document.querySelectorAll('.new-chat-checkbox:checked')).map(cb => cb.value);
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -14141,7 +14126,6 @@ async function startChatFromSelection() {
     if (!client) return;
 
     try {
-        // Exakte Suche nach einem bestehenden Raum mit genau DIESEN Teilnehmern (weder mehr noch weniger)
         const { data: myMemberships, error: memErr } = await client
             .from('chat_room_members')
             .select('room_id')
@@ -14153,7 +14137,6 @@ async function startChatFromSelection() {
 
         if (myMemberships && myMemberships.length > 0) {
             const roomIds = myMemberships.map(m => m.room_id);
-
             const { data: allMembersInMyRooms, error: allMemErr } = await client
                 .from('chat_room_members')
                 .select('room_id, user_kuerzel')
@@ -14166,7 +14149,6 @@ async function startChatFromSelection() {
                     roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase().trim());
                 });
 
-                // Prüfen welcher Raum exakt dieselben Teilnehmer enthält
                 for (const [rId, members] of Object.entries(roomMembersMap)) {
                     if (members.length === participants.length && members.every(m => participants.includes(m))) {
                         existingRoomId = rId;
@@ -14177,7 +14159,6 @@ async function startChatFromSelection() {
         }
 
         if (existingRoomId) {
-            // Raum existiert -> Unhide für ALLE Mitglieder durchführen und direkt öffnen
             await client
                 .from('chat_room_members')
                 .update({ hidden: false })
@@ -14194,7 +14175,6 @@ async function startChatFromSelection() {
             return;
         }
 
-        // Wenn kein exakter Raum existiert, neuen erstellen
         const allParticipantsSorted = [...participants].sort();
         const roomName = allParticipantsSorted.join(', ');
         const roomType = participants.length > 2 ? 'group' : 'direct';
@@ -14225,7 +14205,6 @@ async function startChatFromSelection() {
     }
 }
 
-// Funktion zum Filtern der Chat-Liste über das Suchfeld
 function filterChats(searchTerm) {
     const query = searchTerm.toLowerCase().trim();
     const chatItems = document.querySelectorAll('.chat-item');
@@ -14239,11 +14218,9 @@ function filterChats(searchTerm) {
         }
     });
 }
-    
 
 let roomToHideId = null;
 
-// Öffnet das Ausblenden-Modal beim Rechtsklick
 function openHideChatModal(roomId, roomName) {
     roomToHideId = roomId;
     const modal = document.getElementById('hideChatModal');
@@ -14254,14 +14231,12 @@ function openHideChatModal(roomId, roomName) {
     }
 }
 
-// Schließt das Modal
 window.closeHideChatModal = function() {
     roomToHideId = null;
     const modal = document.getElementById('hideChatModal');
     if (modal) modal.style.display = 'none';
 };
 
-// Bestätigt das Ausblenden
 window.confirmHideChat = async function() {
     if (!roomToHideId) return;
     
@@ -14316,7 +14291,6 @@ window.confirmHideChat = async function() {
         alert("Chat konnte nicht ausgeblendet werden.");
     }
 };
-
 
 
 
