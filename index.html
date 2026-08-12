@@ -4777,7 +4777,7 @@ input.stellvertretung-input {
 
 
 
-  <!-- ============================================================
+<!-- ============================================================
     CHAT OVERLAY / CONTAINER
     ============================================================ -->
 <div id="chatOverlay" class="chat-overlay" style="display: none;">
@@ -4850,8 +4850,6 @@ input.stellvertretung-input {
     </div>
 </div>
 
-
-
 <div id="newChatModal" class="chat-overlay" style="display: none;">
     <div class="chat-modal-content">
         <h3 class="chat-modal-title">Neuer Chat</h3>
@@ -4866,7 +4864,6 @@ input.stellvertretung-input {
         </div>
     </div>
 </div>
-    
 
 <div id="hideChatModal" class="chat-overlay" style="display: none;">
     <div class="chat-modal-content">
@@ -4881,9 +4878,8 @@ input.stellvertretung-input {
     </div>
 </div>
 
-
-   <!-- Giphy Such-Modal -->
-<div id="giphyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+<!-- Giphy Such-Modal (z-index auf 99999 erhöht) -->
+<div id="giphyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; align-items: center; justify-content: center;">
     <div style="background: #18181b; width: 450px; max-width: 90%; border-radius: 12px; border: 1px solid #27272a; display: flex; flex-direction: column; height: 500px; max-height: 80vh;">
         
         <!-- Header -->
@@ -4903,7 +4899,7 @@ input.stellvertretung-input {
         </div>
 
     </div>
-</div> 
+</div>
 
     
 </body>
