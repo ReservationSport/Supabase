@@ -14347,6 +14347,38 @@ window.confirmHideChat = async function() {
 };
 
 
+    document.addEventListener('DOMContentLoaded', () => {
+    // Bestehender Code...
+    
+    const chatInput = document.getElementById('chatMessageInput');
+    if (chatInput) {
+        chatInput.addEventListener('paste', (event) => {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const file = items[i].getAsFile();
+                    
+                    if (file && file.type.startsWith('image/')) {
+                        event.preventDefault(); // Verhindert fehlerhaftes Standard-Einfügen
+
+                        // 5 MB Größenprüfung
+                        const maxSize = 5 * 1024 * 1024;
+                        if (file.size > maxSize) {
+                            alert("Das eingefügte Bild ist zu groß (maximal 5 MB erlaubt).");
+                            return;
+                        }
+
+                        // Als aktive Datei setzen und Vorschau anzeigen
+                        selectedChatFile = file;
+                        showChatFilePreview(file);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+});
 
     
     
