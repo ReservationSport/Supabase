@@ -3823,6 +3823,7 @@ input.stellvertretung-input {
     position: relative;
     word-break: break-word;
     box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    white-space: pre-wrap; /* Ermöglicht korrekte Darstellung von Zeilenumbrüchen */
 }
 
 .message-bubble.incoming {
@@ -3853,6 +3854,15 @@ input.stellvertretung-input {
     margin-top: 4px;
 }
 
+/* Darstellung von Bildern / GIFs in Chat-Nachrichten */
+.message-bubble img, 
+.message-bubble video {
+    max-width: 100%;
+    border-radius: 6px;
+    margin-top: 4px;
+    display: block;
+}
+
 /* Eingabebereich */
 .chat-input-area {
     padding: 12px 20px;
@@ -3860,22 +3870,46 @@ input.stellvertretung-input {
     border-top: 1px solid #27272a;
     display: flex;
     gap: 10px;
-    align-items: center;
+    align-items: flex-end; /* Hält den Button unten, wenn die Textarea größer wird */
 }
 
-.chat-input-area input {
+/* Upload-Button für Fotos & GIFs */
+.chat-upload-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #a1a1aa;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background 0.2s;
+}
+
+.chat-upload-btn:hover {
+    color: #f97316;
+    background: #27272a;
+}
+
+/* Textarea statt Input für Absätze / Zeilenumbrüche */
+.chat-input-area textarea {
     flex: 1;
     box-sizing: border-box;
     padding: 10px 14px;
-    border-radius: 20px;
+    border-radius: 12px;
     border: 1px solid #3f3f46;
     outline: none;
     font-size: 0.95rem;
     background: #27272a;
     color: #ffffff;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.4;
+    font-family: inherit;
 }
 
-.chat-input-area input::placeholder {
+.chat-input-area textarea::placeholder {
     color: #a1a1aa;
 }
 
@@ -4743,7 +4777,7 @@ input.stellvertretung-input {
 
 
 
-    <!-- ============================================================
+  <!-- ============================================================
     CHAT OVERLAY / CONTAINER
     ============================================================ -->
 <div id="chatOverlay" class="chat-overlay" style="display: none;">
@@ -4791,9 +4825,20 @@ input.stellvertretung-input {
 
             <!-- Eingabebereich am Boden -->
             <div class="chat-input-area" id="chatInputArea" style="display: none;">
-                <input type="text" id="chatMessageInput" placeholder="Nachricht schreiben..." onkeydown="handleChatKeyPress(event)">
+                <!-- Verstecktes Datei-Input für Fotos und GIFs -->
+                <input type="file" id="chatFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="handleFileSelect(event)">
+                
+                <!-- Button zum Öffnen des Datei-Dialogs -->
+                <button class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Foto oder GIF senden">
+                    <span class="material-symbols-outlined">image</span>
+                </button>
+
+                <!-- Textarea für mehrzeilige Nachrichten / Absätze (Enter sendet nicht direkt) -->
+                <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
+                
+                <!-- Sende-Button -->
                 <button class="chat-send-btn" onclick="sendChatMessage()">
-                    <span class="material-symbols-outlined">send</span>
+                    <span class="material-symbols-outlined" style="margin: 0 !important;">send</span>
                 </button>
             </div>
         </div>
@@ -4831,7 +4876,6 @@ input.stellvertretung-input {
         </div>
     </div>
 </div>
-
 
 
     
@@ -13491,6 +13535,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
+let selectedChatFile = null; // Speichert temporär eine ausgewählte Datei (Foto/GIF)
 
 // Realtime-Listener für jegliche Änderungen an Mitgliedschaften
 function subscribeToChatMemberships() {
@@ -13764,6 +13809,16 @@ async function selectRoom(roomId, roomName, roomType) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
     }
 
+    // Zurücksetzen von temporären Dateianhängen beim Raumwechsel
+    selectedChatFile = null;
+    const fileInput = document.getElementById('chatFileInput');
+    if (fileInput) fileInput.value = "";
+    const msgInput = document.getElementById('chatMessageInput');
+    if (msgInput) {
+        msgInput.placeholder = "Nachricht schreiben...";
+        msgInput.style.height = 'auto';
+    }
+
     await loadMessages(roomId);
     subscribeToRoomRealtime(roomId);
     
@@ -13832,7 +13887,7 @@ function renderMessages(messages) {
 
         bubble.innerHTML = `
             ${senderHtml}
-            <div>${escapeHtml(msg.message)}</div>
+            <div>${formatMessageContent(msg.message)}</div>
             <div class="message-time">${timeString}</div>
         `;
 
@@ -13842,30 +13897,97 @@ function renderMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-// 5. Nachricht senden
+// Hilfsfunktion zur Formatierung von Inhalten (z. B. Bildererkennung bei URLs)
+function formatMessageContent(text) {
+    if (!text) return "";
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    
+    // Prüfen, ob der Text ein Bild-Link ist oder URLs enthält
+    return escapeHtml(text).replace(urlPattern, (url) => {
+        if (url.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i)) {
+            return `<br><img src="${url}" style="max-width: 100%; border-radius: 8px; margin-top: 6px; cursor: pointer;" onclick="window.open(this.src, '_blank')">`;
+        }
+        return `<a href="${url}" target="_blank" style="color: #60a5fa; text-decoration: underline;">${url}</a>`;
+    });
+}
+
+// 5. Datei-Auswahl verarbeiten (Foto / GIF)
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        selectedChatFile = file;
+        const input = document.getElementById('chatMessageInput');
+        if (input) {
+            input.placeholder = `Datei ausgewählt: ${file.name}`;
+            input.focus();
+        }
+    }
+}
+
+// Automatische Höhenanpassung der Textarea
+function autoResizeTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+}
+
+// 6. Nachricht oder Datei senden
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
-    if (!input) return;
-
-    const text = input.value.trim();
-    if (!text || !currentActiveRoomId) return;
+    const text = input ? input.value.trim() : "";
+    
+    if ((!text && !selectedChatFile) || !currentActiveRoomId) return;
 
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
     const client = window.supabaseClient;
     if (!client) return;
 
-    input.value = "";
+    let fileUrl = null;
 
     try {
+        // Falls eine Datei ausgewählt wurde, diese zu Supabase Storage hochladen
+        if (selectedChatFile) {
+            const fileExt = selectedChatFile.name.split('.').pop();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+            const filePath = `chat_uploads/${currentActiveRoomId}/${fileName}`;
+
+            const { error: uploadError } = await client.storage
+                .from('chat-files') // Name des Supabase Storage Buckets
+                .upload(filePath, selectedChatFile);
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicURLData } = client.storage
+                .from('chat-files')
+                .getPublicUrl(filePath);
+
+            fileUrl = publicURLData.publicUrl;
+        }
+
+        // Nachrichtinhalt aufbauen (Text + optionaler Bildlink)
+        let messageContent = text;
+        if (fileUrl) {
+            messageContent = messageContent ? `${messageContent}\n${fileUrl}` : fileUrl;
+        }
+
         const { error } = await client
             .from('chat_messages')
             .insert([{
                 room_id: currentActiveRoomId,
                 sender_kuerzel: aktuellerUser,
-                message: text
+                message: messageContent
             }]);
 
         if (error) throw error;
+
+        // Eingaben und Dateistatus zurücksetzen
+        if (input) {
+            input.value = "";
+            input.placeholder = "Nachricht schreiben...";
+            input.style.height = 'auto';
+        }
+        selectedChatFile = null;
+        const fileInput = document.getElementById('chatFileInput');
+        if (fileInput) fileInput.value = "";
 
         await client
             .from('chat_room_members')
@@ -13873,18 +13995,20 @@ async function sendChatMessage() {
             .eq('room_id', currentActiveRoomId);
 
     } catch (e) {
-        console.error("Fehler beim Senden der Nachricht:", e);
+        console.error("Fehler beim Senden der Nachricht/Datei:", e);
         alert("Nachricht konnte nicht gesendet werden.");
     }
 }
 
 function handleChatKeyPress(event) {
-    if (event.key === 'Enter') {
+    // Enter sendet, Shift + Enter erzeugt eine neue Zeile in der Textarea
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
         sendChatMessage();
     }
 }
 
-// 6. Realtime Listener für den aktiven Raum
+// 7. Realtime Listener für den aktiven Raum
 function subscribeToRoomRealtime(roomId) {
     const client = window.supabaseClient;
     if (!client) return;
@@ -13934,7 +14058,7 @@ function appendSingleMessage(msg) {
 
     bubble.innerHTML = `
         ${senderHtml}
-        <div>${escapeHtml(msg.message)}</div>
+        <div>${formatMessageContent(msg.message)}</div>
         <div class="message-time">${timeString}</div>
     `;
 
@@ -13942,8 +14066,9 @@ function appendSingleMessage(msg) {
     container.scrollTop = container.scrollHeight;
 }
 
-// 7. Hilfsfunktion gegen XSS
+// 8. Hilfsfunktion gegen XSS
 function escapeHtml(text) {
+    if (!text) return "";
     const map = {
         '&': '&amp;',
         '<': '&lt;',
