@@ -4851,17 +4851,22 @@ input.stellvertretung-input {
 </div>
 
 <div id="newChatModal" class="chat-overlay" style="display: none;">
-    <div class="chat-modal-content">
-        <h3 class="chat-modal-title">Neuer Chat</h3>
+    <div class="chat-modal-content" style="display: flex; flex-direction: column; max-height: 85vh; height: 450px;">
         
-        <div id="newChatList" class="chat-modal-list">
+        <!-- Titel (bleibt fest oben) -->
+        <h3 class="chat-modal-title" style="margin-top: 0; flex-shrink: 0;">Neuer Chat</h3>
+        
+        <!-- Namensliste (wird scrollbar, wenn sie zu lang wird) -->
+        <div id="newChatList" class="chat-modal-list" style="overflow-y: auto; flex: 1; margin: 10px 0; padding-right: 5px;">
             <!-- Hier kommen die Checkboxen rein -->
         </div>
         
-        <div class="chat-modal-actions">
-            <button onclick="closeNewChatModal()" class="chat-modal-btn chat-btn-cancel">Abbrechen</button>
-            <button onclick="startChatFromSelection()" class="chat-modal-btn chat-btn-start">Chat starten</button>
+        <!-- Aktionen-Buttons (bleiben fest unten im Sichtfeld) -->
+        <div class="chat-modal-actions" style="flex-shrink: 0; display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid #27272a;">
+            <button onclick="closeNewChatModal()" class="chat-modal-btn chat-btn-cancel" style="flex: 1;">Abbrechen</button>
+            <button onclick="startChatFromSelection()" class="chat-modal-btn chat-btn-start" style="flex: 1;">Chat starten</button>
         </div>
+        
     </div>
 </div>
 
