@@ -4797,8 +4797,8 @@ input.stellvertretung-input {
                 <input type="text" id="chatSearchInput" placeholder="Chat suchen..." oninput="filterChats(this.value)">
             </div>
 
-            <div id="chatList" class="chat-list">
-                <!-- Wird dynamisch per JS gefüllt (z.B. der "Alle"-Chat und persönliche Chats) -->
+            <div id="chatList" class="chat-list" style="overflow-y: auto; overscroll-behavior: contain;">
+                <!-- Wird dynamisch per JS gefüllt -->
             </div>
         </div>
 
@@ -4816,7 +4816,7 @@ input.stellvertretung-input {
             </div>
 
             <!-- Nachrichten-Verlauf -->
-            <div id="chatMessages" class="chat-messages">
+            <div id="chatMessages" class="chat-messages" style="overflow-y: auto; overscroll-behavior: contain;">
                 <div class="chat-welcome-placeholder">
                     <span class="material-symbols-outlined" style="font-size: 48px; color: #cbd5e1;">forum</span>
                     <p>Wähle links einen Chat aus, um loszulegen.</p>
@@ -4837,7 +4837,7 @@ input.stellvertretung-input {
                     <span class="material-symbols-outlined">gif_box</span>
                 </button>
 
-                <!-- Textarea für mehrzeilige Nachrichten / Absätze (Enter sendet nicht direkt) -->
+                <!-- Textarea für mehrzeilige Nachrichten -->
                 <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
                 
                 <!-- Sende-Button -->
@@ -4861,7 +4861,7 @@ input.stellvertretung-input {
             <!-- Hier kommen die Checkboxen rein -->
         </div>
         
-        <!-- Aktionen-Buttons (bleiben fest unten im Sichtfeld) -->
+        <!-- Aktionen-Buttons -->
         <div class="chat-modal-actions" style="flex-shrink: 0; display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid #27272a;">
             <button onclick="closeNewChatModal()" class="chat-modal-btn chat-btn-cancel" style="flex: 1;">Abbrechen</button>
             <button onclick="startChatFromSelection()" class="chat-modal-btn chat-btn-start" style="flex: 1;">Chat starten</button>
@@ -4883,7 +4883,7 @@ input.stellvertretung-input {
     </div>
 </div>
 
-<!-- Giphy Such-Modal (z-index auf 99999 erhöht) -->
+<!-- Giphy Such-Modal -->
 <div id="giphyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; align-items: center; justify-content: center;">
     <div style="background: #18181b; width: 450px; max-width: 90%; border-radius: 12px; border: 1px solid #27272a; display: flex; flex-direction: column; height: 500px; max-height: 80vh;">
         
@@ -4898,8 +4898,8 @@ input.stellvertretung-input {
             <input type="text" id="giphySearchInput" placeholder="Nach GIFs suchen (z.B. lustig, katze, feier)..." oninput="debounceGiphySearch(this.value)" style="width: 100%; padding: 10px 12px; background: #27272a; border: 1px solid #3f3f46; border-radius: 8px; color: #f4f4f5; outline: none; font-size: 0.9rem;">
         </div>
 
-        <!-- Ergebnis-Grid -->
-        <div id="giphyGrid" style="padding: 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; overflow-y: auto; flex: 1;">
+        <!-- Ergebnis-Grid (mit overscroll-behavior versehen) -->
+        <div id="giphyGrid" style="padding: 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; overflow-y: auto; overscroll-behavior: contain; flex: 1;">
             <div style="grid-column: span 2; text-align: center; color: #a1a1aa; padding-top: 40px; font-size: 0.85rem;">Gib einen Suchbegriff ein, um GIFs zu finden.</div>
         </div>
 
