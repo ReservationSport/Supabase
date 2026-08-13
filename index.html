@@ -4856,8 +4856,8 @@ input.stellvertretung-input {
         <!-- Titel (bleibt fest oben) -->
         <h3 class="chat-modal-title" style="margin-top: 0; flex-shrink: 0;">Neuer Chat</h3>
         
-        <!-- Namensliste (wird scrollbar, wenn sie zu lang wird) -->
-        <div id="newChatList" class="chat-modal-list" style="overflow-y: auto; flex: 1; margin: 10px 0; padding-right: 5px;">
+        <!-- Namensliste (wird scrollbar, verhindert Hintergrund-Scrollen) -->
+        <div id="newChatList" class="chat-modal-list" style="overflow-y: auto; overscroll-behavior: contain; flex: 1; margin: 10px 0; padding-right: 5px;">
             <!-- Hier kommen die Checkboxen rein -->
         </div>
         
