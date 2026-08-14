@@ -20,26 +20,30 @@ self.addEventListener('push', function(event) {
         data = { title: 'Neue Nachricht', body: event.data.text() };
     }
 
-    // App Badge setzen (falls unterstützt)
+    // App Badge setzen (falls vom Gerät unterstützt)
     if (data.badge !== undefined && 'setAppBadge' in navigator) {
         try {
             navigator.setAppBadge(data.badge);
         } catch (e) {
-            // Falls nicht unterstützt, ignorieren
+            // Ignorieren, falls vom Browser nicht unterstützt
         }
     }
 
-    const chatId = data.chatId || data.chat_id || null;
+    // Flexibles Auslesen von Chat-ID und Texten (Hybrid-Payload Abfangung)
+    const chatId = data.chatId || data.chat_id || (data.record ? data.record.chatId : null);
+    const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
+    const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
+    
+    // Ziel-URL generieren
     const targetUrl = data.url || (chatId ? `/?chatId=${chatId}` : '/');
 
     const options = {
-        body: data.body || 'Du hast eine neue Nachricht erhalten.',
+        body: notificationBody,
         icon: data.icon || '/icon-192.png',
         badge: data.badgeIcon || '/favicon.png',
-        vibrate: [100, 50, 100], // Typisches Vibrationsmuster für Nachrichten
-        // Gruppiert Nachrichten pro Chat (wie bei WhatsApp)
-        tag: chatId ? `chat-msg-${chatId}` : 'chat-msg-general',
-        renotify: true, // Vibration/Ton auch bei Folge-Nachrichten im selben Chat auslösen
+        vibrate: [100, 50, 100], // Typisches Vibrationsmuster
+        tag: chatId ? `chat-msg-${chatId}` : 'chat-msg-general', // Gruppierung pro Chat
+        renotify: true, // Erneute Vibration/Ton bei Folgebannern
         data: {
             url: targetUrl,
             chatId: chatId
@@ -47,13 +51,13 @@ self.addEventListener('push', function(event) {
     };
 
     event.waitUntil(
-        self.registration.showNotification(data.title || 'Neue Nachricht', options)
+        self.registration.showNotification(notificationTitle, options)
     );
 });
 
 // 3. Click-Handler für die Benachrichtigung
 self.addEventListener('notificationclick', function(event) {
-    event.notification.close();
+    event.notification.close(); // Banner schließen
 
     const notificationData = event.notification.data || {};
     const chatId = notificationData.chatId;
@@ -62,17 +66,16 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Prüfen, ob bereits ein Fenster/Tab deiner App geöffnet ist
+            // A) Falls bereits ein Tab deiner App geöffnet ist (Hintergrund oder Vordergrund)
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 const clientUrl = new URL(client.url, self.location.origin);
 
-                // Wenn ein Tab auf der gleichen Domain/App offen ist
                 if (clientUrl.origin === self.location.origin && 'focus' in client) {
-                    // Tab fokussieren
+                    // 1. Tab in den Vordergrund holen
                     client.focus();
 
-                    // Nachricht direkt an das Frontend senden (Chat ohne Reload öffnen)
+                    // 2. Event per postMessage direkt ins JS der App senden (öffnet den Chat ohne Reload)
                     client.postMessage({
                         action: 'openChat',
                         chatId: chatId,
@@ -82,7 +85,7 @@ self.addEventListener('notificationclick', function(event) {
                 }
             }
 
-            // 2. Falls die App komplett geschlossen war: Neuer Tab mit der Ziel-URL
+            // B) Falls die App komplett geschlossen war (Kaltstart): Öffne neuen Tab inkl. ?chatId=
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
