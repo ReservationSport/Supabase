@@ -5125,22 +5125,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-        // 🔗 Deep-Link Erkennung (Wenn App durch Klick auf Push-Banner komplett neu gestartet wurde)
+        // 🔗 Deep-Link Erkennung (Zverlässige Auswertung der URL beim Klick auf Push-Benachrichtigung)
         const urlParams = new URLSearchParams(window.location.search);
         const urlChatId = urlParams.get('chatId');
         
         if (urlChatId) {
-            console.log("🔗 Kaltstart: URL mit Chat-ID erkannt:", urlChatId);
+            console.log("🔗 URL mit Chat-ID erkannt:", urlChatId);
             setTimeout(() => {
-                if (typeof openChatById === 'function') {
-                    openChatById(urlChatId);
-                } else if (typeof window.openChatById === 'function') {
-                    window.openChatById(urlChatId);
+                const openFunc = window.openChat || window.openchat || (typeof openChat === 'function' ? openChat : null);
+                if (openFunc) {
+                    console.log("🚀 Öffne Chat direkt via openChat:", urlChatId);
+                    openFunc(urlChatId);
                 } else {
-                    console.warn("⚠️ Funktion openChatById existiert noch nicht!");
+                    console.warn("⚠️ Funktion openChat ist beim Start noch nicht verfügbar.");
                 }
             }, 800);
 
+            // URL bereinigen, damit ein späterer Reload den Chat nicht erneut erzwingt
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
@@ -5392,26 +5393,11 @@ function initNewsRealtime(userKuerzel) {
         });
 }
     
-// Service Worker Registrierung & Event-Listener für Live-Push-Klicks
+// Service Worker Registrierung
 async function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         try {
             await navigator.serviceWorker.register('./sw.js');
-            
-            navigator.serviceWorker.addEventListener('message', (event) => {
-                if (event.data && event.data.action === 'openChat' && event.data.chatId) {
-                    console.log("📨 Service Worker Signal für Chat erhalten:", event.data.chatId);
-                    
-                    if (typeof openChatById === 'function') {
-                        openChatById(event.data.chatId);
-                    } else if (typeof window.openChatById === 'function') {
-                        window.openChatById(event.data.chatId);
-                    } else {
-                        console.warn("⚠️ Funktion openChatById existiert noch nicht!");
-                    }
-                }
-            });
-            
         } catch (error) {
             console.error('Service Worker konnte nicht registriert werden:', error);
         }
