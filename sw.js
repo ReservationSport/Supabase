@@ -64,11 +64,9 @@ self.addEventListener('notificationclick', function(event) {
 
                 if (clientUrl.origin === self.location.origin && 'focus' in client) {
                     client.focus();
-                    client.postMessage({
-                        action: 'openChat',
-                        chatId: chatId,
-                        url: urlToOpen
-                    });
+                    if ('navigate' in client) {
+                        return client.navigate(urlToOpen);
+                    }
                     return;
                 }
             }
