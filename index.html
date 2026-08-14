@@ -5418,20 +5418,29 @@ async function registerServiceWorker() {
     }
 }
 
-// 📂 Global definierte Funktion zum Öffnen des Chats per ID
-window.openChatById = function(chatId) {
-    console.log("📂 Öffne Chat für ID:", chatId);
+// 📂 Robuste Funktion zum Öffnen des Chats per ID (mit Diagnose & Retry)
+window.openChatById = function(chatId, retries = 5) {
+    console.log(`📂 openChatById aufgerufen für ID: "${chatId}" (Verbleibende Versuche: ${retries})`);
     if (!chatId) return;
 
-    // Ruft direkt eure echte Chat-Funktion auf (unterstützt Groß- und Kleinschreibung)
-    if (typeof window.openChat === 'function') {
-        window.openChat(chatId);
-    } else if (typeof window.openchat === 'function') {
-        window.openchat(chatId);
-    } else if (typeof openChat === 'function') {
-        openChat(chatId);
+    // Prüfen, ob die Funktion 'openChat' existiert
+    const openFunc = window.openChat || window.openchat || (typeof openChat === 'function' ? openChat : null);
+
+    if (openFunc) {
+        try {
+            console.log("🚀 Rufe eure echte openChat-Funktion auf mit:", chatId);
+            openFunc(chatId);
+        } catch (err) {
+            console.error("❌ Fehler beim Ausführen von openChat:", err);
+        }
+    } else if (retries > 0) {
+        // Falls das Skript oder die UI noch nicht geladen sind, kurz warten und nochmal versuchen
+        console.warn(`⚠️ openChat ist noch nicht verfügbar. Versuche es in 500ms erneut... (${retries} übrig)`);
+        setTimeout(() => {
+            window.openChatById(chatId, retries - 1);
+        }, 500);
     } else {
-        console.warn("⚠️ Die Funktion 'openChat' konnte im globalen Scope nicht gefunden werden.");
+        console.error("❌ FEHLER: Die Funktion 'openChat' konnte auch nach mehreren Versuchen nicht gefunden werden!");
     }
 };
 
