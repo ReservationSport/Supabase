@@ -5085,12 +5085,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 6. Im Hintergrund restliche Dienste initialisieren
+        const sauberesKuerzel = userKuerzel.trim().toLowerCase();
         setTimeout(async () => {
             try {
                 await registerServiceWorker();
-                await subscribeUserToPush(userKuerzel);
-                initNewsRealtime(userKuerzel);
-                checkUnreadNews(userKuerzel);
+                await subscribeUserToPush(sauberesKuerzel);
+                initNewsRealtime(sauberesKuerzel);
+                checkUnreadNews(sauberesKuerzel);
 
                 const linksRes = await supabaseClient.from('links').select('*');
                 const matRes = await supabaseClient.from('material').select('*');
@@ -5124,26 +5125,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-        // 💡 NEU: Deep-Link Erkennung (Wenn App durch Banner komplett neu geöffnet wurde)
+        // 🔗 Deep-Link Erkennung (Wenn App durch Klick auf Push-Banner komplett neu gestartet wurde)
         const urlParams = new URLSearchParams(window.location.search);
         const urlChatId = urlParams.get('chatId');
         
         if (urlChatId) {
             console.log("🔗 Kaltstart: URL mit Chat-ID erkannt:", urlChatId);
             setTimeout(() => {
-                // Hier rufst du deine Funktion auf, die den Chat anzeigt!
                 if (typeof openChatById === 'function') {
                     openChatById(urlChatId);
+                } else if (typeof window.openChatById === 'function') {
+                    window.openChatById(urlChatId);
                 } else {
                     console.warn("⚠️ Funktion openChatById existiert noch nicht!");
                 }
-            }, 800); // Leichte Verzögerung, damit die UI und Caches sicher geladen sind
+            }, 800);
 
-            // URL bereinigen, damit bei manuellem Reload der Chat nicht immer wieder aufspringt
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        return; // Direkt beenden, App läuft sofort!
+        return; 
     }
 
     // Wenn KEIN Benutzer gespeichert ist -> Standard Login-Ablauf
@@ -5155,9 +5156,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const now = new Date();
         const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         dp.value = localDateStr;
-        updateDateText(dp.value);
-        updateNavButtons();
-        changeDayAndLoad(dp.value); 
+        if (typeof updateDateText === 'function') updateDateText(dp.value);
+        if (typeof updateNavButtons === 'function') updateNavButtons();
+        if (typeof changeDayAndLoad === 'function') changeDayAndLoad(dp.value); 
     }
 });
 
@@ -5272,7 +5273,6 @@ window.initTeachersCache = async function() {
             teachers = Array.isArray(window.allClassTeachers) ? window.allClassTeachers : Object.values(window.allClassTeachers);
         }
         
-        // 🛑 HIER GEÄNDERT: Alle Lehrer in der Liste systemweit kleinschreiben!
         window.allTeachers = [...new Set(teachers.map(t => t.toString().trim().toLowerCase()))].filter(Boolean);
         return window.allTeachers;
         
@@ -5307,12 +5307,13 @@ async function updateAndroidBadge(count) {
 // Ungelesene Nachrichten zählen
 async function checkUnreadNews(userKuerzel) {
     if (!userKuerzel) return;
+    const sauberesKuerzel = userKuerzel.trim().toLowerCase();
     try {
         const { count, error } = await window.supabaseClient
             .from('news_db')
             .select('*', { count: 'exact', head: true })
-            .eq('empfaenger', userKuerzel)
-            .or(`gelesen.is.null,gelesen.not.like."%25${userKuerzel}%25"`);
+            .eq('empfaenger', sauberesKuerzel)
+            .or(`gelesen.is.null,gelesen.not.like."%25${sauberesKuerzel}%25"`);
 
         if (error) {
             console.error("Fehler beim Zählen ungelesener Nachrichten:", error);
@@ -5324,7 +5325,7 @@ async function checkUnreadNews(userKuerzel) {
     }
 }
 
-// Push-Registrierung (Multi-Device fähig)
+// Push-Registrierung
 async function subscribeUserToPush(userKuerzel) {
     try {
         const permission = await Notification.requestPermission();
@@ -5341,8 +5342,10 @@ async function subscribeUserToPush(userKuerzel) {
             return;
         }
 
+        const sauberesKuerzel = userKuerzel ? userKuerzel.trim().toLowerCase() : '';
+
         const { error: upsertError } = await window.supabaseClient.from('push_subscriptions').upsert({
-            user_id: userKuerzel,
+            user_id: sauberesKuerzel,
             endpoint: subscription.endpoint,
             subscription_data: subscription
         }, { onConflict: 'endpoint' });
@@ -5357,7 +5360,7 @@ async function subscribeUserToPush(userKuerzel) {
     }
 }
 
-// Realtime Lauscher (Sicher vor doppelten Subscriptions und Reihenfolge-Fehlern)
+// Realtime Lauscher
 function initNewsRealtime(userKuerzel) {
     const client = typeof supabaseClient !== 'undefined' ? supabaseClient : window.supabaseClient;
     if (!client) return;
@@ -5367,7 +5370,6 @@ function initNewsRealtime(userKuerzel) {
         window.newsChannelInstance = null;
     }
 
-    // Sicherstellen, dass auch der Channel-Name lowercase ist
     const sauberesKuerzel = userKuerzel ? userKuerzel.trim().toLowerCase() : '';
 
     window.newsChannelInstance = client.channel('news-channel-' + sauberesKuerzel)
@@ -5376,12 +5378,10 @@ function initNewsRealtime(userKuerzel) {
             { event: 'INSERT', schema: 'public', table: 'news_db' }, 
             (payload) => {
                 const empfaengerFeld = payload.new.empfaenger || "";
-                // 🛑 HIER GEÄNDERT: Konsequent in Kleinbuchstaben umwandeln
                 const empfaengerArray = empfaengerFeld.split(',').map(e => e.trim().toLowerCase());
-                const meinKuerzel = sauberesKuerzel;
 
-                if (empfaengerArray.includes(meinKuerzel)) {
-                    checkUnreadNews(userKuerzel);
+                if (empfaengerArray.includes(sauberesKuerzel)) {
+                    checkUnreadNews(sauberesKuerzel);
                 }
             }
         )
@@ -5392,20 +5392,20 @@ function initNewsRealtime(userKuerzel) {
         });
 }
     
-// Service Worker Registrierung
+// Service Worker Registrierung & Event-Listener für Live-Push-Klicks
 async function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         try {
             await navigator.serviceWorker.register('./sw.js');
             
-            // 💡 NEU: Listener für Nachrichten vom Service Worker (Wenn die App bereits im Hintergrund lief)
             navigator.serviceWorker.addEventListener('message', (event) => {
                 if (event.data && event.data.action === 'openChat' && event.data.chatId) {
                     console.log("📨 Service Worker Signal für Chat erhalten:", event.data.chatId);
                     
-                    // Ruft deine Funktion zum Öffnen des Chats auf
                     if (typeof openChatById === 'function') {
                         openChatById(event.data.chatId);
+                    } else if (typeof window.openChatById === 'function') {
+                        window.openChatById(event.data.chatId);
                     } else {
                         console.warn("⚠️ Funktion openChatById existiert noch nicht!");
                     }
@@ -5417,6 +5417,25 @@ async function registerServiceWorker() {
         }
     }
 }
+
+// 📂 Global definierte Funktion zum Öffnen des Chats per ID (Vom Push-Banner aufgerufen)
+window.openChatById = function(chatId) {
+    console.log("📂 Öffne Chat für ID:", chatId);
+    if (!chatId) return;
+
+    // Falls deine UI ein Chat-Modal oder eine Chat-Ansicht hat, blende sie ein
+    const chatAnsicht = document.getElementById('chatContainer'); // Passe diese ID ggf. an eure UI an
+    if (chatAnsicht) {
+        chatAnsicht.style.display = 'block';
+    }
+
+    // Ruft die Funktion auf, mit der eure App normalerweise den Chat-Raum lädt
+    if (typeof ladeChatNachrichten === 'function') {
+        ladeChatNachrichten(chatId);
+    } else {
+        console.warn("⚠️ Bitte trage hier den Funktionsnamen ein, mit dem eure App einen Chat lädt.");
+    }
+};
 
 
 /* ============================================================
