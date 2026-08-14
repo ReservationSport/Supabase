@@ -13,28 +13,41 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', function(event) {
     if (!event.data) return;
 
-    const data = event.data.json();  
+    let data = {};
+    try {
+        data = event.data.json();
+    } catch (e) {
+        data = { title: 'Neue Nachricht', body: event.data.text() };
+    }
 
-    // Falls dein Browser setAppBadge im Service Worker direkt unterstützt, wird es mitgenommen
+    // App Badge setzen (falls unterstützt)
     if (data.badge !== undefined && 'setAppBadge' in navigator) {
         try {
             navigator.setAppBadge(data.badge);
         } catch (e) {
-            // Falls nicht unterstützt, wird es einfach übersprungen
+            // Falls nicht unterstützt, ignorieren
         }
     }
 
+    const chatId = data.chatId || data.chat_id || null;
+    const targetUrl = data.url || (chatId ? `/?chatId=${chatId}` : '/');
+
     const options = {
-        body: data.body,
-        icon: '/icon-192.png',
-        badge: '/favicon.png',
+        body: data.body || 'Du hast eine neue Nachricht erhalten.',
+        icon: data.icon || '/icon-192.png',
+        badge: data.badgeIcon || '/favicon.png',
+        vibrate: [100, 50, 100], // Typisches Vibrationsmuster für Nachrichten
+        // Gruppiert Nachrichten pro Chat (wie bei WhatsApp)
+        tag: chatId ? `chat-msg-${chatId}` : 'chat-msg-general',
+        renotify: true, // Vibration/Ton auch bei Folge-Nachrichten im selben Chat auslösen
         data: {
-            url: data.url || '/'
+            url: targetUrl,
+            chatId: chatId
         }
     };
 
     event.waitUntil(
-        self.registration.showNotification(data.title, options)
+        self.registration.showNotification(data.title || 'Neue Nachricht', options)
     );
 });
 
@@ -42,20 +55,37 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
-    const urlToOpen = event.notification.data.url || '/';
+    const notificationData = event.notification.data || {};
+    const chatId = notificationData.chatId;
+    const targetUrl = notificationData.url || '/';
+    const urlToOpen = new URL(targetUrl, self.location.origin).href;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            // 1. Prüfen, ob bereits ein Fenster/Tab deiner App geöffnet ist
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
-                if (client.url === urlToOpen && 'focus' in client) {
-                    return client.focus();
+                const clientUrl = new URL(client.url, self.location.origin);
+
+                // Wenn ein Tab auf der gleichen Domain/App offen ist
+                if (clientUrl.origin === self.location.origin && 'focus' in client) {
+                    // Tab fokussieren
+                    client.focus();
+
+                    // Nachricht direkt an das Frontend senden (Chat ohne Reload öffnen)
+                    client.postMessage({
+                        action: 'openChat',
+                        chatId: chatId,
+                        url: urlToOpen
+                    });
+                    return;
                 }
             }
+
+            // 2. Falls die App komplett geschlossen war: Neuer Tab mit der Ziel-URL
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
         })
     );
 });
-
