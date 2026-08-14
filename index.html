@@ -5418,22 +5418,20 @@ async function registerServiceWorker() {
     }
 }
 
-// 📂 Global definierte Funktion zum Öffnen des Chats per ID (Vom Push-Banner aufgerufen)
+// 📂 Global definierte Funktion zum Öffnen des Chats per ID
 window.openChatById = function(chatId) {
     console.log("📂 Öffne Chat für ID:", chatId);
     if (!chatId) return;
 
-    // Falls deine UI ein Chat-Modal oder eine Chat-Ansicht hat, blende sie ein
-    const chatAnsicht = document.getElementById('chatContainer'); // Passe diese ID ggf. an eure UI an
-    if (chatAnsicht) {
-        chatAnsicht.style.display = 'block';
-    }
-
-    // Ruft die Funktion auf, mit der eure App normalerweise den Chat-Raum lädt
-    if (typeof ladeChatNachrichten === 'function') {
-        ladeChatNachrichten(chatId);
+    // Ruft direkt eure echte Chat-Funktion auf (unterstützt Groß- und Kleinschreibung)
+    if (typeof window.openChat === 'function') {
+        window.openChat(chatId);
+    } else if (typeof window.openchat === 'function') {
+        window.openchat(chatId);
+    } else if (typeof openChat === 'function') {
+        openChat(chatId);
     } else {
-        console.warn("⚠️ Bitte trage hier den Funktionsnamen ein, mit dem eure App einen Chat lädt.");
+        console.warn("⚠️ Die Funktion 'openChat' konnte im globalen Scope nicht gefunden werden.");
     }
 };
 
