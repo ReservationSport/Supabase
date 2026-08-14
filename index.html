@@ -5124,6 +5124,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
+        // 💡 NEU: Deep-Link Erkennung (Wenn App durch Banner komplett neu geöffnet wurde)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlChatId = urlParams.get('chatId');
+        
+        if (urlChatId) {
+            console.log("🔗 Kaltstart: URL mit Chat-ID erkannt:", urlChatId);
+            setTimeout(() => {
+                // Hier rufst du deine Funktion auf, die den Chat anzeigt!
+                if (typeof openChatById === 'function') {
+                    openChatById(urlChatId);
+                } else {
+                    console.warn("⚠️ Funktion openChatById existiert noch nicht!");
+                }
+            }, 800); // Leichte Verzögerung, damit die UI und Caches sicher geladen sind
+
+            // URL bereinigen, damit bei manuellem Reload der Chat nicht immer wieder aufspringt
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
         return; // Direkt beenden, App läuft sofort!
     }
 
@@ -5376,7 +5395,26 @@ function initNewsRealtime(userKuerzel) {
 // Service Worker Registrierung
 async function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        await navigator.serviceWorker.register('./sw.js');
+        try {
+            await navigator.serviceWorker.register('./sw.js');
+            
+            // 💡 NEU: Listener für Nachrichten vom Service Worker (Wenn die App bereits im Hintergrund lief)
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.action === 'openChat' && event.data.chatId) {
+                    console.log("📨 Service Worker Signal für Chat erhalten:", event.data.chatId);
+                    
+                    // Ruft deine Funktion zum Öffnen des Chats auf
+                    if (typeof openChatById === 'function') {
+                        openChatById(event.data.chatId);
+                    } else {
+                        console.warn("⚠️ Funktion openChatById existiert noch nicht!");
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('Service Worker konnte nicht registriert werden:', error);
+        }
     }
 }
 
