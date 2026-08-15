@@ -24,13 +24,13 @@ self.addEventListener('push', function(event) {
         } catch (e) {}
     }
 
-    // Hier wird nun explizit nach room_id gesucht!
+    // Hier wird nach room_id gesucht
     const roomId = data.room_id || data.roomId || (data.record ? data.record.room_id : null);
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    // URL mit room_id erstellen
-    const targetUrl = roomId ? `/?roomId=${roomId}` : (data.url || '/');
+    // URL mit room_id erstellen (Korrektur auf room_id)
+    const targetUrl = roomId ? `/?room_id=${roomId}` : (data.url || '/');
 
     const options = {
         body: notificationBody,
@@ -56,8 +56,8 @@ self.addEventListener('notificationclick', function(event) {
     const notificationData = event.notification.data || {};
     const roomId = notificationData.roomId;
     
-    // URL mit roomId generieren
-    const targetUrl = roomId ? `/?roomId=${roomId}` : (notificationData.url || '/');
+    // URL mit room_id generieren (Korrektur auf room_id)
+    const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
     const urlToOpen = new URL(targetUrl, self.location.origin).href;
 
     event.waitUntil(
