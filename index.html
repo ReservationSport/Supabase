@@ -5022,7 +5022,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
                 
-                // Verschiedene mögliche Funktionsnamen abfangen, um den Chatraum zu öffnen
                 if (typeof openChat === 'function') {
                     openChat(event.data.room_id);
                 } else if (typeof window.openChat === 'function') {
@@ -5032,6 +5031,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         });
+    }
+
+    // 🔗 0. DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über Hash #room=...)
+    let urlRoomId = null;
+    if (window.location.hash && window.location.hash.includes('#room=')) {
+        urlRoomId = window.location.hash.replace('#room=', '').trim();
+    } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlRoomId = urlParams.get('room_id');
+    }
+
+    if (urlRoomId) {
+        alert("💥 TREFFER! Raum-ID gefunden: " + urlRoomId);
+        console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
     }
 
     // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert?
@@ -5045,30 +5059,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
 
-        // 🔗 DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über Hash #room=...)
-        let urlRoomId = null;
-        if (window.location.hash && window.location.hash.includes('#room=')) {
-            urlRoomId = window.location.hash.replace('#room=', '').trim();
-        } else {
-            // Fallback falls doch via URL-Parameter übergeben
-            const urlParams = new URLSearchParams(window.location.search);
-            urlRoomId = urlParams.get('room_id');
-        }
-
-       if (urlRoomId) {
-            alert("💥 TREFFER! Raum-ID gefunden: " + urlRoomId); // <--- DAS HINZUFÜGEN
-            
-            console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
-            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-            
-            // Rest des Codes...   
-            // Warten, bis die Chat-Funktionen geladen sind (max. 3 Sekunden)
+        // Falls eine URL-Raum-ID vorhanden war, den Chat verzögert/gepollt öffnen
+        if (urlRoomId) {
             let retries = 0;
             const chatCheckInterval = setInterval(() => {
                 retries++;
                 const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
                 
-                if (chatReady || retries > 30) { // Nach max 3 Sekunden abbrechen
+                if (chatReady || retries > 30) { 
                     clearInterval(chatCheckInterval);
                     
                     const chatOverlay = document.getElementById('chatOverlay');
@@ -5084,7 +5082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         console.error("❌ openChat-Funktion konnte auch nach Warten nicht gefunden werden!");
                     }
                 }
-            }, 100); // alle 100ms prüfen
+            }, 100);
         }
 
         // UI sofort freigeben
