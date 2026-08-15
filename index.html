@@ -5055,11 +5055,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             urlRoomId = urlParams.get('room_id');
         }
 
-        if (urlRoomId) {
+       if (urlRoomId) {
+            alert("💥 TREFFER! Raum-ID gefunden: " + urlRoomId); // <--- DAS HINZUFÜGEN
+            
             console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
-            // URL / Hash sofort bereinigen
             window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
             
+            // Rest des Codes...   
             // Warten, bis die Chat-Funktionen geladen sind (max. 3 Sekunden)
             let retries = 0;
             const chatCheckInterval = setInterval(() => {
