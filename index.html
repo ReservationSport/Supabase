@@ -5003,6 +5003,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
+    // 📡 Listener für Nachrichten vom Service Worker, wenn die App bereits offen ist
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
+                console.log("💬 Push-Nachricht im offenen Zustand empfangen für Raum:", event.data.room_id);
+                const chatOverlay = document.getElementById('chatOverlay');
+                if (chatOverlay) chatOverlay.style.display = 'flex';
+                if (typeof openChat === 'function') {
+                    openChat(event.data.room_id);
+                } else if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                }
+            }
+        });
+    }
+
     // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert?
     const savedKuerzel = localStorage.getItem('userKuerzel');
     const savedPw = localStorage.getItem('userPw');
@@ -5126,21 +5142,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 60000);
 
         // 🔗 Deep-Link Erkennung für room_id beim Kaltstart
-const urlParams = new URLSearchParams(window.location.search);
-const urlRoomId = urlParams.get('room_id'); // <-- Hier von roomId auf room_id geändert
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRoomId = urlParams.get('room_id');
 
-if (urlRoomId) {
-    console.log("🔗 URL mit Room-ID erkannt, öffne Chat:", urlRoomId);
-    
-    setTimeout(() => {
-        const chatOverlay = document.getElementById('chatOverlay');
-        if (chatOverlay) chatOverlay.style.display = 'flex';
-        
-        if (typeof loadChatRooms === 'function') {
-            loadChatRooms();
+        if (urlRoomId) {
+            console.log("🔗 URL mit Room-ID erkannt, öffne Chat:", urlRoomId);
+            
+            setTimeout(() => {
+                const chatOverlay = document.getElementById('chatOverlay');
+                if (chatOverlay) chatOverlay.style.display = 'flex';
+                
+                if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                }
+            }, 600);
         }
-    }, 600);
-}
         return; 
     }
 
@@ -5399,29 +5415,6 @@ async function registerServiceWorker() {
         }
     }
 }
-
-// 🛠️ Visual Console für Handys (zeigt Logs direkt auf dem Bildschirm)
-(function() {
-    const debugBox = document.createElement('div');
-    debugBox.id = 'visualDebugBox';
-    debugBox.style.cssText = 'position:fixed;top:0;left:0;width:100%;max-height:150px;background:rgba(0,0,0,0.85);color:#0f0;font-size:11px;font-family:monospace;z-index:999999;overflow-y:auto;padding:5px;box-sizing:border-box;pointer-events:none;';
-    document.body.appendChild(debugBox);
-
-    function logToScreen(type, args) {
-        const msg = Array.from(args).map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-        const item = document.createElement('div');
-        item.style.color = type === 'error' ? '#ff5555' : (type === 'warn' ? '#ffaa00' : '#0f0');
-        item.textContent = `[${type}] ${msg}`;
-        debugBox.appendChild(item);
-        debugBox.scrollTop = debugBox.scrollHeight;
-    }
-
-    const oldLog = console.log, oldErr = console.error, oldWarn = console.warn;
-    console.log = function() { logToScreen('log', arguments); oldLog.apply(console, arguments); };
-    console.error = function() { logToScreen('error', arguments); oldErr.apply(console, arguments); };
-    console.warn = function() { logToScreen('warn', arguments); oldWarn.apply(console, arguments); };
-})();
-
     
 
 /* ============================================================
