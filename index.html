@@ -13601,11 +13601,29 @@ document.addEventListener('DOMContentLoaded', () => {
         subscribeToChatMemberships();
         subscribeToGlobalMessages();
     }
+
+    // Direkt beim Start prüfen, ob die App via Push-Benachrichtigung (Kaltstart) geöffnet wurde
+    const urlParams = new URLSearchParams(window.location.search);
+    const shouldOpenChat = urlParams.get('open_chat') === 'true';
+
+    if (shouldOpenChat) {
+        // Parameter aus der URL entfernen, damit er beim Neuladen/F5 nicht hängen bleibt
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Chat nach kurzer Verzögerung (damit Supabase & DOM bereit sind) automatisch öffnen
+        setTimeout(() => {
+            if (typeof window.openChat === 'function') {
+                // Globaler Standard-Chat (Team-Chat) beim Kaltstart direkt öffnen
+                const globalRoomId = '00000000-0000-0000-0000-000000000001';
+                window.openChat(globalRoomId);
+            }
+        }, 800);
+    }
 });
 
 /* ============================================================
     TEAM CHAT LOGIK (WhatsApp-Stil mit Supabase Realtime)
-    ============================================================ */
+    ================================================================ */
 
 let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
@@ -13855,14 +13873,18 @@ async function selectRoom(roomId, roomName, roomType) {
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
-    let cleanName = roomName;
+    let cleanName = roomName || (roomId === '00000000-0000-0000-0000-000000000001' ? 'Team-Chat' : 'Chat');
     if (cleanName.toLowerCase().startsWith('chat mit ')) {
         cleanName = cleanName.replace(/^chat mit /i, '');
     }
 
-    document.getElementById('activeChatTitle').innerText = cleanName;
-    document.getElementById('activeChatSub').innerText = roomType === 'global' ? 'Team-Chat' : '';
-    document.getElementById('chatInputArea').style.display = 'flex';
+    const titleEl = document.getElementById('activeChatTitle');
+    const subEl = document.getElementById('activeChatSub');
+    const inputAreaEl = document.getElementById('chatInputArea');
+
+    if (titleEl) titleEl.innerText = cleanName;
+    if (subEl) subEl.innerText = (roomType === 'global' || roomId === '00000000-0000-0000-0000-000000000001') ? 'Team-Chat' : '';
+    if (inputAreaEl) inputAreaEl.style.display = 'flex';
 
     if (chatRealtimeChannel && window.supabaseClient) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
@@ -13893,6 +13915,9 @@ async function loadMessages(roomId) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
+        
+        // Immer beim Öffnen des Chats direkt ans Ende scrollen
+        scrollToLatestMessage();
     } catch (e) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
         console.error("Fehler beim Laden der Nachrichten:", e);
@@ -13941,7 +13966,19 @@ function renderMessages(messages) {
         container.appendChild(bubble);
     });
 
-    container.scrollTop = container.scrollHeight;
+    scrollToLatestMessage();
+}
+
+/**
+ * Scrollt den Nachrichten-Container automatisch ganz nach unten zur neusten Nachricht.
+ */
+function scrollToLatestMessage() {
+    const container = document.getElementById('chatMessages');
+    if (container) {
+        setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+        }, 50);
+    }
 }
 
 function formatMessageContent(text) {
@@ -13963,7 +14000,6 @@ function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Maximal 5 MB Limit prüfen, um den Supabase Free Storage zu schützen
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
         alert("Die ausgewählte Datei ist zu groß (maximal 5 MB erlaubt).");
@@ -13975,9 +14011,7 @@ function handleFileSelect(event) {
     showChatFilePreview(file);
 }
 
-// Hilfsfunktion: Bild im Browser komprimieren, um Speicherplatz zu sparen
 async function compressImage(file, maxWidth = 1200, quality = 0.8) {
-    // GIFs (wegen Animationen) oder Nicht-Bilder unberührt lassen
     if (file.type === 'image/gif' || !file.type.startsWith('image/')) {
         return file;
     }
@@ -14003,7 +14037,7 @@ async function compressImage(file, maxWidth = 1200, quality = 0.8) {
 
                 canvas.toBlob((blob) => {
                     if (!blob) {
-                        resolve(file); // Fallback auf Original bei Fehler
+                        resolve(file);
                         return;
                     }
                     const compressedFile = new File([blob], file.name, {
@@ -14081,7 +14115,6 @@ async function sendChatMessage() {
 
     try {
         if (selectedChatFile) {
-            // Bild vor dem Upload komprimieren, um Storage-Speicher zu sparen
             const fileToUpload = await compressImage(selectedChatFile);
 
             const fileExt = fileToUpload.name.split('.').pop();
@@ -14198,7 +14231,7 @@ function appendSingleMessage(msg) {
     `;
 
     container.appendChild(bubble);
-    container.scrollTop = container.scrollHeight;
+    scrollToLatestMessage();
 }
 
 function escapeHtml(text) {
@@ -14206,6 +14239,7 @@ function escapeHtml(text) {
     const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
+    
 
 /* ============================================================
     NEUER CHAT & HIDE MODAL LOGIK
