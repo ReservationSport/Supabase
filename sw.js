@@ -24,22 +24,24 @@ self.addEventListener('push', function(event) {
         } catch (e) {}
     }
 
-    const chatId = data.chatId || data.chat_id || (data.record ? data.record.chatId : null);
+    // Hier wird nun explizit nach room_id gesucht!
+    const roomId = data.room_id || data.roomId || (data.record ? data.record.room_id : null);
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    const targetUrl = data.url || (chatId ? `/?chatId=${chatId}` : '/');
+    // URL mit room_id erstellen
+    const targetUrl = roomId ? `/?roomId=${roomId}` : (data.url || '/');
 
     const options = {
         body: notificationBody,
         icon: data.icon || '/icon-192.png',
         badge: data.badgeIcon || '/favicon.png',
         vibrate: [100, 50, 100],
-        tag: chatId ? `chat-msg-${chatId}` : 'chat-msg-general',
+        tag: roomId ? `chat-msg-${roomId}` : 'chat-msg-general',
         renotify: true,
         data: {
             url: targetUrl,
-            chatId: chatId
+            roomId: roomId
         }
     };
 
@@ -52,8 +54,10 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
     const notificationData = event.notification.data || {};
-    const chatId = notificationData.chatId;
-    const targetUrl = notificationData.url || '/';
+    const roomId = notificationData.roomId;
+    
+    // URL mit roomId generieren
+    const targetUrl = roomId ? `/?roomId=${roomId}` : (notificationData.url || '/');
     const urlToOpen = new URL(targetUrl, self.location.origin).href;
 
     event.waitUntil(
