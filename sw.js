@@ -26,7 +26,6 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    // Wir leiten starr auf die Hauptseite um, ohne fehleranfällige URL-Parameter
     const targetUrl = '/';
 
     const options = {
@@ -54,30 +53,46 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Signal zum Öffnen des Chats senden (nur an EINEN Client!)
+            // 1. Suche den besten aktiven Client (bevorzuge fokussierte oder den ersten)
+            let targetClient = null;
+            
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
-                if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-                    return client.focus().then(() => {
-                        if ('postMessage' in client) {
-                            client.postMessage({ type: 'OPEN_MAIN_CHAT' });
-                        }
-                    });
+                if (client.url.startsWith(self.location.origin)) {
+                    if (client.focused) {
+                        targetClient = client;
+                        break; // Perfekt, direkt den fokussierten nehmen
+                    } else if (!targetClient) {
+                        targetClient = client; // Fallback auf den ersten offenen Tab
+                    }
                 }
             }
 
-            // 2. Kaltstart: App öffnen und wiederholt per postMessage anpingen, bis die App bereit ist
+            // Wenn ein offener Tab gefunden wurde: NUR DIESEN EINEN ansprechen!
+            if (targetClient && 'focus' in targetClient) {
+                return targetClient.focus().then(() => {
+                    if ('postMessage' in targetClient) {
+                        targetClient.postMessage({ type: 'OPEN_MAIN_CHAT' });
+                    }
+                });
+            }
+
+            // 2. Kaltstart (Kein Tab offen): App öffnen
             if (clients.openWindow) {
                 return clients.openWindow(absoluteUrl).then(windowClient => {
                     if (windowClient) {
                         let attempts = 0;
                         const interval = setInterval(() => {
                             attempts++;
-                            windowClient.postMessage({ type: 'OPEN_MAIN_CHAT' });
-                            if (attempts >= 15) {
+                            // Einmaliges Senden reicht meist, aber wir prüfen kurz ob Client noch da ist
+                            if (windowClient) {
+                                windowClient.postMessage({ type: 'OPEN_MAIN_CHAT' });
+                            }
+                            // Nach 3 Versuchen oder 3 Sekunden komplett stoppen, kein Dauers feuern!
+                            if (attempts >= 3) {
                                 clearInterval(interval);
                             }
-                        }, 400);
+                        }, 1000);
                     }
                 });
             }
