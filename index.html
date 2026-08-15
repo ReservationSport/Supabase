@@ -5125,30 +5125,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-       // 🔗 Deep-Link Erkennung (Mit automatischer Warteschleife beim Kaltstart)
+       // 🔗 Deep-Link Erkennung für room_id
         const urlParams = new URLSearchParams(window.location.search);
-        const urlChatId = urlParams.get('chatId');
+        const urlRoomId = urlParams.get('roomId');
         
-        if (urlChatId) {
-            console.log("🔗 URL mit Chat-ID erkannt:", urlChatId);
+        if (urlRoomId) {
+            console.log("🔗 URL mit Room-ID erkannt:", urlRoomId);
             
-            // Versuche den Chat zu öffnen, sobald die Funktion verfügbar ist (max. 5 Sekunden warten)
             let versuche = 0;
             const chatWarteIntervall = setInterval(() => {
                 versuche++;
+                // Passe 'openChat' hier an den tatsächlichen Namen deiner Chat-Öffnen-Funktion an (falls sie anders heißt)
                 const openFunc = window.openChat || window.openchat || (typeof openChat === 'function' ? openChat : null);
                 
                 if (openFunc) {
                     clearInterval(chatWarteIntervall);
-                    console.log("🚀 Chat-Funktion gefunden, öffne Chat:", urlChatId);
-                    openFunc(urlChatId);
-                } else if (versuche > 25) { // Nach ca. 5 Sekunden abbrechen
+                    console.log("🚀 Chat-Funktion gefunden, öffne Raum:", urlRoomId);
+                    openFunc(urlRoomId);
+                } else if (versuche > 25) {
                     clearInterval(chatWarteIntervall);
-                    console.error("❌ Konnte openChat nicht finden – Funktion existiert im globalen Scope scheinbar nicht.");
+                    console.error("❌ Konnte Chat-Funktion nicht finden.");
                 }
             }, 200);
 
-            // URL bereinigen, damit ein späterer Reload den Chat nicht erneut erzwingt
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
