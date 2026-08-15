@@ -5013,37 +5013,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
-    // 📡 Listener für Nachrichten vom Service Worker (auch beim Kaltstart oder im Hintergrund)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
-                console.log("💬 Push-Nachricht empfangen für Raum:", event.data.room_id);
+    // Hilfsfunktion zum sicheren und verzögerten Öffnen des Chats
+    function triggerChatOpen(roomId) {
+        if (!roomId) return;
+        console.log("💬 Starte Öffnungs-Routine für Raum:", roomId);
+        
+        let retries = 0;
+        const checkInterval = setInterval(() => {
+            retries++;
+            const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
+            
+            if (chatReady || retries > 30) { 
+                clearInterval(checkInterval);
                 
                 const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
                 
-                let retries = 0;
-                const checkInterval = setInterval(() => {
-                    retries++;
-                    const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
-                    if (chatReady || retries > 20) {
-                        clearInterval(checkInterval);
-                        if (typeof openChat === 'function') openChat(event.data.room_id);
-                        else if (typeof window.openChat === 'function') window.openChat(event.data.room_id);
-                        else if (typeof loadChatRooms === 'function') loadChatRooms();
-                    }
-                }, 100);
+                if (typeof openChat === 'function') {
+                    openChat(roomId);
+                } else if (typeof window.openChat === 'function') {
+                    window.openChat(roomId);
+                } else if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                } else {
+                    console.error("❌ openChat-Funktion konnte auch nach Warten nicht gefunden werden!");
+                }
+            }
+        }, 100);
+    }
+
+    // 📡 Listener für Nachrichten vom Service Worker (im geöffneten Zustand)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
+                console.log("💬 Push-Nachricht per postMessage empfangen für Raum:", event.data.room_id);
+                triggerChatOpen(event.data.room_id);
             }
         });
     }
 
-    // 🔗 0. DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über Hash #room=...)
+    // 🔗 0. DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über URL-Parameter ?room_id=...)
     let urlRoomId = null;
-    if (window.location.hash && window.location.hash.includes('#room=')) {
+    const urlParams = new URLSearchParams(window.location.search);
+    urlRoomId = urlParams.get('room_id');
+
+    if (!urlRoomId && window.location.hash && window.location.hash.includes('#room=')) {
         urlRoomId = window.location.hash.replace('#room=', '').trim();
-    } else {
-        const urlParams = new URLSearchParams(window.location.search);
-        urlRoomId = urlParams.get('room_id');
     }
 
     if (urlRoomId) {
@@ -5063,30 +5078,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
 
-        // Falls eine URL-Raum-ID vorhanden war, den Chat verzögert/gepollt öffnen
+        // Falls eine URL-Raum-ID vorhanden war, den Chat jetzt einreihen
         if (urlRoomId) {
-            let retries = 0;
-            const chatCheckInterval = setInterval(() => {
-                retries++;
-                const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
-                
-                if (chatReady || retries > 30) { 
-                    clearInterval(chatCheckInterval);
-                    
-                    const chatOverlay = document.getElementById('chatOverlay');
-                    if (chatOverlay) chatOverlay.style.display = 'flex';
-                    
-                    if (typeof openChat === 'function') {
-                        openChat(urlRoomId);
-                    } else if (typeof window.openChat === 'function') {
-                        window.openChat(urlRoomId);
-                    } else if (typeof loadChatRooms === 'function') {
-                        loadChatRooms();
-                    } else {
-                        console.error("❌ openChat-Funktion konnte auch nach Warten nicht gefunden werden!");
-                    }
-                }
-            }, 100);
+            triggerChatOpen(urlRoomId);
         }
 
         // UI sofort freigeben
