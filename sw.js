@@ -26,8 +26,9 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    const targetUrl = roomId ? `/?room_id=${roomId}` : (data.url || '/');
-
+    // Hash-basierte URL nutzen, damit PWA-Kaltstarts den Parameter nicht verschlucken
+    const targetUrl = roomId ? `/#room=${roomId}` : (data.url || '/');
+    
     const options = {
         body: notificationBody,
         icon: data.icon || '/icon-192.png',
@@ -37,7 +38,7 @@ self.addEventListener('push', function(event) {
         renotify: true,
         data: {
             url: targetUrl,
-            roomId: roomId
+            room_id: roomId  // Korrigiert von roomId auf room_id
         }
     };
 
@@ -50,9 +51,10 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
     const notificationData = event.notification.data || {};
-    const roomId = notificationData.roomId;
+    // Korrigiert von notificationData.roomId auf notificationData.room_id
+    const roomId = notificationData.room_id || notificationData.roomId;
     
-    const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
+    const targetUrl = roomId ? `/#room=${roomId}` : (notificationData.url || '/');
     const urlToOpen = new URL(targetUrl, self.location.origin).href;
 
     event.waitUntil(
@@ -72,7 +74,7 @@ self.addEventListener('notificationclick', function(event) {
                 }
             }
 
-            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken
+            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken mit Hash-URL
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
