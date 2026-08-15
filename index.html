@@ -13610,13 +13610,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const shouldOpenChat = urlParams.get('open_chat') === 'true';
 
     if (shouldOpenChat) {
-        // Parameter aus der URL entfernen, damit er beim Neuladen/F5 nicht hängen bleibt
         window.history.replaceState({}, document.title, window.location.pathname);
         
-        // Chat nach kurzer Verzögerung (damit Supabase & DOM bereit sind) automatisch öffnen
         setTimeout(() => {
             if (typeof window.openChat === 'function') {
-                // Globaler Standard-Chat (Team-Chat) beim Kaltstart direkt öffnen
                 const globalRoomId = '00000000-0000-0000-0000-000000000001';
                 window.openChat(globalRoomId);
             }
@@ -13737,11 +13734,58 @@ function subscribeToGlobalMessages() {
                 table: 'chat_messages'
             },
             (payload) => {
-                loadChatRooms();
-                checkUnreadChatBadges(); // Aktualisiert den Button-Badge sofort bei neuen Nachrichten im Hintergrund
+                const newMsg = payload.new;
+                const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+                
+                // 1. Wenn der Chat offen ist UND die Nachricht zum aktiven Raum gehört -> direkt anhängen!
+                if (currentActiveRoomId && String(currentActiveRoomId) === String(newMsg.room_id)) {
+                    appendMessageToDOM(newMsg, aktuellerUser);
+                }
+
+                // 2. Chat-Liste aktualisieren falls offen
+                if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                }
+                
+                // 3. Badge IMMER sofort prüfen (egal ob App offen oder im Hintergrund)
+                checkUnreadChatBadges(); 
             }
         )
         .subscribe();
+}
+
+/**
+ * Hängt eine einzelne neue Nachricht direkt an das DOM an, ohne neu zu laden.
+ */
+function appendMessageToDOM(msg, aktuellerUser) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    // Falls noch der "Keine Nachrichten"-Placeholder da ist, diesen entfernen
+    const placeholder = container.querySelector('.chat-welcome-placeholder');
+    if (placeholder) placeholder.remove();
+
+    const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
+    let timeString = "";
+    if (msg.created_at) {
+        const date = new Date(msg.created_at);
+        timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+    bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
+    
+    let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
+
+    bubble.innerHTML = `
+        ${senderHtml}
+        <div>${formatMessageContent(msg.message)}</div>
+        <div class="message-time">${timeString}</div>
+    `;
+
+    container.appendChild(bubble);
+    scrollToLatestMessage();
 }
 
 window.openChat = function(roomId) {
@@ -13752,7 +13796,6 @@ window.openChat = function(roomId) {
         loadChatRooms();
     }
 
-    // Wenn eine roomId übergeben wurde (z.B. durch Push-Klick), direkt öffnen
     if (roomId && typeof selectRoom === 'function') {
         selectRoom(roomId);
     }
@@ -13764,7 +13807,6 @@ window.closeChat = function() {
     if (chatRealtimeChannel && window.supabaseClient) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
     }
-    // Nach dem Schließen Badge aktualisieren
     checkUnreadChatBadges();
 };
 
@@ -13876,8 +13918,6 @@ async function loadChatRooms() {
         });
 
         renderChatList(roomsArray, aktuellerUser, unreadRoomsSet);
-        
-        // Badge synchronisieren
         checkUnreadChatBadges();
 
     } catch (e) {
@@ -13943,7 +13983,6 @@ async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
     localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
 
-    // Badge sofort aktualisieren, wenn Raum geöffnet wird
     checkUnreadChatBadges();
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
@@ -13990,8 +14029,6 @@ async function loadMessages(roomId) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
-        
-        // Immer beim Öffnen des Chats direkt ans Ende scrollen
         scrollToLatestMessage();
     } catch (e) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
@@ -14067,6 +14104,7 @@ function formatMessageContent(text) {
     });
 }
 
+    
 // ============================================================
 // DATEI-AUSWAHL, GRÖßENPRÜFUNG, KOMPRIMIERUNG & VORSCHAU
 // ============================================================
