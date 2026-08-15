@@ -5126,22 +5126,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 60000);
 
         // 🔗 Deep-Link Erkennung für room_id beim Kaltstart
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlRoomId = urlParams.get('roomId');
-        
-        if (urlRoomId) {
-            console.log("🔗 URL mit Room-ID erkannt, öffne Chat:", urlRoomId);
-            
-            setTimeout(() => {
-                const chatOverlay = document.getElementById('chatOverlay');
-                if (chatOverlay) chatOverlay.style.display = 'flex';
-                
-                if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
-                }
-            }, 600);
-        }
+const urlParams = new URLSearchParams(window.location.search);
+const urlRoomId = urlParams.get('room_id'); // <-- Hier von roomId auf room_id geändert
 
+if (urlRoomId) {
+    console.log("🔗 URL mit Room-ID erkannt, öffne Chat:", urlRoomId);
+    
+    setTimeout(() => {
+        const chatOverlay = document.getElementById('chatOverlay');
+        if (chatOverlay) chatOverlay.style.display = 'flex';
+        
+        if (typeof loadChatRooms === 'function') {
+            loadChatRooms();
+        }
+    }, 600);
+}
         return; 
     }
 
