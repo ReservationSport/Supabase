@@ -26,7 +26,6 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    // 🔥 WICHTIG: Wir übergeben die Raum-ID fest als Query-Parameter direkt in die URL!
     const targetUrl = roomId ? `/?room_id=${roomId}` : '/';
 
     const options = {
@@ -53,7 +52,6 @@ self.addEventListener('notificationclick', function(event) {
     const notificationData = event.notification.data || {};
     const roomId = notificationData.room_id;
     
-    // 🔥 Absolute URL mit Query-Parameter erzwingen (Das kann kein Browser verschlucken!)
     const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
     const absoluteUrl = new URL(targetUrl, self.location.origin).href;
 
@@ -73,9 +71,20 @@ self.addEventListener('notificationclick', function(event) {
                 }
             }
 
-            // 2. Kaltstart: App frisch über die URL mit Query-Parameter öffnen
+            // 2. Kaltstart: App öffnen und per postMessage-Interval wiederholt anpingen, falls die URL verschluckt wird
             if (clients.openWindow) {
-                return clients.openWindow(absoluteUrl);
+                return clients.openWindow(absoluteUrl).then(windowClient => {
+                    if (windowClient && roomId) {
+                        let attempts = 0;
+                        const interval = setInterval(() => {
+                            attempts++;
+                            windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                            if (attempts >= 15) {
+                                clearInterval(interval);
+                            }
+                        }, 400);
+                    }
+                });
             }
         }).catch(err => {
             console.error("❌ Fehler im notificationclick:", err);
