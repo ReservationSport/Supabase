@@ -13600,6 +13600,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.supabaseClient) {
         subscribeToChatMemberships();
         subscribeToGlobalMessages();
+        
+        // Badge direkt beim Start der App prüfen
+        checkUnreadChatBadges();
     }
 
     // Direkt beim Start prüfen, ob die App via Push-Benachrichtigung (Kaltstart) geöffnet wurde
@@ -13629,6 +13632,68 @@ let currentActiveRoomId = null;
 let chatRealtimeChannel = null;
 let selectedChatFile = null; 
 
+/**
+ * Prüft zentral, ob es ungelesene Nachrichten in irgendeinem Chat gibt,
+ * und steuert entsprechend das Badge (den Dot) am Haupt-Chat-Button.
+ */
+async function checkUnreadChatBadges() {
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    const chatDot = document.getElementById('chat-dot');
+    if (!chatDot || !aktuellerUser) return;
+
+    try {
+        const globalRoomId = '00000000-0000-0000-0000-000000000001';
+        let roomIds = [globalRoomId];
+
+        const { data: memberships } = await client
+            .from('chat_room_members')
+            .select('room_id')
+            .eq('user_kuerzel', aktuellerUser)
+            .eq('hidden', false);
+
+        if (memberships && memberships.length > 0) {
+            memberships.forEach(m => {
+                if (!roomIds.includes(m.room_id)) roomIds.push(m.room_id);
+            });
+        }
+
+        const { data: latestMsgs } = await client
+            .from('chat_messages')
+            .select('room_id, created_at, sender_kuerzel')
+            .in('room_id', roomIds)
+            .order('created_at', { ascending: false });
+
+        let hasUnread = false;
+        let latestPerRoom = {};
+
+        if (latestMsgs) {
+            latestMsgs.forEach(m => {
+                if (!latestPerRoom[m.room_id]) latestPerRoom[m.room_id] = m;
+            });
+
+            Object.keys(latestPerRoom).forEach(roomId => {
+                if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return;
+                
+                const msg = latestPerRoom[roomId];
+                if (msg.sender_kuerzel.toLowerCase() === aktuellerUser) return;
+
+                const lastRead = localStorage.getItem('chat_read_' + roomId);
+                if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
+                    hasUnread = true;
+                }
+            });
+        }
+
+        chatDot.style.display = hasUnread ? 'block' : 'none';
+
+    } catch (e) {
+        console.error("Fehler beim Prüfen der Chat-Badges:", e);
+    }
+}
+
 function subscribeToChatMemberships() {
     const client = window.supabaseClient;
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
@@ -13649,6 +13714,7 @@ function subscribeToChatMemberships() {
             },
             (payload) => {
                 loadChatRooms();
+                checkUnreadChatBadges();
             }
         )
         .subscribe();
@@ -13672,6 +13738,7 @@ function subscribeToGlobalMessages() {
             },
             (payload) => {
                 loadChatRooms();
+                checkUnreadChatBadges(); // Aktualisiert den Button-Badge sofort bei neuen Nachrichten im Hintergrund
             }
         )
         .subscribe();
@@ -13697,6 +13764,8 @@ window.closeChat = function() {
     if (chatRealtimeChannel && window.supabaseClient) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
     }
+    // Nach dem Schließen Badge aktualisieren
+    checkUnreadChatBadges();
 };
 
 async function loadChatRooms() {
@@ -13807,6 +13876,9 @@ async function loadChatRooms() {
         });
 
         renderChatList(roomsArray, aktuellerUser, unreadRoomsSet);
+        
+        // Badge synchronisieren
+        checkUnreadChatBadges();
 
     } catch (e) {
         console.error("Fehler beim Laden der Chat-Räume:", e);
@@ -13870,6 +13942,9 @@ function renderChatList(rooms, aktuellerUser, unreadRooms) {
 async function selectRoom(roomId, roomName, roomType) {
     currentActiveRoomId = roomId;
     localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
+
+    // Badge sofort aktualisieren, wenn Raum geöffnet wird
+    checkUnreadChatBadges();
 
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
 
