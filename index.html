@@ -4994,6 +4994,9 @@ window.currentInteractionMode = null;
     2. INITIALISIERUNG & PUSH-HELFER (MIT SILENT-LOGIN BEI KALTSTART)
     ============================================================ */
 
+// Globales Flag, um Mehrfachexekutionen zu verhindern
+let isChatOpeningInProgress = false;
+
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loginOverlay = document.getElementById('loginOverlay');
@@ -5005,8 +5008,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
-    // Hilfsfunktion zum sicheren und verzögerten Öffnen des Haupt-Chats
+    // Hilfsfunktion zum sicheren und einmaligen Öffnen des Haupt-Chats
     function triggerMainChatOpen() {
+        if (isChatOpeningInProgress) return;
+        isChatOpeningInProgress = true;
+
         console.log("💬 Starte Öffnungs-Routine für das Chat-Fenster...");
         
         let retries = 0;
@@ -5025,12 +5031,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     console.error("❌ Chat-Fenster oder loadChatRooms konnte nicht gefunden werden!");
                 }
+
+                setTimeout(() => {
+                    isChatOpeningInProgress = false;
+                }, 1000);
             }
         }, 100);
     }
 
-    // 📡 Listener für Nachrichten vom Service Worker (im geöffneten Zustand)
-    if ('serviceWorker' in navigator) {
+    // 📡 Listener für Nachrichten vom Service Worker (nur einmalig global registrieren)
+    if ('serviceWorker' in navigator && !window.__swMessageListenerInitialized) {
+        window.__swMessageListenerInitialized = true;
         navigator.serviceWorker.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'OPEN_MAIN_CHAT') {
                 console.log("💬 Push-Benachrichtigung geklickt: Öffne Chat-Fenster per postMessage...");
