@@ -26,9 +26,6 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    // Hash-basierte URL nutzen, damit PWA-Kaltstarts den Parameter nicht verschlucken
-    const targetUrl = roomId ? `/#room=${roomId}` : (data.url || '/');
-    
     const options = {
         body: notificationBody,
         icon: data.icon || '/icon-192.png',
@@ -37,7 +34,6 @@ self.addEventListener('push', function(event) {
         tag: roomId ? `chat-msg-${roomId}` : 'chat-msg-general',
         renotify: true,
         data: {
-            url: targetUrl,
             room_id: roomId 
         }
     };
@@ -51,36 +47,35 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
     const notificationData = event.notification.data || {};
-    const roomId = notificationData.room_id || notificationData.roomId;
-    
-    const targetUrl = roomId ? `/#room=${roomId}` : (notificationData.url || '/');
-    const urlToOpen = new URL(targetUrl, self.location.origin).href;
+    const roomId = notificationData.room_id;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Versuche, ein bereits geöffnetes Fenster zu finden und zu fokussieren/navigieren
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
-                
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
                     return client.focus().then(() => {
-                        if ('navigate' in client) {
-                            return client.navigate(urlToOpen);
-                        } else if ('postMessage' in client) {
+                        if ('postMessage' in client) {
                             client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
                         }
                     });
                 }
             }
 
-            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken mit der Hash-URL
+            // WICHTIG: Statt Hash-URL öffnen wir einfach die saubere Basis-URL.
+            // Die ID übergeben wir stattdessen an die Clients, oder das Frontend fängt es ab.
             if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
+                return clients.openWindow('/').then(windowClient => {
+                    if (windowClient && roomId) {
+                        // Wir senden die Raum-ID direkt als Nachricht an das neue Fenster
+                        windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                    }
+                });
             }
         }).catch(err => {
             console.error("❌ Fehler im notificationclick:", err);
             if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
+                return clients.openWindow('/');
             }
         })
     );
