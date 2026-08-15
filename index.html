@@ -5125,21 +5125,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-        // 🔗 Deep-Link Erkennung (Zverlässige Auswertung der URL beim Klick auf Push-Benachrichtigung)
+       // 🔗 Deep-Link Erkennung (Mit automatischer Warteschleife beim Kaltstart)
         const urlParams = new URLSearchParams(window.location.search);
         const urlChatId = urlParams.get('chatId');
         
         if (urlChatId) {
             console.log("🔗 URL mit Chat-ID erkannt:", urlChatId);
-            setTimeout(() => {
+            
+            // Versuche den Chat zu öffnen, sobald die Funktion verfügbar ist (max. 5 Sekunden warten)
+            let versuche = 0;
+            const chatWarteIntervall = setInterval(() => {
+                versuche++;
                 const openFunc = window.openChat || window.openchat || (typeof openChat === 'function' ? openChat : null);
+                
                 if (openFunc) {
-                    console.log("🚀 Öffne Chat direkt via openChat:", urlChatId);
+                    clearInterval(chatWarteIntervall);
+                    console.log("🚀 Chat-Funktion gefunden, öffne Chat:", urlChatId);
                     openFunc(urlChatId);
-                } else {
-                    console.warn("⚠️ Funktion openChat ist beim Start noch nicht verfügbar.");
+                } else if (versuche > 25) { // Nach ca. 5 Sekunden abbrechen
+                    clearInterval(chatWarteIntervall);
+                    console.error("❌ Konnte openChat nicht finden – Funktion existiert im globalen Scope scheinbar nicht.");
                 }
-            }, 800);
+            }, 200);
 
             // URL bereinigen, damit ein späterer Reload den Chat nicht erneut erzwingt
             window.history.replaceState({}, document.title, window.location.pathname);
