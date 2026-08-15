@@ -123,9 +123,9 @@ body {
     z-index: 50;
 }
 
-.nav-section { display: flex; align-items: center; gap: 10px; }
+.nav-section { display: flex; align-items: center; gap: 8px; } /* Gap leicht reduziert für mehr Platz */
 .nav-left { flex: 1; justify-content: flex-start; }
-.nav-center { flex: 2; justify-content: center; gap: 8px; }
+.nav-center { flex: 2; justify-content: center; gap: 6px; }
 .nav-right { flex: 1; justify-content: flex-end; }
 .nav-group { display: flex; gap: 5px; }
 
@@ -152,14 +152,14 @@ body {
 
 /* Spezielles Styling für den neuen Datum-Button */
 .date-container {
-    padding: 0 15px;
-    gap: 8px;
+    padding: 0 10px; /* Reduziert für mobile Ansicht */
+    gap: 6px;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13px; /* Etwas kleiner für mehr Platz */
 }
 
 .date-container span:first-child {
-    color: #eee; /* Datumstext in hellem Grau/Weiß */
+    color: #eee; 
     font-weight: 500;
 }
 
@@ -167,46 +167,57 @@ body {
 .nav-btn .material-symbols-outlined, 
 .refresh-btn .material-symbols-outlined,
 .date-container .material-symbols-outlined,
-.news-btn-premium .material-symbols-outlined {
-    font-size: 22px;
+.news-btn-premium .material-symbols-outlined,
+.chat-btn-premium .material-symbols-outlined { /* Chat Icon hinzugefügt */
+    font-size: 20px; /* Icon-Grösse minimal verkleinert für besseren Flow auf Mobile */
     color: #e67e22;
     margin: 0;
     transition: color 0.2s;
 }
 
-/* Der alte DatePicker-Indicator (versteckt, da Button jetzt alles macht) */
+/* Der alte DatePicker-Indicator (versteckt) */
 #datePicker { 
     display: none; 
-    pointer-events: none; /* Verhindert Interaktion komplett */
+    pointer-events: none; 
 }
 
-/* News Button Premium Style */
-.news-btn-premium {
+/* News & Chat Button Premium Style - Einheitlich & Platzsparend */
+.news-btn-premium, .chat-btn-premium {
     display: flex;
     align-items: center;
     justify-content: center;
     background: #262626;
     border: 1px solid #333;
     border-radius: 8px;
-    padding: 0 15px;
+    padding: 0 8px; /* Padding reduziert, macht den Button schmaler */
+    gap: 5px; /* Abstand zwischen Icon und Text */
     cursor: pointer;
     height: 40px;
     position: relative;
     transition: all 0.2s;
 }
-.news-btn-premium:hover { background: #2d2d2d; border-color: #e67e22; }
-
-.news-btn-premium .btn-text {
-    color: #eee; 
-    font-size: 13px; 
-    letter-spacing: 1px; 
-    margin-right: 8px; 
-    font-weight: 400;
+.news-btn-premium:hover, .chat-btn-premium:hover { 
+    background: #2d2d2d; 
+    border-color: #e67e22; 
 }
 
-.news-btn-premium .badge {
-    position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
-    background: #e67e22; border-radius: 50%; border: 2px solid #1a1a1a;
+.news-btn-premium .btn-text, .chat-btn-premium .btn-text {
+    color: #eee; 
+    font-size: 12px; /* Schrift etwas kleiner, um Breite zu sparen */
+    letter-spacing: 0.5px; /* Weniger Abstand zwischen den Buchstaben */
+    font-weight: 400;
+    margin: 0; /* Margin entfernt, da wir 'gap' auf dem Container nutzen */
+}
+
+.news-btn-premium .badge, .chat-btn-premium .badge {
+    position: absolute; 
+    top: -3px; 
+    right: -3px; 
+    width: 9px; 
+    height: 9px;
+    background: #e67e22; 
+    border-radius: 50%; 
+    border: 2px solid #1a1a1a;
     box-shadow: 0 0 8px rgba(230, 126, 34, 0.6);
 }
 
@@ -13576,26 +13587,15 @@ window.handleLogout = async function() {
 
 
 // ============================================================
-    // 14. CHAT
-    // ============================================================
-
-function checkChatVisibility() {
-    const erlaubteKuerzel = ["bupa", "test", "blmi", "seni"];  
-    
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    const chatContainer = document.getElementById('chat-btn-container');
-
-    if (chatContainer) {
-        if (erlaubteKuerzel.includes(aktuellerUser)) {
-            chatContainer.style.display = 'block';
-        } else {
-            chatContainer.style.display = 'none';
-        }
-    }
-}
+// 14. CHAT
+// ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    checkChatVisibility();
+    // Chat-Button direkt für alle anzeigen
+    const chatContainer = document.getElementById('chat-btn-container');
+    if (chatContainer) {
+        chatContainer.style.display = 'block';
+    }
     
     if (window.supabaseClient) {
         subscribeToChatMemberships();
