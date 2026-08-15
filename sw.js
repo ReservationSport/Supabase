@@ -26,7 +26,8 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    const targetUrl = roomId ? `/?room_id=${roomId}` : '/';
+    // Wir leiten starr auf die Hauptseite um, ohne fehleranfällige URL-Parameter
+    const targetUrl = '/';
 
     const options = {
         body: notificationBody,
@@ -49,36 +50,30 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
-    const notificationData = event.notification.data || {};
-    const roomId = notificationData.room_id;
-    
-    const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
-    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+    const absoluteUrl = new URL('/', self.location.origin).href;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und direkt dorthin navigieren
+            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Signal zum Öffnen des Chats senden
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
                     return client.focus().then(() => {
-                        if ('navigate' in client) {
-                            return client.navigate(absoluteUrl);
-                        } else if ('postMessage' in client) {
-                            client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                        if ('postMessage' in client) {
+                            client.postMessage({ type: 'OPEN_MAIN_CHAT' });
                         }
                     });
                 }
             }
 
-            // 2. Kaltstart: App öffnen und per postMessage-Interval wiederholt anpingen, falls die URL verschluckt wird
+            // 2. Kaltstart: App öffnen und wiederholt per postMessage anpingen, bis die App bereit ist
             if (clients.openWindow) {
                 return clients.openWindow(absoluteUrl).then(windowClient => {
-                    if (windowClient && roomId) {
+                    if (windowClient) {
                         let attempts = 0;
                         const interval = setInterval(() => {
                             attempts++;
-                            windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                            windowClient.postMessage({ type: 'OPEN_MAIN_CHAT' });
                             if (attempts >= 15) {
                                 clearInterval(interval);
                             }
