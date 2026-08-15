@@ -5013,22 +5013,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
-    // 📡 Listener für Nachrichten vom Service Worker, wenn die App bereits im Hintergrund offen ist
+    // 📡 Listener für Nachrichten vom Service Worker (auch beim Kaltstart oder im Hintergrund)
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
-                console.log("💬 Push-Nachricht im offenen Zustand empfangen für Raum:", event.data.room_id);
+                console.log("💬 Push-Nachricht empfangen für Raum:", event.data.room_id);
                 
                 const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
                 
-                if (typeof openChat === 'function') {
-                    openChat(event.data.room_id);
-                } else if (typeof window.openChat === 'function') {
-                    window.openChat(event.data.room_id);
-                } else if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
-                }
+                let retries = 0;
+                const checkInterval = setInterval(() => {
+                    retries++;
+                    const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
+                    if (chatReady || retries > 20) {
+                        clearInterval(checkInterval);
+                        if (typeof openChat === 'function') openChat(event.data.room_id);
+                        else if (typeof window.openChat === 'function') window.openChat(event.data.room_id);
+                        else if (typeof loadChatRooms === 'function') loadChatRooms();
+                    }
+                }, 100);
             }
         });
     }
