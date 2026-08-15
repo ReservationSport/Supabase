@@ -5057,21 +5057,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (urlRoomId) {
             console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
-            // URL / Hash sofort bereinigen, damit die ID beim erneuten Laden nicht festhängt
+            // URL / Hash sofort bereinigen
             window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
             
-            setTimeout(() => {
-                const chatOverlay = document.getElementById('chatOverlay');
-                if (chatOverlay) chatOverlay.style.display = 'flex';
+            // Warten, bis die Chat-Funktionen geladen sind (max. 3 Sekunden)
+            let retries = 0;
+            const chatCheckInterval = setInterval(() => {
+                retries++;
+                const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
                 
-                if (typeof openChat === 'function') {
-                    openChat(urlRoomId);
-                } else if (typeof window.openChat === 'function') {
-                    window.openChat(urlRoomId);
-                } else if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
+                if (chatReady || retries > 30) { // Nach max 3 Sekunden abbrechen
+                    clearInterval(chatCheckInterval);
+                    
+                    const chatOverlay = document.getElementById('chatOverlay');
+                    if (chatOverlay) chatOverlay.style.display = 'flex';
+                    
+                    if (typeof openChat === 'function') {
+                        openChat(urlRoomId);
+                    } else if (typeof window.openChat === 'function') {
+                        window.openChat(urlRoomId);
+                    } else if (typeof loadChatRooms === 'function') {
+                        loadChatRooms();
+                    } else {
+                        console.error("❌ openChat-Funktion konnte auch nach Warten nicht gefunden werden!");
+                    }
                 }
-            }, 300);
+            }, 100); // alle 100ms prüfen
         }
 
         // UI sofort freigeben
