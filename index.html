@@ -5045,14 +5045,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
 
-        // 🔗 DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Ganz an den Anfang gezogen!)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlRoomId = urlParams.get('room_id');
+        // 🔗 DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über Hash #room=...)
+        let urlRoomId = null;
+        if (window.location.hash && window.location.hash.includes('#room=')) {
+            urlRoomId = window.location.hash.replace('#room=', '').trim();
+        } else {
+            // Fallback falls doch via URL-Parameter übergeben
+            const urlParams = new URLSearchParams(window.location.search);
+            urlRoomId = urlParams.get('room_id');
+        }
 
         if (urlRoomId) {
             console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
-            // URL bereinigen, damit die ID beim erneuten Laden nicht festhängt
-            window.history.replaceState({}, document.title, window.location.pathname);
+            // URL / Hash sofort bereinigen, damit die ID beim erneuten Laden nicht festhängt
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
             
             setTimeout(() => {
                 const chatOverlay = document.getElementById('chatOverlay');
