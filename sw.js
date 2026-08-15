@@ -29,7 +29,7 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
-    // URL mit room_id erstellen (Korrektur auf room_id)
+    // URL mit room_id erstellen
     const targetUrl = roomId ? `/?room_id=${roomId}` : (data.url || '/');
 
     const options = {
@@ -56,7 +56,7 @@ self.addEventListener('notificationclick', function(event) {
     const notificationData = event.notification.data || {};
     const roomId = notificationData.roomId;
     
-    // URL mit room_id generieren (Korrektur auf room_id)
+    // URL mit room_id generieren
     const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
     const urlToOpen = new URL(targetUrl, self.location.origin).href;
 
@@ -68,13 +68,16 @@ self.addEventListener('notificationclick', function(event) {
 
                 if (clientUrl.origin === self.location.origin && 'focus' in client) {
                     client.focus();
-                    if ('navigate' in client) {
-                        return client.navigate(urlToOpen);
+                    
+                    // Verhindert den Refresh: Sende stattdessen eine Nachricht an den offenen Tab
+                    if ('postMessage' in client) {
+                        client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
                     }
                     return;
                 }
             }
 
+            // Wenn die App noch gar nicht offen war, neu öffnen
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
