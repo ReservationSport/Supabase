@@ -26,6 +26,9 @@ self.addEventListener('push', function(event) {
     const notificationTitle = data.title || data.titel || '💬 Neue Nachricht';
     const notificationBody = data.body || data.inhalt || data.message || 'Du hast eine neue Nachricht erhalten.';
     
+    // 🔥 WICHTIG: Wir übergeben die Raum-ID fest als Query-Parameter direkt in die URL!
+    const targetUrl = roomId ? `/?room_id=${roomId}` : '/';
+
     const options = {
         body: notificationBody,
         icon: data.icon || '/icon-192.png',
@@ -34,6 +37,7 @@ self.addEventListener('push', function(event) {
         tag: roomId ? `chat-msg-${roomId}` : 'chat-msg-general',
         renotify: true,
         data: {
+            url: targetUrl,
             room_id: roomId 
         }
     };
@@ -48,36 +52,35 @@ self.addEventListener('notificationclick', function(event) {
 
     const notificationData = event.notification.data || {};
     const roomId = notificationData.room_id;
+    
+    // 🔥 Absolute URL mit Query-Parameter erzwingen (Das kann kein Browser verschlucken!)
+    const targetUrl = roomId ? `/?room_id=${roomId}` : (notificationData.url || '/');
+    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Nachricht senden
+            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und direkt dorthin navigieren
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
                     return client.focus().then(() => {
-                        if ('postMessage' in client) {
+                        if ('navigate' in client) {
+                            return client.navigate(absoluteUrl);
+                        } else if ('postMessage' in client) {
                             client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
                         }
                     });
                 }
             }
 
-            // 2. Kaltstart: App frisch öffnen und danach die Raum-ID per postMessage übermitteln
+            // 2. Kaltstart: App frisch über die URL mit Query-Parameter öffnen
             if (clients.openWindow) {
-                return clients.openWindow('/').then(windowClient => {
-                    if (windowClient && roomId) {
-                        // Da das neue Fenster kurz zum Laden braucht, geben wir ihm eine kleine Verzögerung für die Nachricht
-                        setTimeout(() => {
-                            windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
-                        }, 1000);
-                    }
-                });
+                return clients.openWindow(absoluteUrl);
             }
         }).catch(err => {
             console.error("❌ Fehler im notificationclick:", err);
             if (clients.openWindow) {
-                return clients.openWindow('/');
+                return clients.openWindow(absoluteUrl);
             }
         })
     );
