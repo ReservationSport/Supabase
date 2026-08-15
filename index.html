@@ -5003,15 +5003,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
-    // 📡 Listener für Nachrichten vom Service Worker, wenn die App bereits offen ist
+    // 📡 Listener für Nachrichten vom Service Worker, wenn die App bereits im Hintergrund offen ist
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
                 console.log("💬 Push-Nachricht im offenen Zustand empfangen für Raum:", event.data.room_id);
+                
                 const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
+                
+                // Verschiedene mögliche Funktionsnamen abfangen, um den Chatraum zu öffnen
                 if (typeof openChat === 'function') {
                     openChat(event.data.room_id);
+                } else if (typeof window.openChat === 'function') {
+                    window.openChat(event.data.room_id);
                 } else if (typeof loadChatRooms === 'function') {
                     loadChatRooms();
                 }
@@ -5049,7 +5054,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof updateNavButtons === 'function') updateNavButtons();
         }
 
-        // 2. SUPABASE AUTH SICHERSTELLEN (Silent-Login, falls Client noch nicht authentifiziert ist)
+        // 2. SUPABASE AUTH SICHERSTELLEN (Silent-Login)
         try {
             let { data: { session } } = await supabaseClient.auth.getSession();
             
@@ -5141,7 +5146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-        // 🔗 Deep-Link Erkennung für room_id beim Kaltstart
+        // 🔗 Deep-Link Erkennung für room_id beim Kaltstart (wenn App komplett aus war)
         const urlParams = new URLSearchParams(window.location.search);
         const urlRoomId = urlParams.get('room_id');
 
@@ -5152,10 +5157,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
                 
-                if (typeof loadChatRooms === 'function') {
+                if (typeof openChat === 'function') {
+                    openChat(urlRoomId);
+                } else if (typeof loadChatRooms === 'function') {
                     loadChatRooms();
                 }
-            }, 600);
+            }, 800);
         }
         return; 
     }
