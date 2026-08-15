@@ -57,24 +57,27 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            // 1. Versuche, ein bereits geöffnetes Fenster zu finden
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
-                const clientUrl = new URL(client.url, self.location.origin);
-
-                if (clientUrl.origin === self.location.origin && 'focus' in client) {
-                    client.focus();
-                    
-                    if ('postMessage' in client) {
-                        client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
-                    }
-                    return;
+                
+                // Prüfen, ob das Tab zur gleichen Origin (Domain) gehört
+                if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+                    return client.focus().then(() => {
+                        // WICHTIG: Nachricht ans Frontend erst senden, wenn der Fokus erfolgreich war
+                        if ('postMessage' in client) {
+                            client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                        }
+                    });
                 }
             }
 
-            // Wenn keine Instanz offen war -> App frisch aufwecken
+            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
+        }).catch(err => {
+            console.error("❌ Fehler im notificationclick:", err);
         })
     );
 });
