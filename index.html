@@ -5045,6 +5045,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
 
+        // 🔗 DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Ganz an den Anfang gezogen!)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRoomId = urlParams.get('room_id');
+
+        if (urlRoomId) {
+            console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
+            // URL bereinigen, damit die ID beim erneuten Laden nicht festhängt
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            setTimeout(() => {
+                const chatOverlay = document.getElementById('chatOverlay');
+                if (chatOverlay) chatOverlay.style.display = 'flex';
+                
+                if (typeof openChat === 'function') {
+                    openChat(urlRoomId);
+                } else if (typeof window.openChat === 'function') {
+                    window.openChat(urlRoomId);
+                } else if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                }
+            }, 300);
+        }
+
         // UI sofort freigeben
         if (loginOverlay) loginOverlay.style.display = 'none';
         if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -5156,24 +5179,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 60000);
 
-        // 🔗 Deep-Link Erkennung für room_id beim Kaltstart (wenn App komplett aus war)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlRoomId = urlParams.get('room_id');
-
-        if (urlRoomId) {
-            console.log("🔗 URL mit Room-ID erkannt, öffne Chat:", urlRoomId);
-            
-            setTimeout(() => {
-                const chatOverlay = document.getElementById('chatOverlay');
-                if (chatOverlay) chatOverlay.style.display = 'flex';
-                
-                if (typeof openChat === 'function') {
-                    openChat(urlRoomId);
-                } else if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
-                }
-            }, 800);
-        }
         return; 
     }
 
