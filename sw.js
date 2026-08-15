@@ -51,6 +51,7 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Nachricht senden
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
@@ -62,13 +63,14 @@ self.addEventListener('notificationclick', function(event) {
                 }
             }
 
-            // WICHTIG: Statt Hash-URL öffnen wir einfach die saubere Basis-URL.
-            // Die ID übergeben wir stattdessen an die Clients, oder das Frontend fängt es ab.
+            // 2. Kaltstart: App frisch öffnen und danach die Raum-ID per postMessage übermitteln
             if (clients.openWindow) {
                 return clients.openWindow('/').then(windowClient => {
                     if (windowClient && roomId) {
-                        // Wir senden die Raum-ID direkt als Nachricht an das neue Fenster
-                        windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                        // Da das neue Fenster kurz zum Laden braucht, geben wir ihm eine kleine Verzögerung für die Nachricht
+                        setTimeout(() => {
+                            windowClient.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
+                        }, 1000);
                     }
                 });
             }
