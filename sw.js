@@ -38,7 +38,7 @@ self.addEventListener('push', function(event) {
         renotify: true,
         data: {
             url: targetUrl,
-            room_id: roomId  // Korrigiert von roomId auf room_id
+            room_id: roomId 
         }
     };
 
@@ -51,7 +51,6 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
     const notificationData = event.notification.data || {};
-    // Korrigiert von notificationData.roomId auf notificationData.room_id
     const roomId = notificationData.room_id || notificationData.roomId;
     
     const targetUrl = roomId ? `/#room=${roomId}` : (notificationData.url || '/');
@@ -59,27 +58,30 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Versuche, ein bereits geöffnetes Fenster zu finden
+            // 1. Versuche, ein bereits geöffnetes Fenster zu finden und zu fokussieren/navigieren
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 
-                // Prüfen, ob das Tab zur gleichen Origin (Domain) gehört
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
                     return client.focus().then(() => {
-                        // WICHTIG: Nachricht ans Frontend erst senden, wenn der Fokus erfolgreich war
-                        if ('postMessage' in client) {
+                        if ('navigate' in client) {
+                            return client.navigate(urlToOpen);
+                        } else if ('postMessage' in client) {
                             client.postMessage({ type: 'OPEN_CHAT', room_id: roomId });
                         }
                     });
                 }
             }
 
-            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken mit Hash-URL
+            // 2. Wenn keine App-Instanz offen war -> App frisch aufwecken mit der Hash-URL
             if (clients.openWindow) {
                 return clients.openWindow(urlToOpen);
             }
         }).catch(err => {
             console.error("❌ Fehler im notificationclick:", err);
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
         })
     );
 });
