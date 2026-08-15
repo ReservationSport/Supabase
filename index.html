@@ -13672,6 +13672,7 @@ async function checkUnreadChatBadges() {
             });
 
             Object.keys(latestPerRoom).forEach(roomId => {
+                // Wenn es der aktuell offene Chat ist, ignorieren (gilt als gelesen)
                 if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return;
                 
                 const msg = latestPerRoom[roomId];
@@ -13737,17 +13738,18 @@ function subscribeToGlobalMessages() {
                 const newMsg = payload.new;
                 const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
                 
-                // 1. Wenn der Chat offen ist UND die Nachricht zum aktiven Raum gehört -> direkt anhängen!
+                // Nur anhängen, wenn der Chat offen ist UND die Nachricht von jemand anderem kommt 
+                // (Eigene Nachrichten werden beim Absenden bereits lokal gerendert, um Duplikate zu verhindern)
                 if (currentActiveRoomId && String(currentActiveRoomId) === String(newMsg.room_id)) {
-                    appendMessageToDOM(newMsg, aktuellerUser);
+                    if (newMsg.sender_kuerzel.toLowerCase() !== aktuellerUser) {
+                        appendMessageToDOM(newMsg, aktuellerUser);
+                    }
                 }
 
-                // 2. Chat-Liste aktualisieren falls offen
                 if (typeof loadChatRooms === 'function') {
                     loadChatRooms();
                 }
                 
-                // 3. Badge IMMER sofort prüfen (egal ob App offen oder im Hintergrund)
                 checkUnreadChatBadges(); 
             }
         )
@@ -13755,13 +13757,12 @@ function subscribeToGlobalMessages() {
 }
 
 /**
- * Hängt eine einzelne neue Nachricht direkt an das DOM an, ohne neu zu laden.
+ * Hängt eine einzelne neue Nachricht direkt an das DOM an (nur für fremde Nachrichten).
  */
 function appendMessageToDOM(msg, aktuellerUser) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
 
-    // Falls noch der "Keine Nachrichten"-Placeholder da ist, diesen entfernen
     const placeholder = container.querySelector('.chat-welcome-placeholder');
     if (placeholder) placeholder.remove();
 
@@ -13817,8 +13818,6 @@ async function loadChatRooms() {
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     const chatListEl = document.getElementById('chatList');
     if (!chatListEl) return;
-
-    chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Lade Chats...</div>';
 
     try {
         let roomsMap = new Map();
@@ -13922,7 +13921,6 @@ async function loadChatRooms() {
 
     } catch (e) {
         console.error("Fehler beim Laden der Chat-Räume:", e);
-        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden.</div>';
     }
 }
 
