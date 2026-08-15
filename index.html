@@ -13683,10 +13683,18 @@ function subscribeToGlobalMessages() {
         .subscribe();
 }
 
-window.openChat = function() {
+window.openChat = function(roomId) {
     const overlay = document.getElementById('chatOverlay');
     if (overlay) overlay.style.display = 'flex';
-    loadChatRooms();
+
+    if (typeof loadChatRooms === 'function') {
+        loadChatRooms();
+    }
+
+    // Wenn eine roomId übergeben wurde (z.B. durch Push-Klick), direkt öffnen
+    if (roomId && typeof selectRoom === 'function') {
+        selectRoom(roomId);
+    }
 };
 
 window.closeChat = function() {
