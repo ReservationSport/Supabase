@@ -30,15 +30,7 @@
     <!-- Supabase JavaScript Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-
-<!-- vConsole für mobiles Debugging -->
-<script src="https://cdn.jsdelivr.net/npm/vconsole@latest/dist/vconsole.min.js"></script>
-<script>
-    // vConsole initialisieren
-    var vConsole = new window.VConsole();
-</script>
-
-    
+   
 </head>
 
     
@@ -5013,30 +5005,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loadingOverlay) loadingOverlay.style.display = 'none';
     }, 4000);
 
-    // Hilfsfunktion zum sicheren und verzögerten Öffnen des Chats
-    function triggerChatOpen(roomId) {
-        if (!roomId) return;
-        console.log("💬 Starte Öffnungs-Routine für Raum:", roomId);
+    // Hilfsfunktion zum sicheren und verzögerten Öffnen des Haupt-Chats
+    function triggerMainChatOpen() {
+        console.log("💬 Starte Öffnungs-Routine für das Chat-Fenster...");
         
         let retries = 0;
         const checkInterval = setInterval(() => {
             retries++;
-            const chatReady = (typeof openChat === 'function') || (typeof window.openChat === 'function');
+            const chatOverlay = document.getElementById('chatOverlay');
+            const chatReady = chatOverlay || (typeof loadChatRooms === 'function');
             
             if (chatReady || retries > 30) { 
                 clearInterval(checkInterval);
                 
-                const chatOverlay = document.getElementById('chatOverlay');
                 if (chatOverlay) chatOverlay.style.display = 'flex';
                 
-                if (typeof openChat === 'function') {
-                    openChat(roomId);
-                } else if (typeof window.openChat === 'function') {
-                    window.openChat(roomId);
-                } else if (typeof loadChatRooms === 'function') {
+                if (typeof loadChatRooms === 'function') {
                     loadChatRooms();
                 } else {
-                    console.error("❌ openChat-Funktion konnte auch nach Warten nicht gefunden werden!");
+                    console.error("❌ Chat-Fenster oder loadChatRooms konnte nicht gefunden werden!");
                 }
             }
         }, 100);
@@ -5045,26 +5032,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 📡 Listener für Nachrichten vom Service Worker (im geöffneten Zustand)
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.room_id) {
-                console.log("💬 Push-Nachricht per postMessage empfangen für Raum:", event.data.room_id);
-                triggerChatOpen(event.data.room_id);
+            if (event.data && event.data.type === 'OPEN_MAIN_CHAT') {
+                console.log("💬 Push-Benachrichtigung geklickt: Öffne Chat-Fenster per postMessage...");
+                triggerMainChatOpen();
             }
         });
-    }
-
-    // 🔗 0. DEEP-LINK SOFORT BEIM KALTSTART PRÜFEN (Über URL-Parameter ?room_id=...)
-    let urlRoomId = null;
-    const urlParams = new URLSearchParams(window.location.search);
-    urlRoomId = urlParams.get('room_id');
-
-    if (!urlRoomId && window.location.hash && window.location.hash.includes('#room=')) {
-        urlRoomId = window.location.hash.replace('#room=', '').trim();
-    }
-
-    if (urlRoomId) {
-        alert("💥 TREFFER! Raum-ID gefunden: " + urlRoomId);
-        console.log("🔗 Sofort-Erkennung beim Kaltstart für Raum:", urlRoomId);
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
     }
 
     // 1. SCHNELL-CHECK: Ist ein Kürzel lokal gespeichert?
@@ -5077,11 +5049,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         userKuerzel = savedKuerzel;
         if (savedPw) userPw = savedPw;
         isLoggedIn = true;
-
-        // Falls eine URL-Raum-ID vorhanden war, den Chat jetzt einreihen
-        if (urlRoomId) {
-            triggerChatOpen(urlRoomId);
-        }
 
         // UI sofort freigeben
         if (loginOverlay) loginOverlay.style.display = 'none';
