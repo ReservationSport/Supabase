@@ -54,7 +54,7 @@ self.addEventListener('notificationclick', function(event) {
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Signal zum Öffnen des Chats senden
+            // 1. Prüfen, ob bereits ein Fenster offen ist -> Fokussieren und Signal zum Öffnen des Chats senden (nur an EINEN Client!)
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
