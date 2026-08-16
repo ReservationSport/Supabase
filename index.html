@@ -30,6 +30,8 @@
     <!-- Supabase JavaScript Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
+
    
 </head>
 
@@ -4928,6 +4930,24 @@ input.stellvertretung-input {
     </div>
 </div>
 
+
+<!-- Emoji Modal mit fertiger Bibliothek -->
+<div id="emojiModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; align-items: center; justify-content: center;">
+    <div style="background: #18181b; width: 380px; max-width: 90%; border-radius: 12px; border: 1px solid #27272a; display: flex; flex-direction: column; overflow: hidden;">
+        
+        <!-- Header mit Schließen-Button -->
+        <div style="padding: 12px 16px; border-bottom: 1px solid #27272a; display: flex; justify-content: space-between; align-items: center; background: #18181b;">
+            <span style="font-weight: bold; color: #f4f4f5; font-size: 0.95rem;">Emoji auswählen</span>
+            <button type="button" onclick="closeEmojiModal()" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex;"><span class="material-symbols-outlined">close</span></button>
+        </div>
+
+        <!-- Die fertige Emoji-Picker Komponente (im Dark Mode) -->
+        <emoji-picker class="dark" id="emojiPickerElement" style="width: 100%; height: 350px; --background: #18181b; --border-color: #27272a; --input-background: #27272a; --indicator-color: #3f3f46;"></emoji-picker>
+
+    </div>
+</div>
+
+    
     
 </body>
 
@@ -14897,18 +14917,61 @@ async function sendSelectedGif(gifUrl) {
     }
 }
 
+// Modal öffnen
 window.openUniversalEmojiPicker = function() {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const input = document.getElementById('chatMessageInput');
+
+    if (isMobile) {
+        if (input) {
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+        }
+    } else {
+        const modal = document.getElementById('emojiModal');
+        if (modal) modal.style.display = 'flex';
+    }
+};
+
+// Modal schließen
+window.closeEmojiModal = function() {
+    const modal = document.getElementById('emojiModal');
+    if (modal) modal.style.display = 'none';
+};
+
+// Event-Listener: Wenn ein Emoji im Picker angeklickt wird -> ins Input einfügen
+document.addEventListener('DOMContentLoaded', () => {
+    const picker = document.getElementById('emojiPickerElement');
+    if (picker) {
+        picker.addEventListener('emoji-click', event => {
+            const emoji = event.detail.unicode; // Das ausgewählte Emoji
+            insertEmojiIntoInput(emoji);
+            closeEmojiModal(); // Schließt das Modal nach Auswahl (optional)
+        });
+    }
+});
+
+// Hilfsfunktion zum Einfügen an Cursor-Position
+function insertEmojiIntoInput(emoji) {
     const input = document.getElementById('chatMessageInput');
     if (!input) return;
 
-    input.focus();
-    const length = input.value.length;
-    input.setSelectionRange(length, length);
+    const startPos = input.selectionStart;
+    const endPos = input.selectionEnd;
+    const text = input.value;
 
-    setTimeout(() => {
-        input.focus();
-    }, 50);
-};
+    input.value = text.substring(0, startPos) + emoji + text.substring(endPos, startPos);
+    input.selectionStart = input.selectionEnd = startPos + emoji.length;
+    input.focus();
+}
+
+// Klick außerhalb des Fensters schließt es
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('emojiModal');
+    if (modal && e.target === modal) {
+        closeEmojiModal();
+    }
+});
     
     
 /* ============================================================
