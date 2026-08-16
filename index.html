@@ -13605,6 +13605,154 @@ window.closeChat = function() {
 };
 
 
+/* ============================================================
+   14.1 CHAT-RÄUME LADEN & AUSWÄHLEN
+   ============================================================ */
+let currentActiveRoomId = null;
+let chatRealtimeChannel = null;
+let selectedChatFile = null;
+
+async function loadChatRooms() {
+    const client = window.supabaseClient;
+    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+    const listEl = document.getElementById('chatList');
+    
+    if (!client || !listEl || !aktuellerUser) return;
+
+    try {
+        const { data: myMemberships, error: memError } = await client
+            .from('chat_room_members')
+            .select('room_id, hidden')
+            .eq('user_kuerzel', aktuellerUser);
+
+        if (memError) throw memError;
+
+        if (!myMemberships || myMemberships.length === 0) {
+            listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Keine aktiven Chats.</div>';
+            return;
+        }
+
+        const roomIds = myMemberships.map(m => m.room_id);
+        const hiddenMap = {};
+        myMemberships.forEach(m => { hiddenMap[m.room_id] = m.hidden; });
+
+        const { data: rooms, error: roomError } = await client
+            .from('chat_rooms')
+            .select('*')
+            .in('id', roomIds);
+
+        if (roomError) throw roomError;
+
+        const { data: allMembers, error: allMemError } = await client
+            .from('chat_room_members')
+            .select('room_id, user_kuerzel')
+            .in('room_id', roomIds);
+
+        if (allMemError) throw allMemError;
+
+        let roomMembersMap = {};
+        allMembers.forEach(m => {
+            if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
+            roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase());
+        });
+
+        listEl.innerHTML = "";
+
+        rooms.forEach(room => {
+            if (hiddenMap[room.id]) return;
+
+            const members = roomMembersMap[room.id] || [];
+            const otherMembers = members.filter(m => m !== aktuellerUser);
+            const roomTitle = otherMembers.length === 1 ? otherMembers[0] : otherMembers.join(', ');
+
+            const isSelected = String(currentActiveRoomId) === String(room.id);
+
+            listEl.innerHTML += `
+                <div class="chat-item ${isSelected ? 'active' : ''}" onclick="selectRoom('${room.id}', '${roomTitle}', '${room.type}')" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #27272a;">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                        <div style="font-weight: bold; color: #f4f4f5; font-size: 0.9rem;">${roomTitle}</div>
+                    </div>
+                    <button type="button" onclick="event.stopPropagation(); openHideChatModal('${room.id}', '${roomTitle}')" title="Chat ausblenden" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; padding: 4px;">
+                        <span class="material-symbols-outlined" style="font-size: 18px;">visibility_off</span>
+                    </button>
+                </div>
+            `;
+        });
+
+    } catch (e) {
+        console.error("Fehler beim Laden der Chat-Räume:", e);
+    }
+}
+
+async function selectRoom(roomId, roomTitle, roomType) {
+    currentActiveRoomId = roomId;
+
+    const titleEl = document.getElementById('activeChatTitle');
+    const subEl = document.getElementById('activeChatSub');
+    const inputAreaEl = document.getElementById('chatInputArea');
+    const msgContainer = document.getElementById('chatMessages');
+
+    if (titleEl) titleEl.innerText = roomTitle;
+    if (subEl) subEl.innerText = roomType === 'group' ? 'Gruppenchat' : 'Direktchat';
+    if (inputAreaEl) inputAreaEl.style.display = 'flex';
+
+    if (msgContainer) {
+        msgContainer.innerHTML = '<div style="text-align: center; color: #a1a1aa; padding-top: 20px; font-size: 0.85rem;">Lade Nachrichten...</div>';
+    }
+
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    if (chatRealtimeChannel) {
+        client.removeChannel(chatRealtimeChannel);
+        chatRealtimeChannel = null;
+    }
+
+    subscribeToRoomRealtime(roomId);
+
+    try {
+        const { data: messages, error } = await client
+            .from('chat_messages')
+            .select('*')
+            .eq('room_id', roomId)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        if (msgContainer) {
+            msgContainer.innerHTML = "";
+            if (!messages || messages.length === 0) {
+                msgContainer.innerHTML = '<div class="chat-welcome-placeholder"><p style="color: #a1a1aa; font-size: 0.85rem;">Noch keine Nachrichten in diesem Chat.</p></div>';
+            } else {
+                messages.forEach(msg => appendSingleMessage(msg));
+            }
+        }
+
+        scrollToLatestMessage();
+        loadChatRooms();
+
+    } catch (e) {
+        console.error("Fehler beim Laden der Nachrichten:", e);
+    }
+}
+
+function formatMessageContent(content) {
+    if (!content) return "";
+    const safeText = escapeHtml(content);
+
+    if (safeText.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) || safeText.includes('chat_uploads/')) {
+        return `<img src="${safeText}" style="max-width: 100%; border-radius: 6px; margin-top: 4px; cursor: pointer;" onclick="window.open('${safeText}', '_blank')">`;
+    }
+
+    return safeText.replace(/\n/g, '<br>');
+}
+
+function scrollToLatestMessage() {
+    const container = document.getElementById('chatMessages');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
 
     
 function handleFileSelect(event) {
