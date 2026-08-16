@@ -13817,12 +13817,34 @@ window.openChat = function(roomId) {
     const overlay = document.getElementById('chatOverlay');
     if (overlay) overlay.style.display = 'flex';
 
-    if (typeof loadChatRooms === 'function') {
-        loadChatRooms();
+    // WICHTIG: Beim Öffnen des Overlays KEINEN Chat automatisch vorauswählen, 
+    // sondern nur die Liste und Badges laden.
+    currentActiveRoomId = null;
+    
+    if (chatRealtimeChannel && window.supabaseClient) {
+        window.supabaseClient.removeChannel(chatRealtimeChannel);
+        chatRealtimeChannel = null;
     }
 
-    if (roomId && typeof selectRoom === 'function') {
-        selectRoom(roomId);
+    const titleEl = document.getElementById('activeChatTitle');
+    const subEl = document.getElementById('activeChatSub');
+    const inputAreaEl = document.getElementById('chatInputArea');
+    const container = document.getElementById('chatMessages');
+
+    if (titleEl) titleEl.innerText = "Wähle einen Chat";
+    if (subEl) subEl.innerText = "";
+    if (inputAreaEl) inputAreaEl.style.display = 'none'; // Eingabefeld verstecken, bis Raum gewählt
+    if (container) {
+        container.innerHTML = `
+            <div class="chat-welcome-placeholder">
+                <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat_bubble_outline</span>
+                <p style="margin-top: 8px; font-size: 0.85rem;">Wähle links einen Chat aus, um zu starten.</p>
+            </div>
+        `;
+    }
+
+    if (typeof loadChatRooms === 'function') {
+        loadChatRooms();
     }
 };
 
@@ -14054,7 +14076,28 @@ async function loadMessages(roomId) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
 
         renderMessages(messages || []);
-        scrollToLatestMessage();
+        
+        // Prüfen ob es ungelesene gibt -> ansonsten Standard-Scroll nach unten
+        const lastReadString = localStorage.getItem('chat_read_' + roomId);
+        let targetElement = null;
+
+        if (lastReadString && messages && messages.length > 0) {
+            const lastReadDate = new Date(lastReadString);
+            const firstUnreadMsg = messages.find(m => new Date(m.created_at) > lastReadDate);
+            
+            if (firstUnreadMsg && firstUnreadMsg.id) {
+                targetElement = container.querySelector(`[data-message-id="${firstUnreadMsg.id}"]`);
+            }
+        }
+
+        setTimeout(() => {
+            if (targetElement) {
+                targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                scrollToLatestMessage(); // Dein bestehendes Scrollen nach ganz unten!
+            }
+        }, 50);
+
     } catch (e) {
         if (String(currentActiveRoomId) !== String(roomId)) return;
         console.error("Fehler beim Laden der Nachrichten:", e);
@@ -14062,6 +14105,35 @@ async function loadMessages(roomId) {
     }
 }
 
+function scrollToTargetMessage(roomId, messages) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const lastReadString = localStorage.getItem('chat_read_' + roomId);
+    let targetElement = null;
+
+    if (lastReadString && messages.length > 0) {
+        const lastReadDate = new Date(lastReadString);
+        // Finde die erste Nachricht, die nach dem letzten Lesepunkt erstellt wurde
+        const firstUnreadMsg = messages.find(m => new Date(m.created_at) > lastReadDate);
+        
+        if (firstUnreadMsg && firstUnreadMsg.id) {
+            targetElement = container.querySelector(`[data-message-id="${firstUnreadMsg.id}"]`);
+        }
+    }
+
+    setTimeout(() => {
+        if (targetElement) {
+            // Scrolle zur ersten ungelesenen Nachricht (mit etwas Abstand nach oben)
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            // Standard: Ganz nach unten zur neuesten Nachricht
+            container.scrollTop = container.scrollHeight;
+        }
+    }, 50);
+}
+
+    
 function renderMessages(messages) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
