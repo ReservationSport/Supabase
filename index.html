@@ -3629,7 +3629,7 @@ input.stellvertretung-input {
 
 
 /* ============================================================
-    26. CHAT DESIGN - Dark & Orange Theme
+    26. CHAT DESIGN - Dark & Orange Theme (Dunkle eigene Nachrichten)
     ============================================================ */
 
 .chat-overlay {
@@ -3668,7 +3668,7 @@ input.stellvertretung-input {
 }
 
 .chat-sidebar-header {
-    padding: 14.5px 20px; /* Exakt angepasst an die Höhe des rechten Headers */
+    padding: 14.5px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -3687,13 +3687,13 @@ input.stellvertretung-input {
     background: none;
     border: none;
     cursor: pointer;
-    color: #f97316; /* In System-Orange eingefärbt */
+    color: #f97316; /* System-Orange */
     padding: 4px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem; /* Etwas größer gemacht */
+    font-size: 1.25rem;
 }
 
 .chat-action-btn:hover {
@@ -3726,7 +3726,7 @@ input.stellvertretung-input {
 
 .chat-search-box input {
     width: 100%;
-    box-sizing: border-box; /* Verhindert das Rausragen über den rechten Rand */
+    box-sizing: border-box;
     padding: 8px 12px;
     border-radius: 8px;
     border: 1px solid #3f3f46;
@@ -3793,11 +3793,11 @@ input.stellvertretung-input {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: #0f0f10; /* Tiefes Schwarz für den Chat-Hintergrund */
+    background: #0f0f10;
 }
 
 .chat-main-header {
-    padding: 14.5px 20px; /* Identische Innenabstände wie der linke Header */
+    padding: 14.5px 20px;
     background: #18181b;
     border-bottom: 1px solid #27272a;
     display: flex;
@@ -3836,7 +3836,7 @@ input.stellvertretung-input {
     position: relative;
     word-break: break-word;
     box-shadow: 0 1px 2px rgba(0,0,0,0.3);
-    white-space: pre-wrap; /* Ermöglicht korrekte Darstellung von Zeilenumbrüchen */
+    white-space: pre-wrap;
 }
 
 .message-bubble.incoming {
@@ -3847,16 +3847,17 @@ input.stellvertretung-input {
 }
 
 .message-bubble.outgoing {
-    background: #f97316; /* Markantes System-Orange für eigene Nachrichten */
-    color: #ffffff;
+    background: #1e1e24; /* Edles, dunkles Anthrazit für eigene Nachrichten */
+    color: #f4f4f5;
     align-self: flex-end;
     border-top-right-radius: 0;
+    border: 1px solid #3f3f46; /* Dezenter Rahmen, damit sie sich abhebt */
 }
 
 .message-sender {
     font-size: 0.75rem;
     font-weight: bold;
-    color: #fb923c; /* Helles Orange für Absender */
+    color: #fb923c;
     margin-bottom: 2px;
 }
 
@@ -3883,7 +3884,7 @@ input.stellvertretung-input {
     border-top: 1px solid #27272a;
     display: flex;
     gap: 10px;
-    align-items: flex-end; /* Hält den Button unten, wenn die Textarea größer wird */
+    align-items: flex-end;
 }
 
 /* Upload-Button für Fotos & GIFs */
@@ -3905,7 +3906,6 @@ input.stellvertretung-input {
     background: #27272a;
 }
 
-/* Textarea statt Input für Absätze / Zeilenumbrüche */
 .chat-input-area textarea {
     flex: 1;
     box-sizing: border-box;
@@ -3927,7 +3927,7 @@ input.stellvertretung-input {
 }
 
 .chat-send-btn {
-    background: #f97316; /* System-Orange für Senden-Button */
+    background: #f97316; /* System-Orange bleibt hier */
     color: white;
     border: none;
     border-radius: 50%;
@@ -3941,7 +3941,7 @@ input.stellvertretung-input {
 }
 
 .chat-send-btn:hover {
-    background: #ea580c; /* Satteres Orange beim Hover */
+    background: #ea580c;
 }
 
 .chat-modal-content {
@@ -14326,6 +14326,12 @@ function subscribeToRoomRealtime(roomId) {
 }
 
 function appendSingleMessage(msg) {
+    // 1. Verhindern, dass dieselbe Nachricht (z.B. ein GIF) doppelt gerendert wird
+    if (msg.id) {
+        const existingElement = document.querySelector(`[data-message-id="${msg.id}"]`);
+        if (existingElement) return;
+    }
+
     const container = document.getElementById('chatMessages');
     if (!container) return;
 
@@ -14343,6 +14349,12 @@ function appendSingleMessage(msg) {
 
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
+    
+    // 2. Das Attribut an das Element heften, damit die Prüfung (oben) greift
+    if (msg.id) {
+        bubble.setAttribute('data-message-id', msg.id);
+    }
+
     bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
     
     let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
