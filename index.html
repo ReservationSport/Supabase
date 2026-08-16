@@ -14324,28 +14324,29 @@ async function sendChatMessage() {
     let fileUrl = null;
 
     try {
+        // 1. Datei-Upload nur versuchen, wenn wirklich eine da ist
         if (selectedChatFile) {
-            const fileToUpload = await compressImage(selectedChatFile);
+            try {
+                const fileToUpload = typeof compressImage === 'function' ? await compressImage(selectedChatFile) : selectedChatFile;
+                const fileExt = fileToUpload.name ? fileToUpload.name.split('.').pop() : 'png';
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+                const filePath = `chat_uploads/${currentActiveRoomId}/${fileName}`;
 
-            const fileExt = fileToUpload.name.split('.').pop();
-            const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-            const filePath = `chat_uploads/${currentActiveRoomId}/${fileName}`;
+                const { error: uploadError } = await client.storage
+                    .from('chat-files')
+                    .upload(filePath, fileToUpload);
 
-            const { error: uploadError } = await client.storage
-                .from('chat-files')
-                .upload(filePath, fileToUpload);
-
-            if (uploadError) {
-                console.error("Storage Upload Fehler:", uploadError);
-                alert("Fehler beim Hochladen der Datei. Bitte prüfe, ob der Bucket 'chat-files' existiert und Public ist.");
-                throw uploadError;
+                if (!uploadError) {
+                    const { data: publicURLData } = client.storage
+                        .from('chat-files')
+                        .getPublicUrl(filePath);
+                    fileUrl = publicURLData.publicUrl;
+                } else {
+                    console.error("Storage Upload Fehler:", uploadError);
+                }
+            } catch (uploadEx) {
+                console.error("Fehler bei der Bildkomprimierung/Upload:", uploadEx);
             }
-
-            const { data: publicURLData } = client.storage
-                .from('chat-files')
-                .getPublicUrl(filePath);
-
-            fileUrl = publicURLData.publicUrl;
         }
 
         let messageContent = text;
@@ -14353,7 +14354,15 @@ async function sendChatMessage() {
             messageContent = messageContent ? `${messageContent}\n${fileUrl}` : fileUrl;
         }
 
-        // WICHTIG: .select() hinzugefügt, damit wir die echte ID & created_at zurückbekommen
+        // Eingabefeld sofort leeren (hilft enorm auf Handys, damit die Tastatur nicht blockiert)
+        if (input) {
+            input.value = "";
+            input.placeholder = "Nachricht schreiben...";
+            input.style.height = 'auto';
+        }
+        clearChatFileSelection();
+
+        // 2. In Datenbank schreiben
         const { data, error } = await client
             .from('chat_messages')
             .insert([{
@@ -14365,26 +14374,27 @@ async function sendChatMessage() {
 
         if (error) throw error;
 
-        if (input) {
-            input.value = "";
-            input.placeholder = "Nachricht schreiben...";
-            input.style.height = 'auto';
-        }
-        clearChatFileSelection();
-
+        // 3. Raum als sichtbar markieren
         await client
             .from('chat_room_members')
             .update({ hidden: false })
             .eq('room_id', currentActiveRoomId);
 
-        // Nachricht sofort anzeigen – dank der echten ID greift der Duplikat-Schutz 
-        // in appendMessageToDOM, falls Realtime parallel eintrifft!
+        // 4. Direkt im DOM anzeigen (mit Fallback, falls .select() leer ist)
         if (data && data.length > 0) {
             appendMessageToDOM(data[0], aktuellerUser);
+        } else {
+            appendMessageToDOM({
+                room_id: currentActiveRoomId,
+                sender_kuerzel: aktuellerUser,
+                message: messageContent,
+                created_at: new Date().toISOString()
+            }, aktuellerUser);
         }
 
     } catch (e) {
-        console.error("Fehler beim Senden der Nachricht/Datei:", e);
+        console.error("Fehler beim Senden der Nachricht:", e);
+        alert("Nachricht konnte nicht gesendet werden. Bitte versuche es noch einmal.");
     }
 }
 
@@ -14850,13 +14860,15 @@ async function sendSelectedGif(gifUrl) {
     }
 
     try {
-        const { error } = await client
+        // .select() hinzugefügt, um die ID für den Duplikat-Schutz zu erhalten
+        const { data, error } = await client
             .from('chat_messages')
             .insert([{
                 room_id: currentActiveRoomId,
                 sender_kuerzel: aktuellerUser,
                 message: gifUrl
-            }]);
+            }])
+            .select();
 
         if (error) throw error;
 
@@ -14864,6 +14876,18 @@ async function sendSelectedGif(gifUrl) {
             .from('chat_room_members')
             .update({ hidden: false })
             .eq('room_id', currentActiveRoomId);
+
+        // GIF sofort im Chat anzeigen (mit Fallback, falls .select() leer ist)
+        if (data && data.length > 0) {
+            appendMessageToDOM(data[0], aktuellerUser);
+        } else {
+            appendMessageToDOM({
+                room_id: currentActiveRoomId,
+                sender_kuerzel: aktuellerUser,
+                message: gifUrl,
+                created_at: new Date().toISOString()
+            }, aktuellerUser);
+        }
 
     } catch (e) {
         console.error("Fehler beim Senden des GIFs:", e);
