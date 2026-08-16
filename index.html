@@ -14637,12 +14637,13 @@ window.confirmHideChat = async function() {
 });
 
 
-    // ============================================================
+// ============================================================
 // GIPHY GIF-SUCHE & INTEGRATION
 // ============================================================
 
 let searchTimeout = null;
 const GIPHY_API_KEY = 'z1NgrxFVO4yYy3rpG7UOpgD4J1GPQUTN';
+let isSendingGif = false; // Verhindert doppelten Klick
 
 window.openGiphyModal = function() {
     const modal = document.getElementById('giphyModal');
@@ -14735,11 +14736,15 @@ function renderGiphyResults(gifs) {
 }
 
 async function sendSelectedGif(gifUrl) {
-    if (!currentActiveRoomId) return;
+    if (!currentActiveRoomId || isSendingGif) return;
 
+    isSendingGif = true; // Sperre gegen doppeltes Auslösen durch schnellen Doppelklick
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "lp";
     const client = window.supabaseClient;
-    if (!client) return;
+    if (!client) {
+        isSendingGif = false;
+        return;
+    }
 
     try {
         const { error } = await client
@@ -14760,22 +14765,19 @@ async function sendSelectedGif(gifUrl) {
     } catch (e) {
         console.error("Fehler beim Senden des GIFs:", e);
         alert("GIF konnte nicht gesendet werden.");
+    } finally {
+        setTimeout(() => { isSendingGif = false; }, 500); // Sperre nach 0.5 Sek. wieder aufheben
     }
 }
 
-
-    window.openUniversalEmojiPicker = function() {
+window.openUniversalEmojiPicker = function() {
     const input = document.getElementById('chatMessageInput');
     if (!input) return;
 
-    // Fokus setzen, damit die Tastatur / Emoji-Leiste aufpoppt
     input.focus();
-
-    // Cursor ans Ende des Textes setzen
     const length = input.value.length;
     input.setSelectionRange(length, length);
 
-    // Fallback für mobile Browser, die den Fokus verzögern
     setTimeout(() => {
         input.focus();
     }, 50);
