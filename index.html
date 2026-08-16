@@ -4796,11 +4796,10 @@ input.stellvertretung-input {
 <div id="chatOverlay" class="chat-overlay" style="display: none;">
     <div class="chat-container">
         
-        <!-- LINKE SEITE: Chat-Liste (Alle, Direct, Gruppen) -->
+        <!-- 14.1 CHAT-SIDEBAR (LINKE SEITE) -->
         <div class="chat-sidebar">
             <div class="chat-sidebar-header">
                 <h3>CHAT</h3>
-                <!-- Button um einen neuen 1:1- oder Gruppenchat zu starten -->
                 <button class="chat-action-btn" onclick="openNewChatModal()" title="Neuer Chat">
                     <span class="material-symbols-outlined">add_comment</span>
                 </button>
@@ -4815,9 +4814,8 @@ input.stellvertretung-input {
             </div>
         </div>
 
-        <!-- RECHTE SEITE: Aktiver Chat & Nachrichten -->
+        <!-- 14.2 CHAT-MAIN (RECHTE SEITE: AKTIVER CHAT) -->
         <div class="chat-main">
-            <!-- Header des aktiven Chats -->
             <div class="chat-main-header">
                 <div class="chat-active-info">
                     <span id="activeChatTitle">Wähle einen Chat aus</span>
@@ -4836,62 +4834,56 @@ input.stellvertretung-input {
                 </div>
             </div>
 
-<!-- Eingabebereich am Boden -->
-<div class="chat-input-area" id="chatInputArea" style="display: none; align-items: center;">
-    <!-- Verstecktes Datei-Input für Fotos und GIFs -->
-    <input type="file" id="chatFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="handleFileSelect(event)">
-    
-    <!-- Icons auf derselben Höhe und in Orange -->
-    <div style="display: flex; align-items: center; gap: 12px;">
-        <!-- Button zum Öffnen des Datei-Dialogs -->
-        <button type="button" class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Foto oder GIF senden" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;">
-            <span class="material-symbols-outlined">image</span>
-        </button>
+            <!-- 14.3 CHAT-EINGABE & TOOLBAR -->
+            <div class="chat-input-area" id="chatInputArea" style="display: none; align-items: center;">
+                <input type="file" id="chatFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="handleFileSelect(event)">
+                
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button type="button" class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Foto oder GIF senden" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;">
+                        <span class="material-symbols-outlined">image</span>
+                    </button>
 
-        <!-- GIF-Button -->
-        <button type="button" onclick="openGiphyModal()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="GIFs durchsuchen">
-            <span class="material-symbols-outlined">gif_box</span>
-        </button>
+                    <button type="button" onclick="openGiphyModal()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="GIFs durchsuchen">
+                        <span class="material-symbols-outlined">gif_box</span>
+                    </button>
 
-        <!-- Emoji-Button mit sentiment_satisfied -->
-        <button type="button" onclick="openUniversalEmojiPicker()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="Emojis einfügen">
-            <span class="material-symbols-outlined">sentiment_satisfied</span>
-        </button>
-    </div>
+                    <button type="button" onclick="openUniversalEmojiPicker()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="Emojis einfügen">
+                        <span class="material-symbols-outlined">sentiment_satisfied</span>
+                    </button>
+                </div>
 
-    <!-- Textarea für mehrzeilige Nachrichten -->
-    <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
-    
-    <!-- Sende-Button -->
-    <button class="chat-send-btn" onclick="sendChatMessage()">
-        <span class="material-symbols-outlined" style="margin: 0 !important;">send</span>
-    </button>
-</div>
+                <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
+                
+                <button class="chat-send-btn" onclick="sendChatMessage()">
+                    <span class="material-symbols-outlined" style="margin: 0 !important;">send</span>
+                </button>
+            </div>
         </div>
 
     </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- 14.4 CHAT MODALS (NEU, AUSBLENDEN, GIPHY)                    -->
+<!-- ============================================================ -->
+
+<!-- Neuer Chat Modal -->
 <div id="newChatModal" class="chat-overlay" style="display: none;">
     <div class="chat-modal-content" style="display: flex; flex-direction: column; max-height: 85vh; height: 450px;">
-        
-        <!-- Titel (bleibt fest oben) -->
         <h3 class="chat-modal-title" style="margin-top: 0; flex-shrink: 0;">Neuer Chat</h3>
         
-        <!-- Namensliste (wird scrollbar, verhindert Hintergrund-Scrollen) -->
         <div id="newChatList" class="chat-modal-list" style="overflow-y: auto; overscroll-behavior: contain; flex: 1; margin: 10px 0; padding-right: 5px;">
-            <!-- Hier kommen die Checkboxen rein -->
+            <!-- Checkboxen für Lehrer -->
         </div>
         
-        <!-- Aktionen-Buttons -->
         <div class="chat-modal-actions" style="flex-shrink: 0; display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid #27272a;">
             <button onclick="closeNewChatModal()" class="chat-modal-btn chat-btn-cancel" style="flex: 1;">Abbrechen</button>
             <button onclick="startChatFromSelection()" class="chat-modal-btn chat-btn-start" style="flex: 1;">Chat starten</button>
         </div>
-        
     </div>
 </div>
 
+<!-- Chat ausblenden Modal -->
 <div id="hideChatModal" class="chat-overlay" style="display: none;">
     <div class="chat-modal-content">
         <h3 class="chat-modal-title">Chat ausblenden</h3>
@@ -4908,23 +4900,18 @@ input.stellvertretung-input {
 <!-- Giphy Such-Modal -->
 <div id="giphyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 99999; align-items: center; justify-content: center;">
     <div style="background: #18181b; width: 450px; max-width: 90%; border-radius: 12px; border: 1px solid #27272a; display: flex; flex-direction: column; height: 500px; max-height: 80vh;">
-        
-        <!-- Header -->
         <div style="padding: 16px; border-bottom: 1px solid #27272a; display: flex; justify-content: space-between; align-items: center;">
             <span style="font-weight: bold; color: #f4f4f5;">GIFs durchsuchen (Giphy)</span>
             <button type="button" onclick="closeGiphyModal()" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex;"><span class="material-symbols-outlined">close</span></button>
         </div>
 
-        <!-- Suchfeld (angepasste Breite) -->
         <div style="padding: 12px 16px; border-bottom: 1px solid #27272a; display: flex; justify-content: center;">
             <input type="text" id="giphySearchInput" placeholder="Nach GIFs suchen..." oninput="debounceGiphySearch(this.value)" style="width: 100%; max-width: 340px; padding: 10px 12px; background: #27272a; border: 1px solid #3f3f46; border-radius: 8px; color: #f4f4f5; outline: none; font-size: 0.9rem;">
         </div>
 
-        <!-- Ergebnis-Grid -->
         <div id="giphyGrid" style="padding: 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; overflow-y: auto; overscroll-behavior: contain; flex: 1;">
             <div style="grid-column: span 2; text-align: center; color: #a1a1aa; padding-top: 40px; font-size: 0.85rem;">Gib einen Suchbegriff ein, um GIFs zu finden.</div>
         </div>
-
     </div>
 </div>
 
@@ -13596,519 +13583,7 @@ window.handleLogout = async function() {
 
 
 // ============================================================
-// 14. CHAT (Inkl. Emoji, Giphy & Layout-Fixes)
-// ============================================================
-
-document.addEventListener('DOMContentLoaded', () => {
-    const chatContainer = document.getElementById('chat-btn-container');
-    if (chatContainer) {
-        chatContainer.style.display = 'block';
-    }
-    
-    if (window.supabaseClient) {
-        subscribeToChatMemberships();
-        subscribeToGlobalMessages();
-        checkUnreadChatBadges();
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const shouldOpenChat = urlParams.get('open_chat') === 'true';
-
-    if (shouldOpenChat) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        setTimeout(() => {
-            if (typeof window.openChat === 'function') {
-                const globalRoomId = '00000000-0000-0000-0000-000000000001';
-                window.openChat(globalRoomId);
-            }
-        }, 800);
-    }
-});
-
-/* ============================================================
-    TEAM CHAT LOGIK (WhatsApp-Stil mit Supabase Realtime)
-    ================================================================ */
-
-let currentActiveRoomId = null;
-let chatRealtimeChannel = null;
-let selectedChatFile = null; 
-
-async function checkUnreadChatBadges() {
-    const client = window.supabaseClient;
-    if (!client) return;
-
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    const chatDot = document.getElementById('chat-dot');
-    if (!chatDot || !aktuellerUser) return;
-
-    try {
-        const globalRoomId = '00000000-0000-0000-0000-000000000001';
-        let roomIds = [globalRoomId];
-
-        const { data: memberships } = await client
-            .from('chat_room_members')
-            .select('room_id')
-            .eq('user_kuerzel', aktuellerUser)
-            .eq('hidden', false);
-
-        if (memberships && memberships.length > 0) {
-            memberships.forEach(m => {
-                if (!roomIds.includes(m.room_id)) roomIds.push(m.room_id);
-            });
-        }
-
-        const { data: latestMsgs } = await client
-            .from('chat_messages')
-            .select('room_id, created_at, sender_kuerzel')
-            .in('room_id', roomIds)
-            .order('created_at', { ascending: false });
-
-        let hasUnread = false;
-        let latestPerRoom = {};
-
-        if (latestMsgs) {
-            latestMsgs.forEach(m => {
-                if (!latestPerRoom[m.room_id]) latestPerRoom[m.room_id] = m;
-            });
-
-            Object.keys(latestPerRoom).forEach(roomId => {
-                if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return;
-                
-                const msg = latestPerRoom[roomId];
-                if (msg.sender_kuerzel.toLowerCase() === aktuellerUser) return;
-
-                const lastRead = localStorage.getItem('chat_read_' + roomId);
-                if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
-                    hasUnread = true;
-                }
-            });
-        }
-
-        chatDot.style.display = hasUnread ? 'block' : 'none';
-
-    } catch (e) {
-        console.error("Fehler beim Prüfen der Chat-Badges:", e);
-    }
-}
-
-function subscribeToChatMemberships() {
-    const client = window.supabaseClient;
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    if (!client || !aktuellerUser) return;
-
-    if (window.chatMembershipsChannel) {
-        client.removeChannel(window.chatMembershipsChannel);
-    }
-
-    window.chatMembershipsChannel = client.channel('user-memberships-realtime')
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'chat_room_members',
-                filter: `user_kuerzel=eq.${aktuellerUser}`
-            },
-            () => {
-                loadChatRooms();
-                checkUnreadChatBadges();
-            }
-        )
-        .subscribe();
-}
-
-function subscribeToGlobalMessages() {
-    const client = window.supabaseClient;
-    if (!client) return;
-
-    if (window.globalMessagesChannel) {
-        client.removeChannel(window.globalMessagesChannel);
-    }
-
-    window.globalMessagesChannel = client.channel('global-messages-realtime')
-        .on(
-            'postgres_changes',
-            {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'chat_messages'
-            },
-            (payload) => {
-                const newMsg = payload.new;
-                const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-                
-                // Prüfen ob Chat offen ist und die Nachricht nicht schon da ist (verhindert Dopplung)
-                if (currentActiveRoomId && String(currentActiveRoomId) === String(newMsg.room_id)) {
-                    const container = document.getElementById('chatMessages');
-                    if (container) {
-                        // Prüfen ob exakt diese Nachricht (gleicher Absender, Text und ähnliche Zeit) bereits im DOM existiert
-                        const existingBubbles = container.querySelectorAll('.message-bubble');
-                        let alreadyExists = false;
-                        existingBubbles.forEach(b => {
-                            if (b.textContent.includes(newMsg.message) && b.textContent.includes(newMsg.sender_kuerzel.toLowerCase())) {
-                                alreadyExists = true;
-                            }
-                        });
-
-                        if (!alreadyExists) {
-                            appendMessageToDOM(newMsg, aktuellerUser);
-                        }
-                    }
-                }
-
-                if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
-                }
-                
-                checkUnreadChatBadges(); 
-            }
-        )
-        .subscribe();
-}
-
-function appendMessageToDOM(msg, aktuellerUser) {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-
-    const placeholder = container.querySelector('.chat-welcome-placeholder');
-    if (placeholder) placeholder.remove();
-
-    const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
-    let timeString = "";
-    if (msg.created_at) {
-        const date = new Date(msg.created_at);
-        timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    const bubble = document.createElement('div');
-    bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
-    bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
-    
-    let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
-
-    bubble.innerHTML = `
-        ${senderHtml}
-        <div>${formatMessageContent(msg.message)}</div>
-        <div class="message-time">${timeString}</div>
-    `;
-
-    container.appendChild(bubble);
-    scrollToLatestMessage();
-}
-
-window.openChat = function(roomId) {
-    const overlay = document.getElementById('chatOverlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    if (typeof loadChatRooms === 'function') {
-        loadChatRooms();
-    }
-
-    if (roomId && typeof selectRoom === 'function') {
-        selectRoom(roomId);
-    }
-};
-
-window.closeChat = function() {
-    const overlay = document.getElementById('chatOverlay');
-    if (overlay) overlay.style.display = 'none';
-    if (chatRealtimeChannel && window.supabaseClient) {
-        window.supabaseClient.removeChannel(chatRealtimeChannel);
-    }
-    checkUnreadChatBadges();
-};
-
-async function loadChatRooms() {
-    const client = window.supabaseClient;
-    if (!client) return;
-
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    const chatListEl = document.getElementById('chatList');
-    if (!chatListEl) return;
-
-    try {
-        let roomsMap = new Map();
-        const globalRoomId = '00000000-0000-0000-0000-000000000001';
-        roomsMap.set(globalRoomId, {
-            id: globalRoomId,
-            type: 'global',
-            name: 'Team-Chat',
-            displayName: 'Team-Chat'
-        });
-
-        const { data: memberships, error: memError } = await client
-            .from('chat_room_members')
-            .select('room_id')
-            .eq('user_kuerzel', aktuellerUser)
-            .eq('hidden', false);
-
-        if (memError) throw memError;
-
-        let roomIds = [globalRoomId];
-        if (memberships && memberships.length > 0) {
-            memberships.forEach(m => {
-                if (!roomIds.includes(m.room_id)) roomIds.push(m.room_id);
-            });
-
-            const { data: userRooms, error: roomError } = await client
-                .from('chat_rooms')
-                .select('*')
-                .in('id', roomIds);
-
-            const { data: allMembers, error: memberError } = await client
-                .from('chat_room_members')
-                .select('room_id, user_kuerzel')
-                .in('room_id', roomIds);
-
-            let roomMembersMap = {};
-            if (!memberError && allMembers) {
-                allMembers.forEach(m => {
-                    if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
-                    roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase().trim());
-                });
-            }
-
-            if (!roomError && userRooms) {
-                userRooms.forEach(r => {
-                    let displayName = r.name || 'chat';
-                    const members = roomMembersMap[r.id] || [];
-                    const otherMembers = members.filter(m => m !== aktuellerUser);
-
-                    if (r.type === 'direct') {
-                        if (otherMembers.length > 0) displayName = otherMembers[0];
-                    } else if (r.type === 'group') {
-                        if (otherMembers.length > 0) displayName = otherMembers.join(', ');
-                    }
-
-                    r.displayName = displayName;
-                    roomsMap.set(r.id, r);
-                });
-            }
-        }
-
-        let unreadRoomsSet = new Set();
-        let latestPerRoom = {};
-
-        if (roomIds.length > 0) {
-            const { data: latestMsgs, error: msgError } = await client
-                .from('chat_messages')
-                .select('room_id, created_at, sender_kuerzel')
-                .in('room_id', roomIds)
-                .order('created_at', { ascending: false });
-
-            if (!msgError && latestMsgs) {
-                latestMsgs.forEach(m => {
-                    if (!latestPerRoom[m.room_id]) latestPerRoom[m.room_id] = m;
-                });
-
-                Object.keys(latestPerRoom).forEach(roomId => {
-                    if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return;
-                    const msg = latestPerRoom[roomId];
-                    if (msg.sender_kuerzel.toLowerCase() === aktuellerUser) return;
-
-                    const lastRead = localStorage.getItem('chat_read_' + roomId);
-                    if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
-                        unreadRoomsSet.add(roomId);
-                    }
-                });
-            }
-        }
-
-        let roomsArray = Array.from(roomsMap.values());
-        roomsArray.sort((a, b) => {
-            if (a.type === 'global') return -1;
-            if (b.type === 'global') return 1;
-            const timeA = latestPerRoom[a.id] ? new Date(latestPerRoom[a.id].created_at).getTime() : 0;
-            const timeB = latestPerRoom[b.id] ? new Date(latestPerRoom[b.id].created_at).getTime() : 0;
-            return timeB - timeA;
-        });
-
-        renderChatList(roomsArray, aktuellerUser, unreadRoomsSet);
-        checkUnreadChatBadges();
-
-    } catch (e) {
-        console.error("Fehler beim Laden der Chat-Räume:", e);
-    }
-}
-
-function renderChatList(rooms, aktuellerUser, unreadRooms) {
-    const chatListEl = document.getElementById('chatList');
-    if (!chatListEl) return;
-
-    chatListEl.innerHTML = "";
-
-    if (rooms.length === 0) {
-        chatListEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Keine Chats vorhanden.</div>';
-        return;
-    }
-
-    rooms.forEach(room => {
-        const item = document.createElement('div');
-        const isActive = currentActiveRoomId && (String(currentActiveRoomId) === String(room.id));
-        const isUnread = unreadRooms && unreadRooms.has(room.id);
-
-        item.className = `chat-item ${isActive ? 'active' : ''}`;
-        
-        let iconName = 'group';
-        if (room.type === 'global') iconName = 'public';
-        if (room.type === 'direct') iconName = 'person';
-
-        let displayName = (room.displayName || room.name || 'chat');
-        if (displayName.toLowerCase().startsWith('chat mit ')) {
-            displayName = displayName.replace(/^chat mit /i, '');
-        }
-
-        const textColor = isUnread ? '#f97316' : '#f4f4f5';
-        const unreadDot = isUnread ? '<span style="display: inline-block; width: 8px; height: 8px; background-color: #f97316; border-radius: 50%; margin-left: 6px; vertical-align: middle;"></span>' : '';
-
-        item.innerHTML = `
-            <div class="chat-item-icon">
-                <span class="material-symbols-outlined">${iconName}</span>
-            </div>
-            <div style="flex: 1; overflow: hidden;">
-                <div style="font-weight: bold; font-size: 0.9rem; color: ${textColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName} ${unreadDot}</div>
-            </div>
-        `;
-
-        item.onclick = () => selectRoom(room.id, displayName, room.type);
-        item.oncontextmenu = (e) => {
-            e.preventDefault();
-            if (room.type === 'global') {
-                alert("Der Team-Chat kann nicht ausgeblendet werden.");
-                return;
-            }
-            openHideChatModal(room.id, displayName);
-        };
-
-        chatListEl.appendChild(item);
-    });
-}
-
-async function selectRoom(roomId, roomName, roomType) {
-    currentActiveRoomId = roomId;
-    localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
-
-    checkUnreadChatBadges();
-
-    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-
-    let cleanName = roomName || (roomId === '00000000-0000-0000-0000-000000000001' ? 'Team-Chat' : 'Chat');
-    if (cleanName.toLowerCase().startsWith('chat mit ')) {
-        cleanName = cleanName.replace(/^chat mit /i, '');
-    }
-
-    const titleEl = document.getElementById('activeChatTitle');
-    const subEl = document.getElementById('activeChatSub');
-    const inputAreaEl = document.getElementById('chatInputArea');
-
-    if (titleEl) titleEl.innerText = cleanName;
-    if (subEl) subEl.innerText = (roomType === 'global' || roomId === '00000000-0000-0000-0000-000000000001') ? 'Team-Chat' : '';
-    if (inputAreaEl) inputAreaEl.style.display = 'flex';
-
-    if (chatRealtimeChannel && window.supabaseClient) {
-        window.supabaseClient.removeChannel(chatRealtimeChannel);
-    }
-
-    clearChatFileSelection();
-
-    await loadMessages(roomId);
-    subscribeToRoomRealtime(roomId);
-    loadChatRooms();
-}
-
-async function loadMessages(roomId) {
-    const client = window.supabaseClient;
-    const container = document.getElementById('chatMessages');
-    if (!container || !client) return;
-
-    container.innerHTML = '<div style="margin: auto; color: #a1a1aa; font-size: 0.85rem;">Lade Nachrichten...</div>';
-
-    try {
-        const { data: messages, error } = await client
-            .from('chat_messages')
-            .select('*')
-            .eq('room_id', roomId)
-            .order('created_at', { ascending: true });
-
-        if (error) throw error;
-        if (String(currentActiveRoomId) !== String(roomId)) return;
-
-        renderMessages(messages || []);
-        scrollToLatestMessage();
-    } catch (e) {
-        if (String(currentActiveRoomId) !== String(roomId)) return;
-        console.error("Fehler beim Laden der Nachrichten:", e);
-        container.innerHTML = '<div style="margin: auto; color: #ef4444; font-size: 0.85rem;">Fehler beim Laden der Nachrichten.</div>';
-    }
-}
-
-function renderMessages(messages) {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    if (messages.length === 0) {
-        container.innerHTML = `
-            <div class="chat-welcome-placeholder">
-                <span class="material-symbols-outlined" style="font-size: 40px; color: #3f3f46;">chat_bubble_outline</span>
-                <p style="margin-top: 8px; font-size: 0.85rem;">Noch keine Nachrichten in diesem Chat. Schreib die erste!</p>
-            </div>
-        `;
-        return;
-    }
-
-    const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-
-    messages.forEach(msg => {
-        const isOutgoing = msg.sender_kuerzel.toLowerCase() === aktuellerUser;
-        let timeString = "";
-        if (msg.created_at) {
-            const date = new Date(msg.created_at);
-            timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        const bubble = document.createElement('div');
-        bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
-        bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
-        
-        let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
-
-        bubble.innerHTML = `
-            ${senderHtml}
-            <div>${formatMessageContent(msg.message)}</div>
-            <div class="message-time">${timeString}</div>
-        `;
-
-        container.appendChild(bubble);
-    });
-
-    scrollToLatestMessage();
-}
-
-function scrollToLatestMessage() {
-    const container = document.getElementById('chatMessages');
-    if (container) {
-        setTimeout(() => {
-            container.scrollTop = container.scrollHeight;
-        }, 50);
-    }
-}
-
-function formatMessageContent(text) {
-    if (!text) return "";
-    const urlPattern = /(https?:\/\/[^\s]+)/g;
-    return escapeHtml(text).replace(urlPattern, (url) => {
-        if (url.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i)) {
-            return `<br><img src="${url}" style="max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 6px; cursor: pointer;" onclick="window.open(this.src, '_blank')">`;
-        }
-        return `<a href="${url}" target="_blank" style="color: #60a5fa; text-decoration: underline;">${url}</a>`;
-    });
-}
-
-    
-// ============================================================
-// DATEI-AUSWAHL, GRÖßENPRÜFUNG, KOMPRIMIERUNG & VORSCHAU
+// 14. CHAT
 // ============================================================
 
 function handleFileSelect(event) {
@@ -14216,6 +13691,7 @@ function autoResizeTextarea(textarea) {
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
 }
 
+/* --- 14.5.2 NACHRICHTEN SENDEN & REALTIME --- */
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
     const text = input ? input.value.trim() : "";
@@ -14354,12 +13830,8 @@ function escapeHtml(text) {
     const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
-    
 
-/* ============================================================
-    NEUER CHAT & HIDE MODAL LOGIK
-    ============================================================ */
-
+/* --- 14.5.3 CHAT VERWALTUNG (NEU, FILTERN, AUSBLENDEN) --- */
 window.openNewChatModal = async function() {
     const modal = document.getElementById('newChatModal');
     const listEl = document.getElementById('newChatList');
@@ -14582,45 +14054,7 @@ window.confirmHideChat = async function() {
     }
 };
 
-
-    document.addEventListener('DOMContentLoaded', () => {
-    // Bestehender Code...
-    
-    const chatInput = document.getElementById('chatMessageInput');
-    if (chatInput) {
-        chatInput.addEventListener('paste', (event) => {
-            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-            
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].kind === 'file') {
-                    const file = items[i].getAsFile();
-                    
-                    if (file && file.type.startsWith('image/')) {
-                        event.preventDefault(); // Verhindert fehlerhaftes Standard-Einfügen
-
-                        // 5 MB Größenprüfung
-                        const maxSize = 5 * 1024 * 1024;
-                        if (file.size > maxSize) {
-                            alert("Das eingefügte Bild ist zu groß (maximal 5 MB erlaubt).");
-                            return;
-                        }
-
-                        // Als aktive Datei setzen und Vorschau anzeigen
-                        selectedChatFile = file;
-                        showChatFilePreview(file);
-                        break;
-                    }
-                }
-            }
-        });
-    }
-});
-
-
-    // ============================================================
-// GIPHY GIF-SUCHE & INTEGRATION
-// ============================================================
-
+/* --- 14.5.4 GIPHY GIF-INTEGRATION --- */
 let searchTimeout = null;
 const GIPHY_API_KEY = 'z1NgrxFVO4yYy3rpG7UOpgD4J1GPQUTN';
 
@@ -14743,23 +14177,49 @@ async function sendSelectedGif(gifUrl) {
     }
 }
 
-
-    window.openUniversalEmojiPicker = function() {
+/* --- 14.5.5 EMOJI & CLIPBOARD PASTE EVENT-LISTENER --- */
+window.openUniversalEmojiPicker = function() {
     const input = document.getElementById('chatMessageInput');
     if (!input) return;
 
-    // Fokus setzen, damit die Tastatur / Emoji-Leiste aufpoppt
     input.focus();
 
-    // Cursor ans Ende des Textes setzen
     const length = input.value.length;
     input.setSelectionRange(length, length);
 
-    // Fallback für mobile Browser, die den Fokus verzögern
     setTimeout(() => {
         input.focus();
     }, 50);
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+    const chatInput = document.getElementById('chatMessageInput');
+    if (chatInput) {
+        chatInput.addEventListener('paste', (event) => {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const file = items[i].getAsFile();
+                    
+                    if (file && file.type.startsWith('image/')) {
+                        event.preventDefault();
+
+                        const maxSize = 5 * 1024 * 1024;
+                        if (file.size > maxSize) {
+                            alert("Das eingefügte Bild ist zu groß (maximal 5 MB erlaubt).");
+                            return;
+                        }
+
+                        selectedChatFile = file;
+                        showChatFilePreview(file);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+});
     
     
 /* ============================================================
