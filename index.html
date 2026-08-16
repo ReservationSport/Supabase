@@ -14353,13 +14353,15 @@ async function sendChatMessage() {
             messageContent = messageContent ? `${messageContent}\n${fileUrl}` : fileUrl;
         }
 
-        const { error } = await client
+        // WICHTIG: .select() hinzugefügt, damit wir die echte ID & created_at zurückbekommen
+        const { data, error } = await client
             .from('chat_messages')
             .insert([{
                 room_id: currentActiveRoomId,
                 sender_kuerzel: aktuellerUser,
                 message: messageContent
-            }]);
+            }])
+            .select();
 
         if (error) throw error;
 
@@ -14374,6 +14376,12 @@ async function sendChatMessage() {
             .from('chat_room_members')
             .update({ hidden: false })
             .eq('room_id', currentActiveRoomId);
+
+        // Nachricht sofort anzeigen – dank der echten ID greift der Duplikat-Schutz 
+        // in appendMessageToDOM, falls Realtime parallel eintrifft!
+        if (data && data.length > 0) {
+            appendMessageToDOM(data[0], aktuellerUser);
+        }
 
     } catch (e) {
         console.error("Fehler beim Senden der Nachricht/Datei:", e);
