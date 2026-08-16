@@ -13664,11 +13664,8 @@ async function loadChatRooms() {
             const members = roomMembersMap[room.id] || [];
             const otherMembers = members.filter(m => m !== aktuellerUser);
             
-            // Titel für Team-Chats, Gruppen oder Direktchats ermitteln
-            let roomTitle = room.name;
-            if (!roomTitle || room.type === 'direct') {
-                roomTitle = otherMembers.length === 1 ? otherMembers[0] : otherMembers.join(', ');
-            }
+            // Nutzt den Raumnamen (wie beim Team-Chat) oder baut den Titel aus den Mitgliedern zusammen
+            const roomTitle = room.name || (otherMembers.length === 1 ? otherMembers[0] : otherMembers.join(', '));
 
             const isSelected = String(currentActiveRoomId) === String(room.id);
 
@@ -13676,7 +13673,6 @@ async function loadChatRooms() {
                 <div class="chat-item ${isSelected ? 'active' : ''}" onclick="selectRoom('${room.id}', '${roomTitle.replace(/'/g, "\\'")}', '${room.type}')" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #27272a;">
                     <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
                         <div style="font-weight: bold; color: #f4f4f5; font-size: 0.9rem;">${roomTitle}</div>
-                        <div style="font-size: 0.7rem; color: #71717a;">${room.type === 'team' ? 'Team-Chat' : (room.type === 'group' ? 'Gruppenchat' : 'Direktchat')}</div>
                     </div>
                     <button type="button" onclick="event.stopPropagation(); openHideChatModal('${room.id}', '${roomTitle.replace(/'/g, "\\'")}')" title="Chat ausblenden" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; padding: 4px;">
                         <span class="material-symbols-outlined" style="font-size: 18px;">visibility_off</span>
