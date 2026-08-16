@@ -14308,6 +14308,14 @@ function subscribeToRoomRealtime(roomId) {
             },
             (payload) => {
                 const newMsg = payload.new;
+                const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
+                
+                // WICHTIG: Wenn die Nachricht von mir selbst kommt, ignorieren, 
+                // da sie lokal bereits angezeigt wurde!
+                if (newMsg.sender_kuerzel.toLowerCase() === aktuellerUser) {
+                    return;
+                }
+
                 if (String(currentActiveRoomId) === String(roomId)) {
                     appendSingleMessage(newMsg);
                     localStorage.setItem('chat_read_' + roomId, new Date().toISOString());
