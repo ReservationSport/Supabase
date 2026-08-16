@@ -4079,7 +4079,7 @@ input.stellvertretung-input {
     </div>
 
     <!-- Chat-Button (jetzt exakt gleich aufgebaut: Text zuerst, Icon rechts) -->
-    <div id="chat-btn-container" style="display: none;">
+    <div id="chat-btn-container">
         <div class="chat-btn-premium" onclick="openChat()">
             <span class="btn-text">CHAT</span>
             <span class="material-symbols-outlined">chat</span>
@@ -13586,6 +13586,27 @@ window.handleLogout = async function() {
 // 14. CHAT
 // ============================================================
 
+
+window.openChat = function() {
+    const overlay = document.getElementById('chatOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        if (typeof loadChatRooms === 'function') {
+            loadChatRooms();
+        }
+    }
+};
+
+window.closeChat = function() {
+    const overlay = document.getElementById('chatOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+};
+
+
+
+    
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
