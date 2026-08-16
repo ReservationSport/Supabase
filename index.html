@@ -4836,37 +4836,37 @@ input.stellvertretung-input {
                 </div>
             </div>
 
-            <!-- Eingabebereich am Boden -->
-            <div class="chat-input-area" id="chatInputArea" style="display: none;">
-                <!-- Verstecktes Datei-Input für Fotos und GIFs -->
-                <input type="file" id="chatFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="handleFileSelect(event)">
-                
-                <!-- Icons auf derselben Höhe (Datei, GIF, Emoji) -->
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <!-- Button zum Öffnen des Datei-Dialogs -->
-                    <button type="button" class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Foto oder GIF senden" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; align-items: center; padding: 0;">
-                        <span class="material-symbols-outlined">image</span>
-                    </button>
+<!-- Eingabebereich am Boden -->
+<div class="chat-input-area" id="chatInputArea" style="display: none; align-items: center;">
+    <!-- Verstecktes Datei-Input für Fotos und GIFs -->
+    <input type="file" id="chatFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="handleFileSelect(event)">
+    
+    <!-- Icons auf derselben Höhe und in Orange -->
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <!-- Button zum Öffnen des Datei-Dialogs -->
+        <button type="button" class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Foto oder GIF senden" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;">
+            <span class="material-symbols-outlined">image</span>
+        </button>
 
-                    <!-- GIF-Button -->
-                    <button type="button" onclick="openGiphyModal()" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; align-items: center; padding: 0;" title="GIFs durchsuchen">
-                        <span class="material-symbols-outlined">gif_box</span>
-                    </button>
+        <!-- GIF-Button -->
+        <button type="button" onclick="openGiphyModal()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="GIFs durchsuchen">
+            <span class="material-symbols-outlined">gif_box</span>
+        </button>
 
-                    <!-- Emoji-Button (öffnet die universelle Emoji-Tastatur / Fokus) -->
-                    <button type="button" onclick="openUniversalEmojiPicker()" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; padding: 0; font-size: 20px; line-height: 1;" title="Emojis einfügen">
-                        😊
-                    </button>
-                </div>
+        <!-- Emoji-Button mit sentiment_satisfied -->
+        <button type="button" onclick="openUniversalEmojiPicker()" style="background: none; border: none; color: #f97316; cursor: pointer; display: flex; align-items: center; padding: 0;" title="Emojis einfügen">
+            <span class="material-symbols-outlined">sentiment_satisfied</span>
+        </button>
+    </div>
 
-                <!-- Textarea für mehrzeilige Nachrichten -->
-                <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
-                
-                <!-- Sende-Button -->
-                <button class="chat-send-btn" onclick="sendChatMessage()">
-                    <span class="material-symbols-outlined" style="margin: 0 !important;">send</span>
-                </button>
-            </div>
+    <!-- Textarea für mehrzeilige Nachrichten -->
+    <textarea id="chatMessageInput" placeholder="Nachricht schreiben..." rows="1" oninput="autoResizeTextarea(this)"></textarea>
+    
+    <!-- Sende-Button -->
+    <button class="chat-send-btn" onclick="sendChatMessage()">
+        <span class="material-symbols-outlined" style="margin: 0 !important;">send</span>
+    </button>
+</div>
         </div>
 
     </div>
@@ -14742,7 +14742,24 @@ async function sendSelectedGif(gifUrl) {
         alert("GIF konnte nicht gesendet werden.");
     }
 }
-    
+
+
+    window.openUniversalEmojiPicker = function() {
+    const input = document.getElementById('chatMessageInput');
+    if (!input) return;
+
+    // Fokus setzen, damit die Tastatur / Emoji-Leiste aufpoppt
+    input.focus();
+
+    // Cursor ans Ende des Textes setzen
+    const length = input.value.length;
+    input.setSelectionRange(length, length);
+
+    // Fallback für mobile Browser, die den Fokus verzögern
+    setTimeout(() => {
+        input.focus();
+    }, 50);
+};
     
     
 /* ============================================================
