@@ -13614,72 +13614,111 @@ let selectedChatFile = null;
 
 async function loadChatRooms() {
     const client = window.supabaseClient;
+    if (!client) return;
+
     const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
-    const listEl = document.getElementById('chatList');
-    
-    if (!client || !listEl || !aktuellerUser) return;
+    const chatListEl = document.getElementById('chatList');
+    if (!chatListEl) return;
 
     try {
-        const { data: myMemberships, error: memError } = await client
+        let roomsMap = new Map();
+        const globalRoomId = '00000000-0000-0000-0000-000000000001';
+        roomsMap.set(globalRoomId, {
+            id: globalRoomId,
+            type: 'global',
+            name: 'Team-Chat',
+            displayName: 'Team-Chat'
+        });
+
+        const { data: memberships, error: memError } = await client
             .from('chat_room_members')
-            .select('room_id, hidden')
-            .eq('user_kuerzel', aktuellerUser);
+            .select('room_id')
+            .eq('user_kuerzel', aktuellerUser)
+            .eq('hidden', false);
 
         if (memError) throw memError;
 
-        if (!myMemberships || myMemberships.length === 0) {
-            listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #a1a1aa; font-size: 0.85rem;">Keine aktiven Chats.</div>';
-            return;
+        let roomIds = [globalRoomId];
+        if (memberships && memberships.length > 0) {
+            memberships.forEach(m => {
+                if (!roomIds.includes(m.room_id)) roomIds.push(m.room_id);
+            });
+
+            const { data: userRooms, error: roomError } = await client
+                .from('chat_rooms')
+                .select('*')
+                .in('id', roomIds);
+
+            const { data: allMembers, error: memberError } = await client
+                .from('chat_room_members')
+                .select('room_id, user_kuerzel')
+                .in('room_id', roomIds);
+
+            let roomMembersMap = {};
+            if (!memberError && allMembers) {
+                allMembers.forEach(m => {
+                    if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
+                    roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase().trim());
+                });
+            }
+
+            if (!roomError && userRooms) {
+                userRooms.forEach(r => {
+                    let displayName = r.name || 'chat';
+                    const members = roomMembersMap[r.id] || [];
+                    const otherMembers = members.filter(m => m !== aktuellerUser);
+
+                    if (r.type === 'direct') {
+                        if (otherMembers.length > 0) displayName = otherMembers[0];
+                    } else if (r.type === 'group') {
+                        if (otherMembers.length > 0) displayName = otherMembers.join(', ');
+                    }
+
+                    r.displayName = displayName;
+                    roomsMap.set(r.id, r);
+                });
+            }
         }
 
-        const roomIds = myMemberships.map(m => m.room_id);
-        const hiddenMap = {};
-        myMemberships.forEach(m => { hiddenMap[m.room_id] = m.hidden; });
+        let unreadRoomsSet = new Set();
+        let latestPerRoom = {};
 
-        const { data: rooms, error: roomError } = await client
-            .from('chat_rooms')
-            .select('*')
-            .in('id', roomIds);
+        if (roomIds.length > 0) {
+            const { data: latestMsgs, error: msgError } = await client
+                .from('chat_messages')
+                .select('room_id, created_at, sender_kuerzel')
+                .in('room_id', roomIds)
+                .order('created_at', { ascending: false });
 
-        if (roomError) throw roomError;
+            if (!msgError && latestMsgs) {
+                latestMsgs.forEach(m => {
+                    if (!latestPerRoom[m.room_id]) latestPerRoom[m.room_id] = m;
+                });
 
-        const { data: allMembers, error: allMemError } = await client
-            .from('chat_room_members')
-            .select('room_id, user_kuerzel')
-            .in('room_id', roomIds);
+                Object.keys(latestPerRoom).forEach(roomId => {
+                    if (currentActiveRoomId && String(currentActiveRoomId) === String(roomId)) return;
+                    const msg = latestPerRoom[roomId];
+                    if (msg.sender_kuerzel.toLowerCase() === aktuellerUser) return;
 
-        if (allMemError) throw allMemError;
+                    const lastRead = localStorage.getItem('chat_read_' + roomId);
+                    if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
+                        unreadRoomsSet.add(roomId);
+                    }
+                });
+            }
+        }
 
-        let roomMembersMap = {};
-        allMembers.forEach(m => {
-            if (!roomMembersMap[m.room_id]) roomMembersMap[m.room_id] = [];
-            roomMembersMap[m.room_id].push(m.user_kuerzel.toLowerCase());
+        let roomsArray = Array.from(roomsMap.values());
+        roomsArray.sort((a, b) => {
+            if (a.type === 'global') return -1;
+            if (b.type === 'global') return 1;
+            const timeA = latestPerRoom[a.id] ? new Date(latestPerRoom[a.id].created_at).getTime() : 0;
+            const timeB = latestPerRoom[b.id] ? new Date(latestPerRoom[b.id].created_at).getTime() : 0;
+            return timeB - timeA;
         });
 
-        listEl.innerHTML = "";
-
-        rooms.forEach(room => {
-            if (hiddenMap[room.id]) return;
-
-            const members = roomMembersMap[room.id] || [];
-            const otherMembers = members.filter(m => m !== aktuellerUser);
-            
-            // Nutzt den Raumnamen (wie beim Team-Chat) oder baut den Titel aus den Mitgliedern zusammen
-            const roomTitle = room.name || (otherMembers.length === 1 ? otherMembers[0] : otherMembers.join(', '));
-
-            const isSelected = String(currentActiveRoomId) === String(room.id);
-
-            listEl.innerHTML += `
-                <div class="chat-item ${isSelected ? 'active' : ''}" onclick="selectRoom('${room.id}', '${roomTitle.replace(/'/g, "\\'")}', '${room.type}')" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #27272a;">
-                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
-                        <div style="font-weight: bold; color: #f4f4f5; font-size: 0.9rem;">${roomTitle}</div>
-                    </div>
-                    <button type="button" onclick="event.stopPropagation(); openHideChatModal('${room.id}', '${roomTitle.replace(/'/g, "\\'")}')" title="Chat ausblenden" style="background: none; border: none; color: #a1a1aa; cursor: pointer; display: flex; padding: 4px;">
-                        <span class="material-symbols-outlined" style="font-size: 18px;">visibility_off</span>
-                    </button>
-                </div>
-            `;
-        });
+        renderChatList(roomsArray, aktuellerUser, unreadRoomsSet);
+        checkUnreadChatBadges();
 
     } catch (e) {
         console.error("Fehler beim Laden der Chat-Räume:", e);
