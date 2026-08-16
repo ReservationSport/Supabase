@@ -13725,6 +13725,7 @@ function subscribeToGlobalMessages() {
         client.removeChannel(window.globalMessagesChannel);
     }
 
+    // Nur noch für Badges und Sidebar-Listenaktualisierung zuständig (Doppelrendering im aktiven Chat übernimmt subscribeToRoomRealtime)
     window.globalMessagesChannel = client.channel('global-messages-realtime')
         .on(
             'postgres_changes',
@@ -13733,34 +13734,40 @@ function subscribeToGlobalMessages() {
                 schema: 'public',
                 table: 'chat_messages'
             },
+            () => {
+                if (typeof loadChatRooms === 'function') {
+                    loadChatRooms();
+                }
+                checkUnreadChatBadges(); 
+            }
+        )
+        .subscribe();
+}
+
+function subscribeToRoomRealtime(roomId) {
+    const client = window.supabaseClient;
+    if (!client) return;
+
+    if (chatRealtimeChannel) {
+        client.removeChannel(chatRealtimeChannel);
+    }
+
+    chatRealtimeChannel = client.channel(`room-realtime-${roomId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'chat_messages',
+                filter: `room_id=eq.${roomId}`
+            },
             (payload) => {
                 const newMsg = payload.new;
                 const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
                 
-                // Prüfen ob Chat offen ist und die Nachricht nicht schon da ist (verhindert Dopplung)
-                if (currentActiveRoomId && String(currentActiveRoomId) === String(newMsg.room_id)) {
-                    const container = document.getElementById('chatMessages');
-                    if (container) {
-                        // Prüfen ob exakt diese Nachricht (gleicher Absender, Text und ähnliche Zeit) bereits im DOM existiert
-                        const existingBubbles = container.querySelectorAll('.message-bubble');
-                        let alreadyExists = false;
-                        existingBubbles.forEach(b => {
-                            if (b.textContent.includes(newMsg.message) && b.textContent.includes(newMsg.sender_kuerzel.toLowerCase())) {
-                                alreadyExists = true;
-                            }
-                        });
-
-                        if (!alreadyExists) {
-                            appendMessageToDOM(newMsg, aktuellerUser);
-                        }
-                    }
+                if (String(currentActiveRoomId) === String(roomId)) {
+                    appendMessageToDOM(newMsg, aktuellerUser);
                 }
-
-                if (typeof loadChatRooms === 'function') {
-                    loadChatRooms();
-                }
-                
-                checkUnreadChatBadges(); 
             }
         )
         .subscribe();
@@ -13769,6 +13776,12 @@ function subscribeToGlobalMessages() {
 function appendMessageToDOM(msg, aktuellerUser) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
+
+    // Duplikat-Schutz via ID (falls vorhanden)
+    if (msg.id) {
+        const existing = container.querySelector(`[data-message-id="${msg.id}"]`);
+        if (existing) return;
+    }
 
     const placeholder = container.querySelector('.chat-welcome-placeholder');
     if (placeholder) placeholder.remove();
@@ -13783,6 +13796,10 @@ function appendMessageToDOM(msg, aktuellerUser) {
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
     bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
+    
+    if (msg.id) {
+        bubble.setAttribute('data-message-id', msg.id);
+    }
     
     let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
@@ -13814,7 +13831,9 @@ window.closeChat = function() {
     if (overlay) overlay.style.display = 'none';
     if (chatRealtimeChannel && window.supabaseClient) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
+        chatRealtimeChannel = null;
     }
+    currentActiveRoomId = null;
     checkUnreadChatBadges();
 };
 
@@ -14007,6 +14026,7 @@ async function selectRoom(roomId, roomName, roomType) {
 
     if (chatRealtimeChannel && window.supabaseClient) {
         window.supabaseClient.removeChannel(chatRealtimeChannel);
+        chatRealtimeChannel = null;
     }
 
     clearChatFileSelection();
@@ -14072,6 +14092,10 @@ function renderMessages(messages) {
         bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
         bubble.style.cssText = "max-width: 75%; width: fit-content; height: auto; word-break: break-word; display: flex; flex-direction: column;";
         
+        if (msg.id) {
+            bubble.setAttribute('data-message-id', msg.id);
+        }
+
         let senderHtml = (!isOutgoing) ? `<div class="message-sender">${msg.sender_kuerzel.toLowerCase()}</div>` : '';
 
         bubble.innerHTML = `
@@ -14105,7 +14129,6 @@ function formatMessageContent(text) {
         return `<a href="${url}" target="_blank" style="color: #60a5fa; text-decoration: underline;">${url}</a>`;
     });
 }
-
     
 // ============================================================
 // DATEI-AUSWAHL, GRÖßENPRÜFUNG, KOMPRIMIERUNG & VORSCHAU
@@ -14326,10 +14349,10 @@ function subscribeToRoomRealtime(roomId) {
 }
 
 function appendSingleMessage(msg) {
-    // 1. Verhindern, dass dieselbe Nachricht (z.B. ein GIF) doppelt gerendert wird
+    // WICHTIG: Prüfen, ob die Nachricht mit dieser ID schon im Chat existiert!
     if (msg.id) {
         const existingElement = document.querySelector(`[data-message-id="${msg.id}"]`);
-        if (existingElement) return;
+        if (existingElement) return; // Wenn schon da, abbrechen (verhindert das Doppelt-Anzeigen!)
     }
 
     const container = document.getElementById('chatMessages');
@@ -14350,7 +14373,7 @@ function appendSingleMessage(msg) {
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`;
     
-    // 2. Das Attribut an das Element heften, damit die Prüfung (oben) greift
+    // Die ID als Attribut hinterlegen, damit der Check oben greift
     if (msg.id) {
         bubble.setAttribute('data-message-id', msg.id);
     }
