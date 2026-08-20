@@ -8300,7 +8300,8 @@ window.initMaterialConfig = async function() {
         console.log("Lade Material-Konfiguration aus Supabase...");
         const { data, error } = await supabaseClient
             .from('material')
-            .select('*'); // Lädt material, icon, beschreibung etc.
+            .select('*')
+            .order('id', { ascending: true }); // <-- HIER ERGÄNZEN!
 
         if (error) throw error;
 
@@ -8308,13 +8309,12 @@ window.initMaterialConfig = async function() {
         
         if (data) {
             data.forEach(item => {
-                // Liest die Spalte 'material' aus
                 const matName = item.material || item.name;
                 if (matName) {
                     window.materialConfig[matName] = {
                         name: matName,
-                        icon: item.icon || 'inventory_2', // Fallback Icon falls keins vorhanden
-                        ...item // Speichert alle weiteren Felder aus der DB
+                        icon: item.icon || 'inventory_2',
+                        ...item
                     };
                 }
             });
