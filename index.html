@@ -5181,12 +5181,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 checkUnreadNews(sauberesKuerzel);
 
                 const linksRes = await supabaseClient.from('links').select('*');
-                const matRes = await supabaseClient.from('material').select('*');
-
+                const matRes = await supabaseClient.from('material').select('*').order('id', { ascending: true });
                 if (!linksRes.error && linksRes.data) {
                     window.lastLinks = linksRes.data || [];
                     if (typeof window.renderLinks === 'function') window.renderLinks();
-                }
+                }    
                 
                 if (!matRes.error && matRes.data) {
                     window.verfügbareMaterialien = matRes.data || [];
