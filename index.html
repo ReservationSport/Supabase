@@ -35,7 +35,7 @@
    
 </head>
 
-    
+
     
 <style>
 
@@ -6374,7 +6374,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                         if (row.details) plan[slot].details = row.details.toString();
                         if (row.typ) plan[slot].typ = row.typ.toString();
                         if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
-                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString();
+                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString(); // <--- HIER ERGÄNZT
                     }
                 }
             });
@@ -6630,7 +6630,7 @@ window.syncPlan = async function() {
                         if (row.details) newPlan[slot].details = row.details.toString();
                         if (row.typ) newPlan[slot].typ = row.typ.toString();
                         if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
-                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString();
+                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString(); // <--- HIER ERGÄNZT
                     }
                 }
             });
@@ -6734,7 +6734,6 @@ window.syncPlan = async function() {
         // Stiller Fail im Hintergrund-Sync
     }
 };
-
 
     
 /* ============================================================
@@ -6937,7 +6936,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     // Fängt sowohl 'typ' als auch 'halle' ab und normalisiert es
     const rawTyp = (payload.typ || payload.halle || "").toString().toLowerCase().trim();
     
-    const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet", "meldung", "wunsch", "banner", "kasse", "vertretung", "idee", "apotheke"];
+    // "deal" ist als erlaubter Typ eingetragen
+    const erlaubteTypen = ["ausfall", "badi", "outdoor", "beendet", "meldung", "wunsch", "banner", "kasse", "vertretung", "idee", "apotheke", "deal"];
     if (!erlaubteTypen.includes(rawTyp)) {
         return; 
     }
@@ -6957,8 +6957,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
     const slotBasierteTypen = ["ausfall", "badi", "outdoor", "beendet"];
     const isSlotBased = slotBasierteTypen.includes(rawTyp);
 
-    // Event-Datum nur bei Slot-basierten Events befüllen, bei anderen optional aus Payload
-    const eventDatum = isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : (payload.datum || payload.date || "");
+    // Event-Datum wird jetzt auch für "deal" korrekt aus dem Payload übernommen
+    const eventDatum = payload.datum_event || (isSlotBased ? (payload.datum || payload.date || getLocalIsoDate()) : (payload.datum || payload.date || ""));
     
     const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
     let zielTag = payload.wochentag;
@@ -6999,13 +6999,9 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
         const empfaengerSet = new Set();
         const planData = window.lastPlanData || {};
 
-        // Berechne die 5 parallelen Slots desselben Zeitslots
         const rowIndex = Math.floor((slotNummer - 1) / 5);
         const startSlot = (rowIndex * 5) + 1;
 
-        console.log(`🔎 Suche Empfänger im gesamten Zeitslot (Slots ${startSlot} bis ${startSlot + 4}) für Verfasser: [${handelndeLP}]`);
-
-        // Alle 5 parallelen Slots durchgehen und Lehrer einsammeln
         for (let i = 0; i < 5; i++) {
             const currentSlot = startSlot + i;
             const slotData = planData[currentSlot];
@@ -7014,31 +7010,26 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 const roherLehrerString = slotData.verfasser || slotData.lehrer || "";
                 if (roherLehrerString) {
                     roherLehrerString.split(/[,/]+/).forEach(k => {
-                        const cleanK = k.trim().toLowerCase(); // Konsequent lowercase
+                        const cleanK = k.trim().toLowerCase();
                         if (cleanK) empfaengerSet.add(cleanK);
                     });
                 }
             }
         }
 
-        // Fallback falls window.lastPlanData keine Daten liefert
         if (empfaengerSet.size === 0 && klasse && window.allClassTeachers) {
             const klassenLehrer = window.allClassTeachers[klasse] || window.allClassTeachers[klasse.toUpperCase()];
             if (klassenLehrer) {
                 klassenLehrer.toString().split(/[,/]+/).forEach(k => {
-                    const cleanK = k.trim().toLowerCase(); // Konsequent lowercase
+                    const cleanK = k.trim().toLowerCase();
                     if (cleanK) empfaengerSet.add(cleanK);
                 });
             }
         }
 
-        // Verfasser aus der Empfängerliste entfernen
         empfaengerSet.delete(handelndeLP);
         empfaengerList = Array.from(empfaengerSet);
 
-        console.log(`🎯 Finale Empfängerliste für Slot-Event (alle Kollegen im Zeitslot minus Verfasser):`, empfaengerList);
-
-        // Zeitfenster-Formatierung nur für Slot-Events
         const zeiten = [
             "07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", 
             "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", 
@@ -7062,7 +7053,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
 
     } else {
         // =========================================================================
-        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (Direkt via Payload übergeben)
+        // 2. ZUSATZFUNKTIONEN / TEAM-NEWS (inkl. "deal")
         // =========================================================================
         
         titelVal = payload.titel || "Information";
@@ -7085,6 +7076,7 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
                 empfaengerList = ["chef"];
             }
         } else if (payload.empfaenger) {
+            // WICHTIG FÜR "deal": Übernimmt das Array / den String der Empfänger direkt aus dem Payload
             empfaengerList = Array.isArray(payload.empfaenger) 
                 ? payload.empfaenger.map(e => e.trim().toLowerCase()) 
                 : payload.empfaenger.split(',').map(e => e.trim().toLowerCase());
@@ -7106,8 +7098,8 @@ window.saveNewsToDBFrontend = async function(payload, currentMasterData) {
             slot_index: !isNaN(slotNummer) && slotNummer > 0 ? slotNummer : null,
             zeitfenster: payload.zeitfenster || zeitfensterString, 
             datum: new Date().toISOString(), 
-            titel: titelVal,                 
-            text: payloadText,               
+            titel: titelVal,                     
+            text: payloadText,                    
             klasse: klasse,
             verfasser: handelndeLP,          
             empfaenger: empfaengerString,    
@@ -7163,8 +7155,9 @@ window.showNews = function() {
         const gelesenListe = (news.gelesen || "").toString().toLowerCase().split(',').map(s => s.trim());  
         const istGelesen = gelesenListe.includes(aktuellerUser);  
         
-        // 1. Erstellungsdatum aus Spalte 'datum' (für unten links)
-        let rawZeitstempel = news.datum ? news.datum.toString() : (news.zeitstempel ? news.zeitstempel.toString() : '');  
+        // 1. Datum für unten links: Priorität auf 'datum_event' (Stundenplan), sonst normales Datum/Zeitstempel
+        let rawDatumQuelle = news.datum_event || news.datum || news.zeitstempel || '';
+        let rawZeitstempel = rawDatumQuelle.toString();  
         if (rawZeitstempel.includes('T')) rawZeitstempel = rawZeitstempel.split('T')[0];
         let formatiertesErstellungsDatum = rawZeitstempel;  
         if (formatiertesErstellungsDatum.includes('-')) {  
@@ -7366,7 +7359,7 @@ async function markAsReadAndJump(news, event) {
     const user = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel.toLowerCase().trim() : "";
     const safeNewsText = (news.text !== null && news.text !== undefined) ? news.text.toString() : "";
     
-    // Einheitliche Typ-Erkennung über die Spalte 'typ' (und Fallback auf altes 'halle' falls vorhanden)
+    // Einheitliche Typ-Erkennung über die Spalte 'typ'
     const newsTyp = (news.typ !== null && news.typ !== undefined) ? news.typ.toString().toLowerCase().trim() : "";
     const hallenTypLower = (news.halle !== null && news.halle !== undefined) ? news.halle.toString().toLowerCase().trim() : "";
     const newsTextLower = safeNewsText.toLowerCase();
@@ -7377,13 +7370,15 @@ async function markAsReadAndJump(news, event) {
     const istMaterial = (newsTyp === "wunsch" || newsTyp === "material_wunsch" || hallenTypLower.includes("material_wunsch") || newsTextLower.includes("materialwunsch"));
     const istStv = (newsTyp === "vertretung" || newsTyp === "stellvertretung" || hallenTypLower.includes("stellvertretung") || newsTextLower.includes("abwesenheit"));
     const istApotheke = (newsTyp === "apotheke" || hallenTypLower.includes("apotheke_bestellung") || newsTextLower.includes("apotheken"));
+    
+    // "deal" ist ebenfalls stundenplanbezogen und soll direkt weiter unten zum Slot springen
+    const istDeal = (newsTyp === "deal" || newsTextLower.includes("übernimmt dein angebotenes material"));
 
     const sichereNewsListe = Array.isArray(meineRelevanteNews) ? meineRelevanteNews : [];
     const newsInListe = sichereNewsListe.find(n => n && n.id === news.id);
     
     if (newsInListe) {
         if (!newsInListe.gelesen) newsInListe.gelesen = "";
-        // Konsequent auf .toLowerCase() angepasst für den Abgleich
         if (!newsInListe.gelesen.toLowerCase().includes(user)) {
             newsInListe.gelesen = newsInListe.gelesen ? `${newsInListe.gelesen},${user}` : user;
         }
@@ -7454,7 +7449,7 @@ async function markAsReadAndJump(news, event) {
         return;
     }
 
-    // FÜR ALLE ANDEREN TYPEN (wie ausfall, badi, outdoor, beendet, etc.): 
+    // FÜR ALLE ANDEREN TYPEN SOWIE "deal": 
     // Datum und Sprung direkt zur entsprechenden Lektion im Kalender
     const eventDatum = news.datum_event || news.datum;
     if (eventDatum) {
@@ -8567,6 +8562,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
     const slotNum = parseInt(slot, 10);
     const now = new Date().toISOString();
+    const halle = currentSlotData.halle || "";
 
     // Kürzel verlässlich ermitteln
     let rawUserKuerzel = "";
@@ -8579,6 +8575,18 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
         rawUserKuerzel = el ? (el.value || "") : "";
     }
     const safeUserKuerzel = String(rawUserKuerzel).trim() || currentSlotData.verfasser || "";
+
+    // --- KORREKT: Aufruf mit slotNum, halle und dem neuen Materialwert (mat) ---
+    try {
+        if (typeof window.pruefeUndRueckgaengigMachen === 'function') {
+            await window.pruefeUndRueckgaengigMachen(slotNum, halle, mat);
+        } else if (typeof pruefeUndRueckgaengigMachen === 'function') {
+            await pruefeUndRueckgaengigMachen(slotNum, halle, mat);
+        }
+    } catch (err) {
+        console.error("Fehler beim Aufruf von pruefeUndRueckgaengigMachen im Save:", err);
+    }
+    // -------------------------------------------------------------------------------
 
     // Visueller Callback nach erfolgreicher Verarbeitung durch prozessiereAktion
     const onCompleteVisuals = (payloadData) => {
@@ -8597,6 +8605,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
                 ...window.lastPlanData[currentSlotId],
                 material: materialVal,
                 details: detailVal,
+                weitergabe: null,
                 verfasser: safeUserKuerzel
             };
         }
@@ -8614,10 +8623,11 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
         slot: slotNum.toString(),
         time: time,
         klasse: klasse || currentSlotData.klasse || "",
-        halle: currentSlotData.halle || "",
+        halle: halle,
         material: mat,
         kommentar: currentSlotData.kommentar || "",
         details: detail || "",
+        weitergabe: null, 
         timestamp: now,
         typ: currentSlotData.typ || "buchung",
         verfasser: safeUserKuerzel
@@ -8673,7 +8683,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
         }
     }
 }
-    
+
 
 async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     if (btn) {
@@ -8685,6 +8695,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
     const slotNum = parseInt(slot, 10);
     const now = new Date().toISOString();
+    const halle = currentSlotData.halle || "";
 
     let rawUserKuerzel = "";
     if (typeof userKuerzel === 'string' && userKuerzel.trim() !== "") {
@@ -8695,12 +8706,76 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
         const el = document.getElementById('userKuerzel');
         rawUserKuerzel = el ? (el.value || "") : "";
     }
-    const safeUserKuerzel = String(rawUserKuerzel).trim() || currentSlotData.verfasser || "";
+    const safeUserKuerzel = String(rawUserKuerzel).trim() || "lp";
 
-    const onCompleteVisuals = (payloadData) => {
+    // 1. Partner (Anbieter) korrekt ermitteln (Status-Worte wie "erledigt" ignorieren!)
+    let anbieterOderUebernehmer = "";
+    
+    if (currentSlotData.weitergabe && currentSlotData.weitergabe.toLowerCase() !== "erledigt") {
+        anbieterOderUebernehmer = currentSlotData.weitergabe;
+    }
+
+    // Wenn kein direkter Partner da ist, im Speicher nach dem passenden Slot in derselben Halle suchen
+    if (!anbieterOderUebernehmer && window.lastPlanData) {
+        for (let s in window.lastPlanData) {
+            const entry = window.lastPlanData[s];
+            if (entry && entry.halle === halle && String(s) !== String(slotNum)) {
+                if (entry.verfasser && entry.verfasser.toLowerCase() !== safeUserKuerzel.toLowerCase()) {
+                    anbieterOderUebernehmer = entry.verfasser;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Fallback auf den Verfasser des aktuellen Slots
+    if (!anbieterOderUebernehmer && currentSlotData.verfasser && currentSlotData.verfasser.toLowerCase() !== safeUserKuerzel.toLowerCase()) {
+        anbieterOderUebernehmer = currentSlotData.verfasser;
+    }
+
+    console.log("🔍 Debug Stornierung - Ermittelter Partner (Anbieter):", anbieterOderUebernehmer);
+
+    // --- Rückgängig-Machen in DB ausführen ---
+    try {
+        if (typeof window.pruefeUndRueckgaengigMachen === 'function') {
+            await window.pruefeUndRueckgaengigMachen(slotNum, halle, "");
+        } else if (typeof pruefeUndRueckgaengigMachen === 'function') {
+            await pruefeUndRueckgaengigMachen(slotNum, halle, "");
+        }
+    } catch (err) {
+        console.error("Fehler beim Aufruf von pruefeUndRueckgaengigMachen im Delete:", err);
+    }
+
+    const onCompleteVisuals = async (payloadData) => {
         if (btn) {
             btn.style.pointerEvents = "auto";
             btn.style.opacity = "1";
+        }
+
+        // News-Meldung senden, wenn ein echter Partner gefunden wurde
+        if (anbieterOderUebernehmer) {
+            const zielEmpfaenger = (anbieterOderUebernehmer.toLowerCase() === safeUserKuerzel.toLowerCase() && currentSlotData.verfasser) 
+                ? currentSlotData.verfasser 
+                : anbieterOderUebernehmer;
+
+            if (zielEmpfaenger.toLowerCase() !== safeUserKuerzel.toLowerCase()) {
+                if (typeof window.saveNewsToDBFrontend === 'function') {
+                    try {
+                        await window.saveNewsToDBFrontend({
+                            typ: "deal",
+                            titel: "Material-Übernahme",
+                            text: `${safeUserKuerzel.toLowerCase()} hat die Material-Übernahme storniert.`,
+                            datum_event: targetDate,
+                            slot: slotNum,
+                            empfaenger: [zielEmpfaenger],
+                            verfasser: safeUserKuerzel
+                        });
+                        console.log("🎯 Stornierungs-News erfolgreich an", zielEmpfaenger, "gesendet.");
+                    } catch (newsErr) {
+                        console.error("Fehler beim Senden der Deal-Stornierungs-News:", newsErr);
+                    }
+                }
+            }
         }
 
         const currentSlotId = parseInt(payloadData.slot, 10);
@@ -8716,19 +8791,20 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
         }
         
         const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
-        if (box) markBoxWithMaterialIcon(box, "", "");
+        if (box && typeof markBoxWithMaterialIcon === 'function') {
+            markBoxWithMaterialIcon(box, "", "");
+        }
         
-        closeEditor();
+        if (typeof closeEditor === 'function') closeEditor();
     };
 
-    // Payload für das Löschen (Material leer setzen)
     const payload = {
         origin: 'applyMaterialDelete',
         datum: targetDate,
         slot: slotNum.toString(),
         time: time,
         klasse: klasse || currentSlotData.klasse || "",
-        halle: currentSlotData.halle || "",
+        halle: halle,
         material: "",
         kommentar: currentSlotData.kommentar || "",
         details: "",
@@ -8739,8 +8815,8 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
     };
 
     if (typeof window.prozessiereAktion === 'function') {
-        window.prozessiereAktion(payload, (data) => {
-            onCompleteVisuals(data);
+        window.prozessiereAktion(payload, async (data) => {
+            await onCompleteVisuals(data);
         });
     } else {
         console.warn("⚠️ prozessiereAktion nicht gefunden, führe Direkt-Fallback aus.");
@@ -8767,7 +8843,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
                 if (insertError) throw insertError;
             }
 
-            onCompleteVisuals(payload);
+            await onCompleteVisuals(payload);
             if (typeof syncPlan === 'function') syncPlan();
 
         } catch (e) {
@@ -8797,25 +8873,38 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
     const slotData = (window.lastPlanData && slot) ? window.lastPlanData[slot] : {};
     const detail = slotData.details || slotData.materialDetail || slotData.materialKommentar || rawDetailInput || "";
 
-    // Prüfung auf die neue Spalte "weitergabe", Fallback auf alten String
+    // Prüfungen für Weitergabe-Status
     const isAbzugeben = slotData.weitergabe === "ja" || String(detail).includes("[weitergabe:true]");
+    const isErledigt = slotData.weitergabe === "erledigt";
 
     const badge = document.createElement('div');
     badge.className = 'material-indicator';
     
-    let badgeHTML = '<span class="material-symbols-outlined" style="color: #ff9800; vertical-align: middle; position: relative; display: inline-block; margin-right: 0 !important;">shopping_cart</span>';
+    let badgeHTML = '';
 
-    if (isAbzugeben) {
-        badgeHTML += `
-            <style>
-                @keyframes subtlePulse {
-                    0% { transform: scale(1); opacity: 0.8; }
-                    50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 3px #ff9800; }
-                    100% { transform: scale(1); opacity: 0.8; }
-                }
-            </style>
-            <span class="material-indicator-pulse" style="position: absolute; top: -2px; right: -2px; width: 5px; height: 5px; background-color: #ff9800; border-radius: 50%; border: 1px solid #111; animation: subtlePulse 1.8s infinite ease-in-out; z-index: 2;"></span>
+    if (isErledigt) {
+        // --- ORanger Warenkorb, kleiner, zentriert im grünen Kreis ---
+        badgeHTML = `
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background-color: rgba(76, 175, 80, 0.15); border: 2px solid #4caf50; border-radius: 50%;" title="Material erfolgreich übernommen">
+                <span class="material-symbols-outlined" style="color: #ff9800; font-size: 13px; line-height: 1; margin-right: 0 !important;">shopping_cart</span>
+            </div>
         `;
+    } else {
+        // Standard-Warenkorb (ohne Kreis)
+        badgeHTML = '<span class="material-symbols-outlined" style="color: #ff9800; vertical-align: middle; position: relative; display: inline-block; margin-right: 0 !important;">shopping_cart</span>';
+
+        if (isAbzugeben) {
+            badgeHTML += `
+                <style>
+                    @keyframes subtlePulse {
+                        0% { transform: scale(1); opacity: 0.8; }
+                        50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 3px #ff9800; }
+                        100% { transform: scale(1); opacity: 0.8; }
+                    }
+                </style>
+                <span class="material-indicator-pulse" style="position: absolute; top: -2px; right: -2px; width: 5px; height: 5px; background-color: #ff9800; border-radius: 50%; border: 1px solid #111; animation: subtlePulse 1.8s infinite ease-in-out; z-index: 2;"></span>
+            `;
+        }
     }
 
     badge.innerHTML = badgeHTML;
@@ -8837,7 +8926,7 @@ function markBoxWithMaterialIcon(box, material, rawDetailInput) {
 }
 
 
-function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
+async function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
     const overlay = document.createElement('div');
     overlay.className = 'material-info-overlay';
     overlay.onclick = () => overlay.remove();
@@ -8876,7 +8965,23 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
         console.warn("Fehler bei der Besitzer-Prüfung:", err);
     }
 
+    // --- Prüfen, ob für eine fremde Box die Übernahme möglich ist ---
+    let canTakeOver = false;
+    if (!isMyBox && isAbzugeben && slotId) {
+        try {
+            const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
+            const angebotsHalle = slotData.halle || "";
+            
+            if (activeUser && angebotsHalle) {
+                canTakeOver = await pruefeObUebernahmeMoeglich(slotId, angebotsHalle, activeUser);
+            }
+        } catch (e) {
+            console.warn("Fehler bei der Übernahme-Berechtigung:", e);
+        }
+    }
+
     let actionButtonHtml = "";
+    
     if (isMyBox && slotId) {
         const buttonText = isAbzugeben ? 'Übergabe annullieren' : 'Übergabe anbieten';
         const buttonIcon = isAbzugeben ? 'block' : 'partner_exchange';
@@ -8886,6 +8991,15 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
              onmouseover="this.style.background='#e08600'" onmouseout="this.style.background='#ff9800'">
             <span class="material-symbols-outlined" style="position: relative; top: -1px; vertical-align: middle; font-size: 18px; margin-right: 0 !important;">${buttonIcon}</span> 
             <span id="popup-btn-text">${buttonText}</span>
+        </div>`;
+    } 
+    // --- Button für die Übernahme anzeigen, wenn berechtigt ---
+    else if (canTakeOver && slotId) {
+        actionButtonHtml = `
+        <div id="popup-takeover-btn" style="margin-top: 12px; padding: 12px; border-radius: 8px; text-align: center; cursor: pointer; font-size: 0.95rem; font-weight: bold; transition: all 0.2s; background: #4caf50; color: #fff; box-shadow: 0 2px 6px rgba(76,175,80,0.3);"
+             onmouseover="this.style.background='#43a047'" onmouseout="this.style.background='#4caf50'">
+            <span class="material-symbols-outlined" style="position: relative; top: -1px; vertical-align: middle; font-size: 18px; margin-right: 0 !important;">check_circle</span> 
+            <span>Übernahme annehmen</span>
         </div>`;
     }
 
@@ -8897,7 +9011,6 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
             <span style="font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                 Materialbuchung für <span style="color: #ff9800;">${klasse}</span>
             </span>
-
         </div>
         
         <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #444; text-align: left;">
@@ -8925,7 +9038,18 @@ function showMaterialDetailPopup(klasse, material, detail, slotId = null) {
         const actionBtn = overlay.querySelector('#popup-action-btn');
         if (actionBtn) {
             actionBtn.onclick = () => {
-                window.toggleMaterialAbgabe(slotId, !isAbzugeben);
+                window.utils?.toggleMaterialAbgabe ? window.utils.toggleMaterialAbgabe(slotId, !isAbzugeben) : window.toggleMaterialAbgabe(slotId, !isAbzugeben);
+            };
+        }
+    } 
+    // --- Klick-Event für Übernahme: Übergibt nun das Objekt mit explizit gesetzter Slot-Nummer ---
+    else if (canTakeOver && slotId) {
+        const takeOverBtn = overlay.querySelector('#popup-takeover-btn');
+        if (takeOverBtn) {
+            takeOverBtn.onclick = () => {
+                const datenMitSlot = { ...slotData, slot: slotId };
+                uebernahmeAnnehmenAusfuehren(datenMitSlot);
+                overlay.remove();
             };
         }
     }
@@ -9027,6 +9151,241 @@ window.toggleMaterialAbgabe = async function(slotId, activate) {
     }
 };
 
+
+
+
+// Hilfsfunktion: Findet heraus, zu welchem 5er-Block ein Slot gehört und gibt den nächsten 5er-Block zurück
+function ermittleNaechstenSlotBlock(aktuellerSlot) {
+    let aktuellerBlockNummer = Math.ceil(aktuellerSlot / 5);
+    let naechsterBlockStart = (aktuellerBlockNummer * 5) + 1;
+    let naechsterBlockEnde = naechsterBlockStart + 4;
+    
+    return { start: naechsterBlockStart, ende: naechsterBlockEnde };
+}
+
+// NEU: Gegenstück dazu, um den vorherigen 5er-Block sauber zu ermitteln
+function ermittleVorherigenSlotBlock(aktuellerSlot) {
+    let sNum = parseInt(aktuellerSlot, 10);
+    let aktuellerBlockNummer = Math.ceil(sNum / 5);
+    // Wenn wir im Block 2 sind (Slots 6-10), ist der vorige Block 1 (Slots 1-5)
+    let vorherigerBlockNummer = Math.max(1, aktuellerBlockNummer - 1);
+    let vorherigerBlockStart = ((vorherigerBlockNummer - 1) * 5) + 1;
+    let vorherigerBlockEnde = vorherigerBlockStart + 4;
+    
+    return { start: vorherigerBlockStart, ende: vorherigerBlockEnde };
+}
+
+// Die korrigierte Hauptprüfung beim Klick auf das Material-Icon
+async function pruefeObUebernahmeMoeglich(angebotsSlot, angebotsHalle, aktuellerUser) {
+    const naechsterBereich = ermittleNaechstenSlotBlock(angebotsSlot);
+    const datumInput = document.querySelector('input[type="date"]');
+    const aktuellesDatum = datumInput && datumInput.value ? datumInput.value : new Date().toISOString().split('T')[0];
+
+    try {
+        const response = await fetch(
+            `${SUPABASE_URL}/rest/v1/buchungen_db?datum=eq.${aktuellesDatum}&slot=gte.${naechsterBereich.start}&slot=lte.${naechsterBereich.ende}&verfasser=eq.${encodeURIComponent(aktuellerUser)}&halle=eq.${encodeURIComponent(angebotsHalle)}&select=*`, 
+            {
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            }
+        );
+        
+        const data = await response.json();
+        return Array.isArray(data) && data.length > 0;
+
+    } catch (err) {
+        console.error("Fehler bei der Überprüfung des nächsten Blocks:", err);
+        return false;
+    }
+}
+
+async function uebernahmeAnnehmenAusfuehren(angebotsSlotData) {
+    const rawSlot = angebotsSlotData.slot || angebotsSlotData.slotId || angebotsSlotData.slot_id || 0;
+    const slotNummer = parseInt(rawSlot, 10);
+
+    if (!slotNummer || isNaN(slotNummer)) {
+        console.error("Fehler: Konnte die Slot-Nummer des Angebots nicht ermitteln.");
+        return;
+    }
+
+    const naechsterBereich = ermittleNaechstenSlotBlock(slotNummer);
+    const datumInput = document.querySelector('input[type="date"]');
+    const aktuellesDatum = datumInput && datumInput.value ? datumInput.value : new Date().toISOString().split('T')[0];
+
+    const activeUser = typeof userKuerzel === 'string' ? userKuerzel : (typeof window.userKuerzel === 'string' ? window.userKuerzel : "");
+    const angebotsHalle = angebotsSlotData.halle || "";
+
+    if (!activeUser) {
+        console.error("Fehler: Aktueller Benutzer konnte nicht ermittelt werden.");
+        return;
+    }
+
+    try {
+        const kollegenQuery = await fetch(
+            `${SUPABASE_URL}/rest/v1/buchungen_db?datum=eq.${aktuellesDatum}&slot=eq.${slotNummer}&halle=eq.${encodeURIComponent(angebotsHalle)}&select=*`,
+            {
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            }
+        );
+        const kollegenErgebnis = await kollegenQuery.json();
+        const kollegenBuchung = (Array.isArray(kollegenErgebnis) && kollegenErgebnis.length > 0) ? kollegenErgebnis[0] : null;
+        const kollegenBuchungsId = kollegenBuchung ? kollegenBuchung.id : angebotsSlotData.id;
+        const anbieterKuerzel = kollegenBuchung ? kollegenBuchung.verfasser : "";
+
+        const searchResponse = await fetch(
+            `${SUPABASE_URL}/rest/v1/buchungen_db?datum=eq.${aktuellesDatum}&slot=gte.${naechsterBereich.start}&slot=lte.${naechsterBereich.ende}&verfasser=eq.${encodeURIComponent(activeUser)}&halle=eq.${encodeURIComponent(angebotsHalle)}&select=*`, 
+            {
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            }
+        );
+        
+        const meineBuchungen = await searchResponse.json();
+
+        if (!Array.isArray(meineBuchungen) || meineBuchungen.length === 0) {
+            console.warn(`Deine Buchung im Folgeslot (Slots ${naechsterBereich.start}-${naechsterBereich.ende}) in Halle "${angebotsHalle}" wurde nicht gefunden.`);
+            return;
+        }
+
+        const meineBuchungId = meineBuchungen[0].id;
+        const neuesMaterial = angebotsSlotData.material || "";
+        
+        const rawDetail = angebotsSlotData.details || angebotsSlotData.detail || angebotsSlotData.materialDetail || angebotsSlotData.materialKommentar || angebotsSlotData.kommentar || "";
+        const neueDetails = String(rawDetail).replace(/\s*\[weitergabe:(true|false)\]/g, "").trim();
+
+        const updateMeineBuchung = fetch(
+            `${SUPABASE_URL}/rest/v1/buchungen_db?id=eq.${meineBuchungId}`, 
+            {
+                method: 'PATCH',
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                    "Content-Type": "application/json",
+                    "Prefer": "return=minimal"
+                },
+                body: JSON.stringify({
+                    material: neuesMaterial,
+                    details: neueDetails
+                })
+            }
+        );
+
+        let updateKollege = Promise.resolve();
+        if (kollegenBuchungsId) {
+            updateKollege = fetch(
+                `${SUPABASE_URL}/rest/v1/buchungen_db?id=eq.${kollegenBuchungsId}`, 
+                {
+                    method: 'PATCH',
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
+                    },
+                    body: JSON.stringify({
+                        weitergabe: "erledigt"
+                    })
+                }
+            );
+        }
+
+        await Promise.all([updateMeineBuchung, updateKollege]);
+
+       // Automatische News an den Anbieter senden, falls ermittelbar
+        if (anbieterKuerzel && typeof window.saveNewsToDBFrontend === 'function') {
+            await window.saveNewsToDBFrontend({
+                typ: "deal", // Neuer eigener Typ für Material-Deals
+                titel: "Material-Übernahme",
+                text: `${activeUser.toLowerCase()} übernimmt dein angebotenes Material!`,
+                datum_event: aktuellesDatum, // Datum der Materialübernahme für unten links
+                slot: slotNummer,
+                empfaenger: [anbieterKuerzel],
+                verfasser: activeUser
+            });
+        }
+
+        document.querySelectorAll('.material-info-overlay').forEach(el => el.remove());
+
+        if (window.lastPlanData && window.lastPlanData[slotNummer]) {
+            window.lastPlanData[slotNummer].weitergabe = "erledigt";
+            const box = document.querySelector(`[data-slot="${slotNummer}"]`);
+            if (box) {
+                markBoxWithMaterialIcon(box, window.lastPlanData[slotNummer].material, window.lastPlanData[slotNummer].details);
+            }
+        }
+
+    } catch (err) {
+        console.error("Fehler bei der Materialübernahme:", err);
+    }
+}
+
+
+    
+async function pruefeUndRueckgaengigMachen(slotNummer, halle, neuerMaterialWert) {
+    if (!neuerMaterialWert || neuerMaterialWert.trim() === "") {
+        const datumInput = document.querySelector('input[type="date"]');
+        const aktuellesDatum = datumInput && datumInput.value ? datumInput.value : new Date().toISOString().split('T')[0];
+        
+        const vorherigerBereich = ermittleVorherigenSlotBlock(slotNummer);
+
+        if (!vorherigerBereich) return;
+
+        try {
+            const response = await fetch(
+                `${SUPABASE_URL}/rest/v1/buchungen_db?datum=eq.${aktuellesDatum}&slot=gte.${vorherigerBereich.start}&slot=lte.${vorherigerBereich.ende}&halle=eq.${encodeURIComponent(halle)}&weitergabe=eq.erledigt&select=*`,
+                {
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                    }
+                }
+            );
+
+            const erledigteBuchungen = await response.json();
+
+            if (Array.isArray(erledigteBuchungen) && erledigteBuchungen.length > 0) {
+                const kollegenBuchung = erledigteBuchungen[0];
+
+                await fetch(
+                    `${SUPABASE_URL}/rest/v1/buchungen_db?id=eq.${kollegenBuchung.id}`,
+                    {
+                        method: 'PATCH',
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                            "Content-Type": "application/json",
+                            "Prefer": "return=minimal"
+                        },
+                        body: JSON.stringify({
+                            weitergabe: "ja"
+                        })
+                    }
+                );
+
+                const kollegenSlotNummer = kollegenBuchung.slot;
+                if (window.lastPlanData && window.lastPlanData[kollegenSlotNummer]) {
+                    window.lastPlanData[kollegenSlotNummer].weitergabe = "ja";
+                    const kollegenBox = document.querySelector(`[data-slot="${kollegenSlotNummer}"]`);
+                    if (kollegenBox) {
+                        markBoxWithMaterialIcon(kollegenBox, window.lastPlanData[kollegenSlotNummer].material, window.lastPlanData[kollegenSlotNummer].details);
+                    }
+                }
+                
+                console.log("Übernahme wurde rückgängig gemacht: Kollege steht wieder auf Weitergabe 'ja'.");
+            }
+        } catch (err) {
+            console.error("Fehler beim Prüfen des Rückgängig-Machens:", err);
+        }
+    }
+}
+    
 
     /* ============================================================
    10.4. NOTIZ ERFASSEN
