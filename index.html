@@ -8636,9 +8636,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
     // Übergabe an prozessiereAktion (regelt Doppellektionen, Queue und Events)
     if (typeof window.prozessiereAktion === 'function') {
         window.prozessiereAktion(payload, (data) => {
-            if (typeof window.triggerNewsWrapper === 'function') {
-                window.triggerNewsWrapper("Material", slotNum, klasse, safeUserKuerzel);
-            }
+            // triggerNewsWrapper hier entfernt, damit reine Materialänderungen keine News auslösen
             onCompleteVisuals(data);
         });
     } else {
@@ -8666,10 +8664,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
                 if (insertError) throw insertError;
             }
 
-            if (typeof window.triggerNewsWrapper === 'function') {
-                await window.triggerNewsWrapper("Material", slotNum, klasse, safeUserKuerzel);
-            }
-
+            // triggerNewsWrapper im Fallback ebenfalls entfernt
             onCompleteVisuals(payload);
             if (typeof syncPlan === 'function') syncPlan();
 
