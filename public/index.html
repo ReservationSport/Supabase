@@ -269,13 +269,13 @@
             for (let i = 0; i < blockStartZeiten.length; i++) {
                 const b = blockStartZeiten[i];
                 const startMinuten = b.startStunde * 60 + b.startMinute;
-                const sichtbarAbMinuten = startMinuten - 10;
+                const sichtbarAbMinuten = startMinuten - 15; // Geändert von 10 auf 15 Minuten vor Start
 
                 let gueltigBisMinuten = startMinuten + 50; 
                 if (i < blockStartZeiten.length - 1) {
                     const naechsterB = blockStartZeiten[i + 1];
                     const naechsterStartMinuten = naechsterB.startStunde * 60 + naechsterB.startMinute;
-                    gueltigBisMinuten = naechsterStartMinuten - 10;
+                    gueltigBisMinuten = naechsterStartMinuten - 15; // Geändert von 10 auf 15 Minuten vor dem nächsten Start
                 }
 
                 if (currentMinutesToday >= sichtbarAbMinuten && currentMinutesToday < gueltigBisMinuten) {
@@ -287,7 +287,7 @@
             if (aktivBlockIndex === -1) {
                 div.innerHTML = `
                     <div class="block-titel">Keine Hallenbelegung aktiv</div>
-                    <div class="hinweis">Die Hallenbelegung ist erst 10 Minuten vor Lektionsbeginn einsehbar.</div>
+                    <div class="hinweis">Die Hallenbelegung ist erst 15 Minuten vor Lektionsbeginn einsehbar.</div>
                 `;
                 return;
             }
