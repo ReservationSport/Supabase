@@ -32,10 +32,8 @@
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
 
-   
 </head>
-
-
+    
     
 <style>
 
@@ -375,6 +373,24 @@ body {
     z-index: 100;
 }
 
+
+/* STV-BOXEN: Gelbe Umrandung für Stellvertretungen */
+.box.is-stv { 
+    border: 3px solid #f1c40f !important; 
+    box-shadow: 0 0 6px rgba(241, 196, 15, 0.6);
+    z-index: 10; 
+}
+        
+.box.is-stv:hover {
+    background-color: rgba(241, 196, 15, 0.2) !important;
+    box-shadow: inset 0 0 15px rgba(241, 196, 15, 0.4), 0 0 20px rgba(241, 196, 15, 0.3);
+    transition: transform 0.2s ease;
+    transform: scale(1.03);
+    z-index: 100;
+}
+
+
+    
 /* FREMDE BOXEN: Pointer-Events sind jetzt 'auto', 
    damit sie als Container existieren, aber der Klick-Schutz kommt aus dem JS. */
 .box.not-mine {
@@ -4149,6 +4165,9 @@ input.stellvertretung-input {
                 <div class="menu-item" onclick="startAddMode()">
                     <span class="material-symbols-outlined">add_circle</span> Lektion hinzufügen
                 </div>
+                <div class="menu-item" onclick="oeffneVertretungsDialog()">
+                    <span class="material-symbols-outlined">swap_horiz</span> Vertretung eintragen
+                </div>
                 <div class="menu-item" onclick="openBanner()">
                     <span class="material-symbols-outlined">campaign</span> Bannermeldungen
                 </div>
@@ -4227,8 +4246,6 @@ input.stellvertretung-input {
     </div>
 
     <hr class="menu-divider">
-
- <hr class="menu-divider">
 
     <!-- 🚪 Kategorie 5: Abmelden -->
     <div class="menu-category">
@@ -5848,7 +5865,7 @@ if (planContainer) {
         }
     });
 
-    // 2. KLICK: Paste oder Editieren
+    // 2. KLICK: Paste oder Editieren (inkl. STV-Boxen)
     planContainer.addEventListener('click', function(e) {
         if (e.target.closest('.box-notiz-icon')) return;
 
@@ -5857,16 +5874,18 @@ if (planContainer) {
 
         const slot = box.getAttribute('data-slot');
         const isMine = box.classList.contains('is-mine');
+        const isStv = box.classList.contains('is-stv');
+        const canEdit = isMine || isStv;
 
         if (window.copiedSlotData) {
             // --- PASTE-MODUS ---
-            if (isMine && typeof performPaste === "function") {
+            if (canEdit && typeof performPaste === "function") {
                 e.stopPropagation();
                 performPaste(slot, window.copiedSlotData);
             }
         } else {
             // --- NORMALER MODUS ---
-            if (isMine) {
+            if (canEdit) {
                 if (typeof openEditor === "function") {
                     const klasse = box.querySelector('.klasse-label')?.innerText || "";
                     const zeitStr = box.getAttribute('data-time') || "";
@@ -6374,7 +6393,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                         if (row.details) plan[slot].details = row.details.toString();
                         if (row.typ) plan[slot].typ = row.typ.toString();
                         if (row.verfasser) plan[slot].verfasser = row.verfasser.toString();
-                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString(); // <--- HIER ERGÄNZT
+                        if (row.weitergabe) plan[slot].weitergabe = row.weitergabe.toString();
                     }
                 }
             });
@@ -6388,7 +6407,7 @@ window.loadPlan = async function(isExplicitUserAction = false) {
 
         let html = `<div class="box header-row" style="grid-column: span 6;"><span>${aktuellerWochentag}, ${d}.${m}.${y}</span></div>`;
 
-        zeiten.forEach((zeitStr, rowIndex) => {
+        zeiten.dates ? zeiten : zeiten.forEach((zeitStr, rowIndex) => {
             if (rowIndex + 1 === 4 || rowIndex + 1 === 10) html += `<div class="divider-thin" style="grid-column: span 6;"></div>`;
             if (rowIndex + 1 === 7) html += `<div class="divider-thick" style="grid-column: span 6;"></div>`;
             html += `<div class="box zeit-box">${zeitStr}</div>`;
@@ -6410,7 +6429,17 @@ window.loadPlan = async function(isExplicitUserAction = false) {
 
                 const isAusfall = (halle === "Ausfall");
                 const isKlasseLeer = (klasse.trim() === "");
-                const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
+                
+                // Erfasser aus eckigen Klammern extrahieren (z.B. "[bupa]")
+                let bracketUser = "";
+                const bracketMatch = verfasser.match(/\[(.*?)\]/);
+                if (bracketMatch) {
+                    bracketUser = bracketMatch[1].trim().toLowerCase();
+                }
+
+                // Text für die Anzeige bereinigen (eckige Klammern und deren Inhalt entfernen)
+                const displayVerfasser = verfasser.replace(/\s*\[.*?\]/g, '').trim();
+                const lehrer = (displayVerfasser !== "") ? displayVerfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
                 
                 const isMyClass = !isKlasseLeer && window.myClasses.some(c => 
                     String(c).trim().toLowerCase() === klasse.trim().toLowerCase()
@@ -6425,25 +6454,38 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                 }
 
                 const safeUserKuerzel = String(rawUserKuerzel).trim().toLowerCase();
-                const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+                const istMeinVerfasser = (displayVerfasser.trim().toLowerCase() === safeUserKuerzel);
                 const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
-                const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
-                
+
+                // STV-Erkennung (z.B. "habe (für bilu)")
+                const hasStvPattern = displayVerfasser.includes('(für ');
+                let stvUebernehmend = "";
+                if (hasStvPattern) {
+                    const parts = displayVerfasser.split(/\s*\(für\s+/i);
+                    stvUebernehmend = parts[0].trim().toLowerCase();
+                }
+                const isStvBox = hasStvPattern;
+                const istMeinStvVerfasser = (isStvBox && (stvUebernehmend === safeUserKuerzel || bracketUser === safeUserKuerzel));
+
+                const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer || istMeinStvVerfasser || bracketUser === safeUserKuerzel));
                 const canEdit = isMyClass || isMyBooking;
+                
                 const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
                 const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
                 
-                const classList = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
+                // Klassenbestimmung: STV-Boxen kriegen .is-stv, eigene normale Boxen .is-mine, sonst .not-mine
+                const borderClass = isStvBox ? "is-stv" : (canEdit ? "is-mine" : "not-mine");
+                const classList = ["box", isKlasseLeer ? "empty" : "", borderClass, isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
                 
                 html += `
                 <div class="${classList}" data-slot="${absoluteSlot}" data-time="${zeitStr}" 
-                     style="background-color: ${bgFarbe}; cursor: ${canEdit ? 'pointer' : 'default'}; position: relative;">
-                     <div class="klasse-label">${klasse}</div>
-                     <div class="lehrer-info">${lehrer}</div>
-                     <div class="halle-label">${halle}</div>
-                     <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
+                       style="background-color: ${bgFarbe}; cursor: ${canEdit ? 'pointer' : 'default'}; position: relative;">
+                       <div class="klasse-label">${klasse}</div>
+                       <div class="lehrer-info">${lehrer}</div>
+                       <div class="halle-label">${halle}</div>
+                       <div class="lock-icon-container" style="position:absolute; right:-3px; bottom:5px; display:flex; align-items:center;">
                         ${typ === 'fix' ? '<span class="material-symbols-outlined" style="font-size:14px; color:#ff9800;">lock</span>' : ''}
-                     </div>
+                       </div>
                 </div>`;
             }
         });
@@ -6475,32 +6517,46 @@ window.loadPlan = async function(isExplicitUserAction = false) {
     }
 };
     
-
+    
 /* ============================================================
-   ZENTRALE KLICK-STEUERUNG
+   ZENTRALE KLICK-STEUERUNG (MIT KONSOLE-PRÜFUNG)
    ============================================================ */
 window.setBoxClick = function(box, klasse, slot, canEdit) {
     if (!box) return;
+    
+    // Prüfen, ob die Box beim Binden bereits als STV erkannt wurde
+    const initialStv = box.classList.contains('is-stv');
+    console.log(`[setBoxClick BIND] Slot: ${slot} | Klasse: ${klasse} | canEdit: ${canEdit} | is-stv: ${initialStv}`);
+
     const handler = function(e) {
+        console.log(`[setBoxClick CLICK] Geklickter Slot: ${slot}`);
         if (window.moveMode) {
+            console.log("-> Abbruch: moveMode aktiv");
             e.stopPropagation();
             return;
         }
-        if (!canEdit) {
+        
+        const targetBox = e.currentTarget || box;
+        const isStv = targetBox.classList.contains('is-stv');
+        console.log(`-> Live-Check: canEdit=${canEdit}, isStv=${isStv}`);
+
+        if (!canEdit && !isStv) {
+            console.log("-> Abbruch: Weder canEdit noch isStv true!");
             e.stopPropagation(); 
             return;
         }
+        
+        console.log("-> OK, starte openEditor");
         if (typeof openEditor === "function") {
-            openEditor(box, null, slot, klasse);
+            openEditor(targetBox, null, slot, klasse);
+        } else {
+            console.error("-> FEHLER: openEditor ist keine Funktion!");
         }
     };
 
-    box.replaceWith(box.cloneNode(true)); 
-    // Nach dem Klonen müssen wir das Element frisch greifen, falls nötig, aber box.onclick funktioniert direkt auf dem geklonten Element:
-    // Da replaceWith das Element im DOM ersetzt, referenzieren wir es über eine Neuzuweisung am übergebenen Element nicht direkt, 
-    // aber standardmäßig wird box.onclick gesetzt:
-    // (Hinweis: Da replaceWith das Objekt aus dem DOM wirft, setzen wir den Handler am besten direkt vor dem Ersetzen oder nutzen Event Delegation. 
-    // Zur Sicherheit verknüpfen wir es sauber:)
+    const newBox = box.cloneNode(true);
+    newBox.addEventListener('click', handler);
+    box.replaceWith(newBox);
 };
 
 /* ============================================================
@@ -6630,7 +6686,7 @@ window.syncPlan = async function() {
                         if (row.details) newPlan[slot].details = row.details.toString();
                         if (row.typ) newPlan[slot].typ = row.typ.toString();
                         if (row.verfasser) newPlan[slot].verfasser = row.verfasser.toString();
-                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString(); // <--- HIER ERGÄNZT
+                        if (row.weitergabe) newPlan[slot].weitergabe = row.weitergabe.toString();
                     }
                 }
             });
@@ -6670,17 +6726,40 @@ window.syncPlan = async function() {
             const isAusfall = (halle === "Ausfall");
             const isKlasseLeer = (klasse.trim() === "");
             
-            const lehrer = (verfasser !== "") ? verfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
-            const istMeinVerfasser = (verfasser.trim().toLowerCase() === safeUserKuerzel);
+            // Erfasser aus eckigen Klammern extrahieren (z.B. "[bupa]")
+            let bracketUser = "";
+            const bracketMatch = verfasser.match(/\[(.*?)\]/);
+            if (bracketMatch) {
+                bracketUser = bracketMatch[1].trim().toLowerCase();
+            }
+
+            // Text für die Anzeige bereinigen (eckige Klammern und deren Inhalt entfernen)
+            const displayVerfasser = verfasser.replace(/\s*\[.*?\]/g, '').trim();
+            const lehrer = (displayVerfasser !== "") ? displayVerfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
+            
+            const istMeinVerfasser = (displayVerfasser.trim().toLowerCase() === safeUserKuerzel);
             const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
-            const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer));
+
+            // STV-Erkennung (z.B. "bupa (für bilu)")
+            const hasStvPattern = displayVerfasser.includes('(für ');
+            let stvUebernehmend = "";
+            if (hasStvPattern) {
+                const parts = displayVerfasser.split(/\s*\(für\s+/i);
+                stvUebernehmend = parts[0].trim().toLowerCase();
+            }
+            const isStvBox = hasStvPattern;
+            const istMeinStvVerfasser = (isStvBox && (stvUebernehmend === safeUserKuerzel || bracketUser === safeUserKuerzel));
+
+            const isMyBooking = (safeUserKuerzel !== "" && (istMeinVerfasser || istMeinLehrer || istMeinStvVerfasser || bracketUser === safeUserKuerzel));
             const isMyClass = !isKlasseLeer && myClasses.some(c => String(c).trim().toLowerCase() === klasse.trim().toLowerCase());
             const canEdit = isMyClass || isMyBooking;
             
             const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
             const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
 
-            box.className = ["box", isKlasseLeer ? "empty" : "", canEdit ? "is-mine" : "not-mine", isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
+            // STV-Klassenanwendung analog zu loadPlan
+            const borderClass = isStvBox ? "is-stv" : (canEdit ? "is-mine" : "not-mine");
+            box.className = ["box", isKlasseLeer ? "empty" : "", borderClass, isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
             box.style.backgroundColor = bgFarbe;
             box.style.cursor = canEdit ? 'pointer' : 'default';
 
@@ -7515,13 +7594,17 @@ window.closeNews = () => {
    ============================================================ */
 
 window.openEditor = function(el, time, slot, klasse) {
-    // --- NEUER TÜRSTEHER ---
-    // Wenn der Verschiebemodus aktiv ist, darf sich der Editor für NICHTS öffnen!
     if (window.moveMode) {
         console.log("Verschiebemodus aktiv: Editor blockiert.");
         return; 
     }
-    // -----------------------
+
+    // Sichere Klassen-Extraktion falls via setBoxClick leer übergeben
+    if (!klasse && el) {
+        const kEl = el.querySelector('.klasse-label');
+        if (kEl) klasse = kEl.innerText.trim();
+    }
+    klasse = klasse || "Auswahl";
 
     closeEditor();
 
@@ -7907,7 +7990,7 @@ window.saveImmediately = async function(payload, options = {}) {
         const dp = document.getElementById('datePicker');
         const dateVal = payload.datum || (dp ? dp.value : new Date().toISOString().split('T')[0]);
         const slotNum = parseInt(payload.slot, 10);
-        const aktuellesKuerzel = (typeof userKuerzel !== 'undefined' ? userKuerzel : (payload.kuerzel || payload.verfasser || "")).toString().trim();
+        const aktuellesKuerzel = (payload.verfasser || (typeof userKuerzel !== 'undefined' ? userKuerzel : "") || payload.kuerzel || "").toString().trim();
 
         const bookingData = {
             datum: dateVal,
@@ -8205,6 +8288,10 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
     }
     const safeUserKuerzel = String(rawUserKuerzel).trim();
 
+    // 🛡️ STV-PRÜFUNG: Bestehenden Verfasser beibehalten, falls (für ... vorhanden
+    const _oldVerf = currentSlotData.verfasser || "";
+    const finalVerfasser = _oldVerf.toLowerCase().includes('(für ') ? _oldVerf : safeUserKuerzel;
+
     // Visueller Callback (wird von prozessiereAktion aufgerufen)
     const onCompleteVisuals = (payloadData) => {
         if (btn) {
@@ -8220,7 +8307,7 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
         if (window.lastPlanData && window.lastPlanData[currentSlotId]) {
             window.lastPlanData[currentSlotId].halle = zugewieseneHalle;
             window.lastPlanData[currentSlotId].typ = zugewiesenerTyp || "";
-            if (safeUserKuerzel) window.lastPlanData[currentSlotId].verfasser = safeUserKuerzel;
+            if (payloadData.verfasser) window.lastPlanData[currentSlotId].verfasser = payloadData.verfasser;
         }
 
         const box = document.querySelector(`[data-slot="${currentSlotId}"]`);
@@ -8270,7 +8357,7 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
         details: currentSlotData.details || currentSlotData.materialDetail || "",
         timestamp: now,
         typ: typ || "",
-        verfasser: safeUserKuerzel
+        verfasser: finalVerfasser
     };
 
     // Übergabe an prozessiereAktion (Regelt Doppellektion, Konfliktprüfung & Queue)
@@ -8283,7 +8370,6 @@ window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, 
         }
     }
 };
-
 
     
 /* ============================================================
@@ -8576,6 +8662,10 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
     }
     const safeUserKuerzel = String(rawUserKuerzel).trim() || currentSlotData.verfasser || "";
 
+    // 🛡️ STV-PRÜFUNG: Bestehenden Verfasser beibehalten, falls (für ... vorhanden
+    const _oldVerf = currentSlotData.verfasser || "";
+    const finalVerfasser = _oldVerf.toLowerCase().includes('(für ') ? _oldVerf : safeUserKuerzel;
+
     // --- KORREKT: Aufruf mit slotNum, halle und dem neuen Materialwert (mat) ---
     try {
         if (typeof window.pruefeUndRueckgaengigMachen === 'function') {
@@ -8606,7 +8696,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
                 material: materialVal,
                 details: detailVal,
                 weitergabe: null,
-                verfasser: safeUserKuerzel
+                verfasser: payloadData.verfasser || finalVerfasser
             };
         }
 
@@ -8630,7 +8720,7 @@ async function saveMaterialSelection(mat, detail, time, slot, klasse, btn, userK
         weitergabe: null, 
         timestamp: now,
         typ: currentSlotData.typ || "buchung",
-        verfasser: safeUserKuerzel
+        verfasser: finalVerfasser
     };
 
     // Übergabe an prozessiereAktion (regelt Doppellektionen, Queue und Events)
@@ -8702,6 +8792,10 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
         rawUserKuerzel = el ? (el.value || "") : "";
     }
     const safeUserKuerzel = String(rawUserKuerzel).trim() || "lp";
+
+    // 🛡️ STV-PRÜFUNG: Bestehenden Verfasser beibehalten, falls (für ... vorhanden
+    const _oldVerf = currentSlotData.verfasser || "";
+    const finalVerfasser = _oldVerf.toLowerCase().includes('(für ') ? _oldVerf : safeUserKuerzel;
 
     // 1. Partner (Anbieter) korrekt ermitteln (Status-Worte wie "erledigt" ignorieren!)
     let anbieterOderUebernehmer = "";
@@ -8781,7 +8875,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
                 materialDetail: "",
                 details: "",
                 weitergabe: null,
-                verfasser: safeUserKuerzel
+                verfasser: payloadData.verfasser || finalVerfasser
             };
         }
         
@@ -8806,7 +8900,7 @@ async function applyMaterialDelete(time, slot, klasse, btn, userKuerzel) {
         weitergabe: null,
         timestamp: now,
         typ: currentSlotData.typ || "buchung",
-        verfasser: safeUserKuerzel
+        verfasser: finalVerfasser
     };
 
     if (typeof window.prozessiereAktion === 'function') {
@@ -13647,6 +13741,858 @@ window.cancelAddMode = function() {
 };
     
 
+
+
+
+/* ==================================================================== */
+/* 11.11 Stellvertretungs-Übersicht (Gesteuert über das Menü, blockweise)*/
+/* ==================================================================== */
+
+/**
+ * Öffnet beim Klick im Menü das Grundgerüst der Stellvertretungs-Übersicht.
+ */
+async function oeffneVertretungsDialog() {
+    const existingModal = document.getElementById('vertretungs-uebersicht-modal');
+    if (existingModal) existingModal.remove();
+
+    const modalHtml = `
+        <div id="vertretungs-uebersicht-modal" class="modal-overlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 20000; justify-content: center; align-items: center;">
+            <div class="modal-content" style="background: rgba(30, 30, 30, 0.95); padding: 30px; border-radius: 12px; width: 90%; max-width: 680px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); color: #fff; text-align: left; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.1);">
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="color: #fff; margin: 0 0 5px 0; font-size: 20px;">Vertretungs-Übersicht</h2>
+                        <p style="font-size: 0.85em; color: #aaa; margin: 0;">Aktuelle Stellvertretungen.</p>
+                    </div>
+                    <button type="button" onclick="oeffneNeuenStvErfassungsDialog()" style="padding: 8px 14px; font-size: 13px; display: flex; align-items: center; gap: 5px; background: #e67e22; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                        <span class="material-symbols-outlined" style="font-size: 18px;">add</span> Vertretung eintragen
+                    </button>
+                </div>
+
+                <div id="stv-uebersicht-liste" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; padding-right: 4px;">
+                    <div style="color: #aaa; text-align: center; padding: 20px;">Lade Vertretungen...</div>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end;">
+                    <button type="button" onclick="document.getElementById('vertretungs-uebersicht-modal').remove();" style="background: #444; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Schliessen</button>
+                </div>
+
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Liste direkt befüllen lassen
+    await renderStvEintraege();
+}
+
+/**
+ * Lädt die Daten aus Supabase, filtert heute & Zukunft, bündelt sie und rendert die Liste.
+ */
+async function renderStvEintraege() {
+    const listeContainer = document.getElementById('stv-uebersicht-liste');
+    if (!listeContainer) return;
+
+    listeContainer.innerHTML = '<div style="color: #aaa; text-align: center; padding: 20px;">Lade Vertretungen...</div>';
+
+    // Array für die genauen Unterrichtszeiten basierend auf dem Slot
+    const zeitenArray = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
+
+    try {
+        const { data: buchungenData, error } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('*')
+            .order('datum', { ascending: true })
+            .order('slot', { ascending: true });
+
+        if (error) throw error;
+
+        // Lokales heutiges Datum im Format YYYY-MM-DD ermitteln
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const heuteStr = `${yyyy}-${mm}-${dd}`;
+
+        const stvEintraege = buchungenData ? buchungenData.filter(row => {
+            const hasVerfasser = row.verfasser && row.verfasser.includes('(für ');
+            const isFutureOrToday = row.datum >= heuteStr;
+            return hasVerfasser && isFutureOrToday;
+        }) : [];
+
+        if (stvEintraege.length === 0) {
+            listeContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 30px; background: #252525; border-radius: 6px;">Keine aktiven (heutigen oder zukünftigen) Stellvertretungen gefunden.</div>';
+            return;
+        }
+
+        const grouped = {};
+        stvEintraege.forEach(item => {
+            const key = `${item.datum}_${item.verfasser}`;
+            if (!grouped[key]) {
+                // Erfasser aus den eckigen Klammern extrahieren (z. B. "[bupa]" -> "bupa")
+                let erfasserExtrahiert = 'Unbekannt';
+                if (item.verfasser) {
+                    const matchUser = item.verfasser.match(/\[(.*?)\]/);
+                    if (matchUser && matchUser[1]) {
+                        erfasserExtrahiert = matchUser[1].trim();
+                    } else {
+                        const parts = item.verfasser.split('(für');
+                        if (parts[0]) {
+                            erfasserExtrahiert = parts[0].trim();
+                        }
+                    }
+                }
+
+                grouped[key] = {
+                    datum: item.datum,
+                    verfasserRaw: item.verfasser,
+                    erfasserMeldung: erfasserExtrahiert,
+                    slots: [],
+                    zeiten: [],
+                    klassen: [],
+                    ids: []
+                };
+            }
+            grouped[key].slots.push(item.slot);
+            
+            // Nur reine Uhrzeit (ohne "X. Lektion") ermitteln
+            let unterrichtsZeit = item.zeit || item.time || item.uhrzeit;
+            if (!unterrichtsZeit && item.slot) {
+                const slotNum = parseInt(item.slot);
+                if (!isNaN(slotNum)) {
+                    const lektionIndex = Math.floor((slotNum - 1) / 5);
+                    const zeitStr = zeitenArray[lektionIndex];
+                    if (zeitStr) {
+                        unterrichtsZeit = zeitStr; // Nur die Zeit, z.B. "10:00 - 10:45"
+                    }
+                }
+            }
+            if (!unterrichtsZeit) {
+                unterrichtsZeit = (typeof slotZeiten !== 'undefined' && slotZeiten[item.slot]) || 
+                    (typeof getSlotZeit === 'function' && getSlotZeit(item.slot)) || 
+                    `Slot ${item.slot}`;
+            }
+            
+            grouped[key].zeiten.push(unterrichtsZeit);
+            grouped[key].klassen.push(item.klasse || 'Keine Angabe');
+            grouped[key].ids.push(item.id);
+        });
+
+        const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+        let html = '';
+        Object.keys(grouped).forEach((key, idx) => {
+            const group = grouped[key];
+            const [jahr, monat, tag] = group.datum.split('-');
+            const dateObj = new Date(group.datum);
+            const wochentagName = isNaN(dateObj.getDay()) ? 'Datum' : wochentage[dateObj.getDay()];
+            const datumFormatted = `${wochentagName}, ${tag}.${monat}.${jahr}`;
+            const anzahlLektionen = group.slots.length;
+            const packId = `stv-pack-details-${idx}`;
+            const idsJson = JSON.stringify(group.ids).replace(/'/g, "&apos;");
+
+            // Eckige Klammern aus dem angezeigten Verfasser-String entfernen
+            const verfasserAnzeige = group.verfasserRaw ? group.verfasserRaw.replace(/\[.*?\]/g, '').trim() : '';
+
+            // Detailzeilen untereinander aufbauen
+            let detailsListHtml = '';
+            for (let i = 0; i < group.slots.length; i++) {
+                detailsListHtml += `
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <span style="color: #e67e22; font-weight: 500;">${group.zeiten[i]}</span>
+                        <span style="color: #fff;">${group.klassen[i]}</span>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div style="background: #2a2a2a; border: 1px solid #444; border-left: 4px solid #e67e22; border-radius: 6px; overflow: hidden;">
+                    <div style="padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleStvPaketDetails('${packId}')">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="font-weight: 600; font-size: 14px; color: #fff;">
+                                ${datumFormatted} &mdash; ${verfasserAnzeige} &mdash; <span style="color: #e67e22;">${anzahlLektionen} Lektion${anzahlLektionen > 1 ? 'en' : ''}</span>
+                            </div>
+                            <div style="font-size: 12px; color: #aaa;">
+                                Eingetragen von: <span style="color: #e67e22; font-weight: 500;">${group.erfasserMeldung}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;" onclick="event.stopPropagation();">
+                            <button type="button" onclick='loescheStvPaket(${idsJson})' style="background: none; border: none; color: #e74c3c; cursor: pointer; display: flex; align-items: center; padding: 4px;" title="Ganzes Vertretungspaket löschen">
+                                <span class="material-symbols-outlined" style="font-size: 20px;">delete</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="${packId}" style="display: none; padding: 10px 15px; background: #202020; border-top: 1px solid #333; font-size: 13px; color: #ccc;">
+                        <div style="font-weight: 600; margin-bottom: 6px; color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Details:</div>
+                        ${detailsListHtml}
+                    </div>
+                </div>
+            `;
+        });
+
+        listeContainer.innerHTML = html;
+
+    } catch (err) {
+        console.error("Fehler beim Laden der Stellvertretungsübersicht:", err);
+        listeContainer.innerHTML = '<div style="color: #e74c3c; text-align: center; padding: 20px;">Fehler beim Laden der Daten.</div>';
+    }
+}
+
+/**
+ * Klappt die Details eines gebündelten Stellvertretungspakets auf/zu.
+ */
+function toggleStvPaketDetails(detailId) {
+    const el = document.getElementById(detailId);
+    if (el) {
+        el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+    }
+}
+
+/**
+ * Löscht ein gesamtes gebündeltes Stellvertretungspaket und aktualisiert die Ansicht dynamisch.
+ */
+async function loescheStvPaket(idsArray) {
+    if (!Array.isArray(idsArray) || idsArray.length === 0) return;
+    if (!confirm(`Möchtest du dieses Vertretungspaket (${idsArray.length} Lektion(en)) wirklich aufheben/löschen?`)) return;
+
+    try {
+        for (const id of idsArray) {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?id=eq.${id}`, {
+                method: 'DELETE',
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            });
+            if (!response.ok) {
+                throw new Error(`Fehler beim Löschen von ID ${id}`);
+            }
+        }
+
+        // Hauptanzeige & Übersicht direkt neu rendern
+        if (typeof updateDisplay === 'function') updateDisplay();
+        await renderStvEintraege();
+
+    } catch (err) {
+        console.error("Fehler beim Löschen des Stellvertretungspakets:", err);
+        alert("Fehler beim Löschen: " + (err.message || err));
+    }
+}
+
+
+/* ==================================================================== */
+/* 11.11.1 Erfassungsdialog vorbereiten & Kalender-Logik                */
+/* ==================================================================== */
+
+let stvEintragDatum = new Date().toISOString().split('T')[0]; // Standard: Heute (YYYY-MM-DD)
+let stvErfassungsCalDate = new Date();
+let fetchedErfassungsLektionen = [];
+let erfassungsAllDay = false;
+
+/**
+ * Öffnet den Erfassungsdialog, um eine neue Stellvertretung anzulegen.
+ */
+async function oeffneNeuenStvErfassungsDialog() {
+    const existingModal = document.getElementById('vertretungs-erfassungs-modal');
+    if (existingModal) existingModal.remove();
+
+    const existingCal = document.getElementById('stv-erfassungs-calendar-modal');
+    if (existingCal) existingCal.remove();
+
+    const modalHtml = `
+        <div id="vertretungs-erfassungs-modal" class="modal-overlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 20005; justify-content: center; align-items: center;">
+            <div class="modal-content" style="background: rgba(30, 30, 30, 0.95); padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); color: #fff; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.1);">
+                
+                <h2 style="color: #fff; margin-top: 0; font-size: 20px; margin-bottom: 20px;">Stellvertretung erfassen</h2>
+                
+                <!-- SCHRITT 1: Auswahl der Personen und des Datums -->
+                <div id="stv-erfassungs-step-1">
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; font-size: 13px; color: #aaa; margin-bottom: 5px;">Ausfallende Lehrperson:</label>
+                        <select id="stv-ausfall-select" style="width: 100%; padding: 10px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: 14px;">
+                            <option value="">Bitte wählen...</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; font-size: 13px; color: #aaa; margin-bottom: 5px;">Übernehmende Lehrperson:</label>
+                        <select id="stv-uebernehmend-select" onchange="checkStvExternInput()" style="width: 100%; padding: 10px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: 14px;">
+                            <option value="">Bitte wählen...</option>
+                            <option value="__extern__">Extern / Andere...</option>
+                        </select>
+                    </div>
+
+                    <div id="stv-extern-container" style="margin-bottom: 15px; display: none;">
+                        <input type="text" id="stv-extern-input" placeholder="Name der externen Person..." style="width: 100%; padding: 10px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; box-sizing: border-box; font-size: 14px;">
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <label style="display: block; font-size: 13px; color: #aaa; margin-bottom: 5px;">Datum:</label>
+                        <div onclick="openStvErfassungsCalendar()" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #222; border: 1px solid #444; border-radius: 6px; cursor: pointer;">
+                            <span id="stv-erfassungs-date-text" style="font-size: 14px;">Heute</span>
+                            <span class="material-symbols-outlined" style="font-size: 18px; color: #aaa;">calendar_month</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" onclick="document.getElementById('vertretungs-erfassungs-modal').remove()" style="background: #444; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Abbrechen</button>
+                        <button type="button" onclick="ladeTagesLektionenFuerErfassung()" style="background: #e67e22; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">Weiter</button>
+                    </div>
+                </div>
+
+                <!-- SCHRITT 2: Lektionen auswählen -->
+                <div id="stv-erfassungs-step-2" style="display: none;">
+                    <p id="stv-erfassungs-step2-info" style="font-size: 13px; color: #aaa; margin-bottom: 15px;"></p>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <button type="button" id="btn-toggle-erfassungs-all" onclick="toggleAllErfassungsLessons()" style="background: transparent; color: #e67e22; border: 1px solid #e67e22; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; width: 100%;">Alle Lektionen markieren</button>
+                    </div>
+
+                    <div id="stv-erfassungs-tagesplan-container" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; padding-right: 4px;">
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between;">
+                        <button type="button" onclick="document.getElementById('stv-erfassungs-step-2').style.display='none'; document.getElementById('stv-erfassungs-step-1').style.display='block';" style="background: #444; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">Zurück</button>
+                        <button type="button" onclick="speichereNeueStellvertretung()" style="background: #27ae60; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">Speichern</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Kalender-Popup für die Datumsauswahl -->
+        <div id="stv-erfassungs-calendar-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 20010; justify-content: center; align-items: center;">
+            <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; width: 300px; border: 1px solid #444; color: #fff;">
+                <div id="stvcal-erfassungs-nav" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold;"></div>
+                <div id="stvcal-erfassungs-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 15px;"></div>
+                <div style="text-align: right;">
+                    <button type="button" onclick="closeStvErfassungsCalendar()" style="background: #444; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">Schliessen</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    if (typeof aktualisiereErfassungsDatumAnzeige === 'function') {
+        aktualisiereErfassungsDatumAnzeige();
+    }
+
+    await fuelleStvLehrerDropdowns();
+}
+
+/**
+ * Hilfsfunktion zum Befüllen der beiden Lehrpersonen-Selects (Ausfall & Übernehmend).
+ */
+async function fuelleStvLehrerDropdowns() {
+    const ausfallSelect = document.getElementById('stv-ausfall-select');
+    const uebernehmendSelect = document.getElementById('stv-uebernehmend-select');
+    
+    if (!ausfallSelect || !uebernehmendSelect) return;
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('master_db')
+            .select('lehrer');
+
+        if (error) throw error;
+
+        let lehrerSet = new Set();
+        if (data) {
+            data.forEach(row => {
+                if (row.lehrer) {
+                    let kuerzel = row.lehrer.toString().trim().toLowerCase();
+                    if (kuerzel) lehrerSet.add(kuerzel);
+                }
+            });
+        }
+        let lehrerListe = Array.from(lehrerSet).sort();
+
+        let ausfallHtml = '<option value="">Bitte wählen...</option>';
+        lehrerListe.forEach(l => {
+            ausfallHtml += `<option value="${l}">${l}</option>`;
+        });
+        ausfallSelect.innerHTML = ausfallHtml;
+
+        let uebernehmendHtml = '<option value="">Bitte wählen...</option>';
+        uebernehmendHtml += '<option value="__extern__">Extern / Andere...</option>';
+        lehrerListe.forEach(l => {
+            uebernehmendHtml += `<option value="${l}">${l}</option>`;
+        });
+        uebernehmendSelect.innerHTML = uebernehmendHtml;
+
+    } catch (err) {
+        console.error("Fehler beim Laden der Lehrpersonen für das Stv-Formular:", err);
+    }
+}
+
+/**
+ * Hilfsfunktion, um das Eingabefeld für externe Lehrpersonen ein-/auszublenden.
+ */
+function checkStvExternInput() {
+    const val = document.getElementById('stv-uebernehmend-select').value;
+    const container = document.getElementById('stv-extern-container');
+    if (container) {
+        container.style.display = (val === '__extern__') ? 'block' : 'none';
+    }
+}
+
+/**
+ * Aktualisiert die Datumsanzeige im Erfassungsdialog auf das deutsche Format (DD.MM.YYYY).
+ */
+function aktualisiereErfassungsDatumAnzeige() {
+    const textSpan = document.getElementById('stv-erfassungs-date-text');
+    if (textSpan && stvEintragDatum) {
+        const [jahr, monat, tag] = stvEintragDatum.split('-');
+        textSpan.innerText = `${tag}.${monat}.${jahr}`;
+    }
+}
+
+/**
+ * Öffnet das Kalender-Modal für die Stellvertretungs-Erfassung.
+ */
+function openStvErfassungsCalendar() {
+    const cal = document.getElementById('stv-erfassungs-calendar-modal');
+    if (cal) cal.style.display = 'flex';
+    renderStvErfassungsCalendar();
+}
+
+/**
+ * Schließt das Kalender-Modal für die Stellvertretungs-Erfassung.
+ */
+function closeStvErfassungsCalendar() {
+    const cal = document.getElementById('stv-erfassungs-calendar-modal');
+    if (cal) cal.style.display = 'none';
+}
+
+/**
+ * Rendert das Kalender-Grid für den Erfassungsdialog.
+ */
+function renderStvErfassungsCalendar() {
+    const year = stvErfassungsCalDate.getFullYear();
+    const month = stvErfassungsCalDate.getMonth();
+
+    const navContainer = document.getElementById('stvcal-erfassungs-nav');
+    const gridContainer = document.getElementById('stvcal-erfassungs-grid');
+    if (!navContainer || !gridContainer) return;
+
+    const months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    navContainer.innerHTML = `
+        <button type="button" onclick="changeStvErfassungsMonth(-1)" style="background:none; border:none; color:#fff; cursor:pointer; font-size:16px;">&lang;</button>
+        <span>${months[month]} ${year}</span>
+        <button type="button" onclick="changeStvErfassungsMonth(1)" style="background:none; border:none; color:#fff; cursor:pointer; font-size:16px;">&rang;</button>
+    `;
+
+    let gridHtml = `
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Mo</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Di</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Mi</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Do</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Fr</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">Sa</div>
+        <div style="color:#aaa; font-weight:bold; text-align:center; font-size:12px;">So</div>
+    `;
+
+    const firstDay = new Date(year, month, 1);
+    let startingDay = firstDay.getDay() - 1;
+    if (startingDay === -1) startingDay = 6;
+
+    const lastDay = new Date(year, month + 1, 0).getDate();
+
+    for (let i = 0; i < startingDay; i++) {
+        gridHtml += `<div></div>`;
+    }
+
+    for (let day = 1; day <= lastDay; day++) {
+        const mStr = String(month + 1).padStart(2, '0');
+        const dStr = String(day).padStart(2, '0');
+        const dateString = `${year}-${mStr}-${dStr}`;
+        
+        const isSelected = dateString === stvEintragDatum;
+        const bgStyle = isSelected ? 'background: #e67e22; color: #fff; font-weight: bold;' : 'background: #2a2a2a; color: #fff;';
+
+        gridHtml += `
+            <div onclick="selectStvErfassungsDate('${dateString}')" style="${bgStyle} text-align:center; padding:8px; border-radius:4px; cursor:pointer; font-size:13px;">
+                ${day}
+            </div>
+        `;
+    }
+
+    gridContainer.innerHTML = gridHtml;
+}
+
+/**
+ * Blättert im Erfassungs-Kalender monatsweise vor oder zurück.
+ * @param {number} direction - -1 für vorheriger Monat, 1 für nächster Monat
+ */
+function changeStvErfassungsMonth(direction) {
+    stvErfassungsCalDate.setMonth(stvErfassungsCalDate.getMonth() + direction);
+    renderStvErfassungsCalendar();
+}
+
+/**
+ * Wählt ein Datum im Erfassungs-Kalender aus und schließt diesen.
+ * @param {string} dateStr - Datum im Format YYYY-MM-DD
+ */
+function selectStvErfassungsDate(dateStr) {
+    stvEintragDatum = dateStr;
+    aktualisiereErfassungsDatumAnzeige();
+    closeStvErfassungsCalendar();
+}
+
+
+/* ==================================================================== */
+/* 11.11.2 Tageslektionen laden, verwalten & speichern                  */
+/* ==================================================================== */
+
+/**
+ * Lädt die Lektionen des ausgewählten Tages aus Supabase (Master-DB & Buchungen-DB).
+ */
+async function ladeTagesLektionenFuerErfassung() {
+    const ausfall = document.getElementById('stv-ausfall-select').value.toLowerCase().trim();
+    const uebernehmendDropdown = document.getElementById('stv-uebernehmend-select').value;
+    const externInput = document.getElementById('stv-extern-input').value.trim().toLowerCase();
+
+    let uebernehmend = uebernehmendDropdown;
+    if (uebernehmendDropdown === '__extern__') {
+        uebernehmend = externInput;
+    }
+
+    if (!ausfall || !uebernehmend || !stvEintragDatum) {
+        alert("Bitte alle Pflichtfelder (Ausfallende LP, Übernehmende LP, Datum) ausfüllen.");
+        return;
+    }
+
+    try {
+        const dateObj = new Date(stvEintragDatum.replace(/-/g, "/"));
+        const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+        const aktuellerWochentag = wtArr[dateObj.getDay()];
+
+        const { data: masterData, error: masterError } = await window.supabaseClient
+            .from('master_db')
+            .select('*')
+            .eq('wochentag', aktuellerWochentag);
+
+        if (masterError) throw masterError;
+
+        const { data: buchungenData, error: buchungenError } = await window.supabaseClient
+            .from('buchungen_db')
+            .select('*')
+            .eq('datum', stvEintragDatum);
+
+        if (buchungenError) throw buchungenError;
+
+        const planObj = {};
+        for (let i = 1; i <= 60; i++) {
+            planObj[i] = { klasse: "", lehrer: "", halle: "", typ: "", verfasser: "", kommentar: "", material: "", details: "" };
+        }
+
+        if (masterData) {
+            masterData.forEach(row => {
+                if (planObj[row.slot]) {
+                    planObj[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
+                    planObj[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
+                }
+            });
+        }
+
+        if (buchungenData) {
+            buchungenData.forEach(row => {
+                const slot = row.slot;
+                if (planObj[slot]) {
+                    const klasseAusDB = row.klasse ? row.klasse.toString().trim() : "";
+                    if (klasseAusDB.toLowerCase() === "verschoben") {
+                        planObj[slot].klasse = "";
+                        planObj[slot].lehrer = "";
+                        planObj[slot].verfasser = "";
+                    } else {
+                        if (klasseAusDB !== "") planObj[slot].klasse = klasseAusDB;
+                        if (row.halle) planObj[slot].halle = row.halle.toString();
+                        if (row.verfasser) planObj[slot].verfasser = row.verfasser.toString();
+                    }
+                }
+            });
+        }
+
+        fetchedErfassungsLektionen = [];
+        erfassungsAllDay = false;
+
+        for (let lektionNr = 1; lektionNr <= 12; lektionNr++) {
+            let startSlot = (lektionNr - 1) * 5 + 1;
+            let endSlot = lektionNr * 5;
+            
+            let lektionEintraege = [];
+
+            for (let s = startSlot; s <= endSlot; s++) {
+                let slotData = planObj[s];
+                if (slotData && slotData.klasse && slotData.klasse.trim() !== "") {
+                    let slotLehrer = slotData.lehrer ? slotData.lehrer.toLowerCase().trim() : "";
+                    let match = slotLehrer === ausfall || (slotData.verfasser && slotData.verfasser.toLowerCase().includes(ausfall));
+                    
+                    if (match) {
+                        lektionEintraege.push({
+                            slotId: s,
+                            klasse: slotData.klasse,
+                            lehrer: slotLehrer
+                        });
+                    }
+                }
+            }
+
+            let zeitString = (typeof getLektionZeit === 'function') ? getLektionZeit(lektionNr) : `Lektion ${lektionNr}`;
+
+            fetchedErfassungsLektionen.push({
+                lektionNr: lektionNr,
+                zeit: zeitString,
+                eintraege: lektionEintraege,
+                selected: false,
+                hasLesson: lektionEintraege.length > 0
+            });
+        }
+
+        document.getElementById('stv-erfassungs-step-1').style.display = 'none';
+        document.getElementById('stv-erfassungs-step-2').style.display = 'block';
+        
+        const [j, m, t] = stvEintragDatum.split('-');
+        document.getElementById('stv-erfassungs-step2-info').innerText = `Wähle die Lektionen am ${t}.${m}.${j}, die ${uebernehmend} für ${ausfall} übernimmt:`;
+
+        renderErfassungsLektionenList();
+
+    } catch (err) {
+        console.error("Fehler beim Laden der Tageslektionen:", err);
+        alert("Fehler beim Abrufen der Lektionen aus der Datenbank.");
+    }
+}
+
+/**
+ * Rendert die Liste der geladenen Lektionen für den Erfassungsdialog.
+ */
+function renderErfassungsLektionenList() {
+    const container = document.getElementById('stv-erfassungs-tagesplan-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    fetchedErfassungsLektionen.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = `stv-lektion-card ${item.selected ? 'selected' : ''} ${!item.hasLesson ? 'empty-lesson' : ''}`;
+        
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+        card.style.padding = '8px 12px';
+        card.style.borderRadius = '6px';
+        card.style.background = item.hasLesson ? (item.selected ? '#2d2318' : '#2c2c2c') : '#2c2c2c';
+        card.style.border = item.selected ? '1px solid #e67e22' : '1px solid #444';
+        card.style.borderLeft = item.selected ? '4px solid #e67e22' : (item.hasLesson ? '4px solid #e67e22' : '4px solid #444');
+        card.style.cursor = item.hasLesson ? 'pointer' : 'default';
+        card.style.opacity = item.hasLesson ? '1' : '0.4';
+
+        let klassenText = item.hasLesson ? item.eintraege.map(e => e.klasse).join(', ') : 'Keine Lektion';
+
+        card.innerHTML = `
+            <div style="font-weight: 600; font-size: 14px; color: #fff; min-width: 110px;">
+                ${item.zeit}
+            </div>
+            <div style="flex-grow: 1; margin-left: 15px; font-size: 14px; color: #fff; font-weight: ${item.hasLesson ? '600' : 'normal'};">
+                ${klassenText}
+            </div>
+            <div style="display: flex; align-items: center;">
+                ${item.hasLesson ? `
+                    <span class="material-symbols-outlined" style="font-size: 20px; color: ${item.selected ? '#e67e22' : '#666'};">
+                        ${item.selected ? 'check_circle' : 'radio_button_unchecked'}
+                    </span>
+                ` : ''}
+            </div>
+        `;
+
+        if (item.hasLesson) {
+            card.onclick = () => toggleErfassungsLessonSelection(index, card);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+/**
+ * Schaltet die Auswahl einer einzelnen Lektion im Erfassungsdialog um.
+ * @param {number} index - Index der Lektion
+ * @param {HTMLElement} cardElement - Das entsprechende DOM-Element
+ */
+function toggleErfassungsLessonSelection(index, cardElement) {
+    if (!fetchedErfassungsLektionen[index].hasLesson) return;
+
+    fetchedErfassungsLektionen[index].selected = !fetchedErfassungsLektionen[index].selected;
+    
+    const lessonsWithContent = fetchedErfassungsLektionen.filter(l => l.hasLesson);
+    const allAreSelected = lessonsWithContent.length > 0 && lessonsWithContent.every(l => l.selected);
+
+    erfassungsAllDay = allAreSelected;
+
+    const btn = document.getElementById('btn-toggle-erfassungs-all');
+    if (btn) {
+        if (allAreSelected) {
+            btn.style.background = "#b95c00";
+            btn.innerText = "Alle Markierungen entfernen";
+        } else {
+            btn.style.background = ""; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+    }
+
+    const iconSpan = cardElement.querySelector('.material-symbols-outlined');
+
+    if (fetchedErfassungsLektionen[index].selected) {
+        cardElement.classList.add('selected');
+        cardElement.style.background = '#2d2318';
+        cardElement.style.border = '1px solid #e67e22';
+        cardElement.style.borderLeft = '4px solid #e67e22';
+        if (iconSpan) {
+            iconSpan.innerText = 'check_circle';
+            iconSpan.style.color = '#e67e22';
+        }
+    } else {
+        cardElement.classList.remove('selected');
+        cardElement.style.background = '#2c2c2c';
+        cardElement.style.border = '1px solid #444';
+        cardElement.style.borderLeft = '4px solid #e67e22';
+        if (iconSpan) {
+            iconSpan.innerText = 'radio_button_unchecked';
+            iconSpan.style.color = '#666';
+        }
+    }
+}
+
+/**
+ * Markiert alle Lektionen des Tages auf einmal oder hebt die Markierung auf.
+ */
+function toggleAllErfassungsLessons() {
+    erfassungsAllDay = !erfassungsAllDay;
+    
+    const cards = document.querySelectorAll('#stv-erfassungs-tagesplan-container > div');
+    const btn = document.getElementById('btn-toggle-erfassungs-all');
+
+    if (erfassungsAllDay) {
+        if (btn) {
+            btn.style.background = "#b95c00";
+            btn.innerText = "Alle Markierungen entfernen";
+        }
+        
+        fetchedErfassungsLektionen.forEach(l => {
+            if (l.hasLesson) l.selected = true;
+        });
+
+        cards.forEach((card, index) => {
+            if (fetchedErfassungsLektionen[index] && fetchedErfassungsLektionen[index].hasLesson) {
+                card.classList.add('selected');
+                card.style.background = '#2d2318';
+                card.style.border = '1px solid #e67e22';
+                card.style.borderLeft = '4px solid #e67e22';
+                const icon = card.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.innerText = "check_circle";
+                    icon.style.color = "#e67e22";
+                }
+            }
+        });
+    } else {
+        if (btn) {
+            btn.style.background = ""; 
+            btn.innerText = "Alle Lektionen markieren";
+        }
+        
+        fetchedErfassungsLektionen.forEach(l => {
+            if (l.hasLesson) l.selected = false;
+        });
+
+        cards.forEach((card, index) => {
+            if (fetchedErfassungsLektionen[index] && fetchedErfassungsLektionen[index].hasLesson) {
+                card.classList.remove('selected');
+                card.style.background = '#2c2c2c';
+                card.style.border = '1px solid #444';
+                card.style.borderLeft = '4px solid #e67e22';
+                const icon = card.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.innerText = "radio_button_unchecked";
+                    icon.style.color = "#666";
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Speichert die ausgewählten Stellvertretungen in die `buchungen_db` via Supabase REST-API.
+ */
+async function speichereNeueStellvertretung() {
+    const ausfall = document.getElementById('stv-ausfall-select').value.toLowerCase().trim();
+    const uebernehmendDropdown = document.getElementById('stv-uebernehmend-select').value;
+    const externInput = document.getElementById('stv-extern-input').value.trim().toLowerCase();
+
+    let uebernehmend = uebernehmendDropdown;
+    if (uebernehmendDropdown === '__extern__') {
+        uebernehmend = externInput;
+    }
+
+    if (!ausfall || !uebernehmend || !stvEintragDatum) {
+        alert("Bitte alle Pflichtfelder ausfüllen.");
+        return;
+    }
+
+    const selectedLektionen = fetchedErfassungsLektionen.filter(l => l.selected && l.hasLesson);
+    if (selectedLektionen.length === 0) {
+        alert("Bitte wählen Sie mindestens eine Lektion aus.");
+        return;
+    }
+
+    try {
+        // Eingeloggten Benutzer korrekt über userKuerzel oder localStorage ermitteln
+        const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel : localStorage.getItem('userKuerzel') || 'bupa';
+
+        for (const lek of selectedLektionen) {
+            for (const eintrag of lek.eintraege) {
+                const slotId = eintrag.slotId;
+                // Der Erfasser wird nun am Ende in eckigen Klammern mitgespeichert (z.B. "[bilu]")
+                const verfasserString = `${uebernehmend} (für ${ausfall}) [${aktuellerUser}]`;
+
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db`, {
+                    method: 'POST',
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
+                    },
+                    body: JSON.stringify({
+                        datum: stvEintragDatum,
+                        slot: slotId,
+                        klasse: eintrag.klasse,
+                        verfasser: verfasserString
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Fehler beim Speichern von Slot ${slotId}`);
+                }
+            }
+        }
+
+        const erfassungModal = document.getElementById('vertretungs-erfassungs-modal');
+        if (erfassungModal) erfassungModal.remove();
+
+        if (typeof updateDisplay === 'function') updateDisplay();
+        if (typeof oeffneVertretungsDialog === 'function') oeffneVertretungsDialog();
+
+    } catch (err) {
+        console.error("Fehler beim Speichern der Stellvertretung:", err);
+        alert("Fehler beim Speichern: " + (err.message || err));
+    }
+}
+
+    
+
+    
     
 /* ============================================================
    12. PASTE-MODE
@@ -15325,6 +16271,11 @@ document.addEventListener('click', (e) => {
         closeEmojiModal();
     }
 });
+
+
+
+
+
     
     
 /* ============================================================
