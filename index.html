@@ -14524,6 +14524,7 @@ function toggleAllErfassungsLessons() {
 
 /**
  * Speichert die ausgewählten Stellvertretungen in die `buchungen_db` via Supabase REST-API.
+ * Bestehende Einträge für denselben Slot werden automatisch überschrieben (Upsert).
  */
 async function speichereNeueStellvertretung() {
     const ausfall = document.getElementById('stv-ausfall-select').value.toLowerCase().trim();
@@ -14548,21 +14549,26 @@ async function speichereNeueStellvertretung() {
 
     try {
         // Eingeloggten Benutzer korrekt über userKuerzel oder localStorage ermitteln
-        const aktuellerUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel : localStorage.getItem('userKuerzel') || 'bupa';
+        let rawUser = (typeof userKuerzel !== 'undefined' && userKuerzel) ? userKuerzel : localStorage.getItem('userKuerzel') || 'bupa';
+        if (rawUser && typeof rawUser === 'object') {
+            rawUser = rawUser.value || rawUser.getAttribute?.('value') || "";
+        }
+        const aktuellerUser = String(rawUser || "").trim().toLowerCase() || 'bupa';
 
         for (const lek of selectedLektionen) {
             for (const eintrag of lek.eintraege) {
                 const slotId = eintrag.slotId;
-                // Der Erfasser wird nun am Ende in eckigen Klammern mitgespeichert (z.B. "[bilu]")
+                // Der Erfasser wird am Ende in eckigen Klammern mitgespeichert (z.B. "[bupa]")
                 const verfasserString = `${uebernehmend} (für ${ausfall}) [${aktuellerUser}]`;
 
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db`, {
+                // Mit ?on_conflict und resolution=merge-duplicates werden bestehende Slots sauber überschrieben
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/buchungen_db?on_conflict=datum,slot`, {
                     method: 'POST',
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
                         "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
+                        "Prefer": "resolution=merge-duplicates, return=minimal"
                     },
                     body: JSON.stringify({
                         datum: stvEintragDatum,
