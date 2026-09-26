@@ -14772,7 +14772,10 @@ window.closeOneNoteSettingsModal = function() {
 };
 
 
-// Universelle Funktion zum Öffnen von OneNote-Links (unterstützt Online-URLs & App-Protokolle)
+/* ==================================================================== */
+/* Universelle Funktion zum fehlerfreien Öffnen von Online- & App-Links */
+/* ==================================================================== */
+
 window.openOneNoteForClass = function(klasse) {
     const path = window.oneNotePaths && window.oneNotePaths[klasse];
 
@@ -14783,14 +14786,29 @@ window.openOneNoteForClass = function(klasse) {
 
     const cleanPath = path.trim();
 
-    // Online-Links (Web-URLs) im neuen Tab öffnen, App-Links direkt ausführen
+    // 1. Fall: Es ist ein Online-Link (Web-URL mit http oder https)
     if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
-        window.open(cleanPath, '_blank');
-    } else {
-        window.location.href = cleanPath;
+        // Erzeugt einen unsichtbaren Link und klickt ihn programmatisch an,
+        // um den Browser-Popup-Blocker und falsches App-Routing zu umgehen
+        const a = document.createElement('a');
+        a.href = cleanPath;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } 
+    // 2. Fall: Es ist ein lokaler Programm-Link (z.B. onenote:...)
+    else {
+        // Versucht das App-Protokoll über ein verstecktes Iframe oder location aufzurufen
+        try {
+            window.location.href = cleanPath;
+        } catch (e) {
+            console.error("Fehler beim Öffnen des App-Links:", e);
+            window.open(cleanPath, '_blank');
+        }
     }
 };
-
 
 // Lädt alle OneNote-Pfade für den aktuellen User aus der master_db
 async function loadOneNotePathsFromSupabase() {
