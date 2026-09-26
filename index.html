@@ -5984,7 +5984,7 @@ if (planContainer) {
         }, 250);
     });
 
-    // 3. DOPPELKLICK: OneNote-Desktop-App öffnen (Klassen-spezifisch aus master_db)
+    // 3. DOPPELKLICK: Link öffnen (Klassen-spezifisch aus master_db)
     planContainer.addEventListener('dblclick', function(e) {
         if (window.moveMode) {
             e.stopPropagation();
@@ -6017,17 +6017,36 @@ if (planContainer) {
         const savedPaths = window.oneNotePaths || {};
         const targetPath = savedPaths[klasse];
 
-        // SILIENT FAIL: Wenn für diese Klasse kein Pfad hinterlegt wurde, passiert absolut gar nichts.
+        // SILENT FAIL: Wenn für diese Klasse kein Pfad hinterlegt wurde, passiert absolut gar nichts.
         if (!targetPath) return;
 
-        // 3. URL für das OneNote-Protokoll aufbereiten
         let finalUrl = targetPath.trim();
-        if (!finalUrl.toLowerCase().startsWith('onenote:')) {
-            finalUrl = `onenote:${finalUrl}`;
-        }
+        if (!finalUrl) return;
 
-        // 4. Direkt an die Desktop-App übergeben (verhindert leere Tabs im Browser)
-        window.location.href = finalUrl;
+        // 3. Unterscheiden zwischen Web-Link (Online) und App-Protokoll (OneNote)
+        if (finalUrl.toLowerCase().startsWith('http://') || finalUrl.toLowerCase().startsWith('https://') || finalUrl.toLowerCase().startsWith('www.')) {
+            if (finalUrl.toLowerCase().startsWith('www.')) {
+                finalUrl = 'https://' + finalUrl;
+            }
+
+            // Web-Adressen absolut zuverlässig im neuen Tab öffnen (umgeht Popup-Blocker beim Doppelklick)
+            const a = document.createElement('a');
+            a.href = finalUrl;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            
+            setTimeout(() => {
+                a.click();
+                document.body.removeChild(a);
+            }, 10);
+        } else {
+            // Lokale Programm-Links (z.B. onenote:...)
+            if (!finalUrl.toLowerCase().startsWith('onenote:')) {
+                finalUrl = `onenote:${finalUrl}`;
+            }
+            window.location.href = finalUrl;
+        }
     });
 }
 
@@ -14773,42 +14792,46 @@ window.closeOneNoteSettingsModal = function() {
 
 
 /* ==================================================================== */
-/* Universelle Funktion zum fehlerfreien Öffnen von Online- & App-Links */
+/* Universeller Link-Öffner für Doppelklick im Stundenplan (Web & App) */
 /* ==================================================================== */
 
 window.openOneNoteForClass = function(klasse) {
     const path = window.oneNotePaths && window.oneNotePaths[klasse];
 
     if (!path || path.trim() === "") {
-        alert(`Für die Klasse "${klasse}" ist kein OneNote-Pfad hinterlegt.`);
+        alert(`Für die Klasse "${klasse}" ist kein Link hinterlegt.`);
         return;
     }
 
     const cleanPath = path.trim();
 
-    // 1. Fall: Es ist ein Online-Link (Web-URL mit http oder https)
-    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
-        // Erzeugt einen unsichtbaren Link und klickt ihn programmatisch an,
-        // um den Browser-Popup-Blocker und falsches App-Routing zu umgehen
+    // 1. Wenn es eine Web-Adresse, Cloud-Link oder beliebige URL ist:
+    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://') || cleanPath.startsWith('www.')) {
+        let finalUrl = cleanPath;
+        if (cleanPath.startsWith('www.')) {
+            finalUrl = 'https://' + cleanPath;
+        }
+
+        // Erzwingt das Öffnen im neuen Tab über ein temporäres DOM-Element 
+        // (Verhindert das Blockieren bei Doppelklicks / Event-Listenern)
         const a = document.createElement('a');
-        a.href = cleanPath;
+        a.href = finalUrl;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        
+        // Timeout-Sicherheit, falls der Browser den direkten Klick im Event verschluckt
+        setTimeout(() => {
+            a.click();
+            document.body.removeChild(a);
+        }, 10);
     } 
-    // 2. Fall: Es ist ein lokaler Programm-Link (z.B. onenote:...)
+    // 2. Für lokale Protokolle (onenote:, mailto:, tel: oder andere Apps):
     else {
-        // Versucht das App-Protokoll über ein verstecktes Iframe oder location aufzurufen
-        try {
-            window.location.href = cleanPath;
-        } catch (e) {
-            console.error("Fehler beim Öffnen des App-Links:", e);
-            window.open(cleanPath, '_blank');
-        }
+        window.location.href = cleanPath;
     }
 };
+    
 
 // Lädt alle OneNote-Pfade für den aktuellen User aus der master_db
 async function loadOneNotePathsFromSupabase() {
