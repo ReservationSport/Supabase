@@ -4028,6 +4028,62 @@ input.stellvertretung-input {
     background: #ea580c;
 }
     
+
+/* ============================================================
+    27. OneNote Links einfügen
+    ============================================================ */
+
+#onenote-settings-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: none; 
+    justify-content: center;
+    align-items: center;
+    z-index: 2200;
+}
+
+#onenote-settings-modal .modal-content {
+    background: #1e1e1e !important;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: white !important;
+    width: 95%;
+    max-width: 600px;
+    position: fixed;
+    top: 5vh;
+    bottom: 5vh;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+/* Scrollbarer Container für die Klassen-Einträge */
+#onenote-settings-modal .onenote-path-list {
+    margin: 10px 0;
+    flex: 1;
+    overflow-y: auto !important;
+    padding-right: 5px;
+    min-height: 50px;
+}
+
+/* Landscape-Optimierung für kleine Bildschirme */
+@media screen and (max-height: 500px) {
+    #onenote-settings-modal .modal-content {
+        padding: 10px;
+        top: 2.5vh;
+        bottom: 2.5vh;
+    }
+    #onenote-settings-modal .onenote-path-list {
+        margin: 5px 0;
+    }
+}
     
     
 </style>
@@ -4173,6 +4229,10 @@ input.stellvertretung-input {
                 </div>
                 <div class="menu-item" onclick="openMaterialWunsche()">
                     <span class="material-symbols-outlined">inventory_2</span> Materialwünsche
+                </div>
+                <!-- 🆕 NEU: OneNote-Einstellungen aufrufen -->
+                <div class="menu-item" onclick="openOneNoteSettingsModal()">
+                    <span class="material-symbols-outlined">menu_book</span> OneNote-Links
                 </div>
             </div>
         </div>
@@ -4782,6 +4842,15 @@ input.stellvertretung-input {
 
 
 
+    
+<!-- OneNote-Einstellungen Modal (angepasst an dein Projekt) -->
+<div id="onenote-settings-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;">
+    <div class="modal-content" style="background: white; padding: 25px; border-radius: 8px; max-width: 500px; width: 90%; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+        <!-- Hier greift unsere Funktion -->
+        <div id="onenote-submenu-content"></div>
+        <button class="button is-small" style="margin-top: 15px;" onclick="closeOneNoteSettingsModal()">Schliessen</button>
+    </div>
+</div>
 
 
 <!-- STELLVERTRETUNGS-LÖSCH-CONFIRM-MODAL (Im App-Design mit Hover-Effekten) -->
@@ -5032,6 +5101,7 @@ window.lastPlanData = {};        // Kompatibilitäts-Alias für Material-Funktio
 let configFarben = {};            // Farben für Klassen aus dem Sheet
 let allClassTeachers = {};        // Zuordnung Klasse -> Kürzel
 window.verfügbareMaterialien = []; // Liste der Materialien aus dem Sheet
+window.oneNotePaths = {}; // Garantiert, dass es nie undefined ist!
 
 // Falls ein externer Server-Endpoint (z.B. Google Apps Script) genutzt wird:
 let url = ""; 
@@ -5169,7 +5239,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await Promise.all([
                 window.initSperrzeitenCache(),
-                window.initTeachersCache()
+                window.initTeachersCache(),
+                loadOneNotePathsFromSupabase() // <--- GENAU HIER EINFÜGEN (Komma in der Zeile darüber nicht vergessen!)
             ]);
         } catch (cacheErr) {
             console.warn("⚠️ Caches konnten nicht geladen werden:", cacheErr);
@@ -5599,12 +5670,13 @@ window.handleLogin = async function() {
             console.error("Fehler bei Push-Initialisierung:", pushErr);
         }
 
-        // --- PARALLELES VORLADEN ---
+      // --- PARALLELES VORLADEN (Inklusive OneNote-Pfade) ---
         const linksPromise = supabaseClient.from('links').select('*');
         const matPromise = supabaseClient.from('material').select('*');
         const sperrzeitPromise = window.initSperrzeitenCache();
+        const oneNotePromise = loadOneNotePathsFromSupabase(); // 🆕 Hinzugefügt
 
-        const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise]);
+        const [linksRes, matRes] = await Promise.all([linksPromise, matPromise, sperrzeitPromise, oneNotePromise]);
 
         if (!linksRes.error) {
             window.lastLinks = linksRes.data || [];
@@ -5837,13 +5909,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
 
 /* ============================================================
-   ZENTRALE EVENT-DELEGATION (Einmalig im Skript)
+   ZENTRALE EVENT-DELEGATION (Inkl. OneNote master_db Integration)
    ============================================================ */
 const planContainer = document.getElementById('plan-container');
 
 if (planContainer) {
+    let clickTimeout = null;
+
     // 1. RECHTSKLICK: Kopieren
     planContainer.addEventListener('contextmenu', function(e) {
+        if (window.moveMode) return;
+
         const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
         if (!box) return;
         
@@ -5865,8 +5941,13 @@ if (planContainer) {
         }
     });
 
-    // 2. KLICK: Paste oder Editieren (inkl. STV-Boxen)
+    // 2. KLICK: Paste oder Editieren (mit Verzögerung, damit Doppelklick nicht "gefressen" wird)
     planContainer.addEventListener('click', function(e) {
+        if (window.moveMode) {
+            e.stopPropagation();
+            return;
+        }
+
         if (e.target.closest('.box-notiz-icon')) return;
 
         const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
@@ -5877,15 +5958,21 @@ if (planContainer) {
         const isStv = box.classList.contains('is-stv');
         const canEdit = isMine || isStv;
 
-        if (window.copiedSlotData) {
-            // --- PASTE-MODUS ---
-            if (canEdit && typeof performPaste === "function") {
-                e.stopPropagation();
-                performPaste(slot, window.copiedSlotData);
-            }
-        } else {
-            // --- NORMALER MODUS ---
-            if (canEdit) {
+        // Fremde Boxen komplett ignorieren
+        if (!canEdit) return;
+
+        // Wir warten kurz (250ms), ob ein Doppelklick folgt. Wenn nicht, öffnet sich der Editor/Paste.
+        if (clickTimeout) clearTimeout(clickTimeout);
+
+        clickTimeout = setTimeout(() => {
+            if (window.copiedSlotData) {
+                // --- PASTE-MODUS ---
+                if (typeof performPaste === "function") {
+                    e.stopPropagation();
+                    performPaste(slot, window.copiedSlotData);
+                }
+            } else {
+                // --- NORMALER MODUS ---
                 if (typeof openEditor === "function") {
                     const klasse = box.querySelector('.klasse-label')?.innerText || "";
                     const zeitStr = box.getAttribute('data-time') || "";
@@ -5894,7 +5981,53 @@ if (planContainer) {
                     openEditDialog(slot);
                 }
             }
+        }, 250);
+    });
+
+    // 3. DOPPELKLICK: OneNote-Desktop-App öffnen (Klassen-spezifisch aus master_db)
+    planContainer.addEventListener('dblclick', function(e) {
+        if (window.moveMode) {
+            e.stopPropagation();
+            return;
         }
+
+        const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
+        if (!box) return;
+
+        const isMine = box.classList.contains('is-mine');
+        const isStv = box.classList.contains('is-stv');
+        const canEdit = isMine || isStv;
+
+        // WICHTIG: Wenn es nicht deine Box ist -> Sofort abbrechen!
+        if (!canEdit) return;
+
+        // Den wartenden Einfachklick-Timer löschen, damit sich nicht der Editor öffnet
+        if (clickTimeout) {
+            clearTimeout(clickTimeout);
+            clickTimeout = null;
+        }
+
+        e.stopPropagation(); // Verhindert unerwünschte Nebeneffekte
+
+        // 1. Klasse aus der Box auslesen
+        const klasse = box.querySelector('.klasse-label')?.innerText.trim() || "";
+        if (!klasse) return;
+
+        // 2. Pfad aus dem beim Login geladenen Cache (master_db) holen
+        const savedPaths = window.oneNotePaths || {};
+        const targetPath = savedPaths[klasse];
+
+        // SILIENT FAIL: Wenn für diese Klasse kein Pfad hinterlegt wurde, passiert absolut gar nichts.
+        if (!targetPath) return;
+
+        // 3. URL für das OneNote-Protokoll aufbereiten
+        let finalUrl = targetPath.trim();
+        if (!finalUrl.toLowerCase().startsWith('onenote:')) {
+            finalUrl = `onenote:${finalUrl}`;
+        }
+
+        // 4. Direkt an die Desktop-App übergeben (verhindert leere Tabs im Browser)
+        window.location.href = finalUrl;
     });
 }
 
@@ -14605,6 +14738,327 @@ async function speichereNeueStellvertretung() {
     }
 }
 
+
+/* ==================================================================== */
+/* 11.12 OneNote-Pfad eintragen (Dark-Design & Scroll-Fix) */
+/* ==================================================================== */
+
+window.openOneNoteSettingsModal = function() {
+    const modal = document.getElementById('onenote-settings-modal');
+    if (modal) {
+        modal.style.display = 'flex'; // Sichtbar machen
+        
+        // Zwingt das Modal-Inhaltsfenster direkt in den Dark Mode (gegen CSS-Caches)
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            content.style.background = '#1e1e1e';
+            content.style.color = 'white';
+            content.style.border = '1px solid #444';
+        }
+    } else {
+        console.error("Fehler: #onenote-settings-modal nicht gefunden!");
+    }
+    
+    if (typeof renderOneNoteSettings === 'function') {
+        renderOneNoteSettings();
+    }
+};
+
+window.closeOneNoteSettingsModal = function() {
+    const modal = document.getElementById('onenote-settings-modal');
+    if (modal) {
+        modal.style.display = 'none'; // Verstecken
+    }
+};
+
+
+// Lädt alle OneNote-Pfade für den aktuellen User aus der master_db
+async function loadOneNotePathsFromSupabase() {
+    let rawUser = localStorage.getItem('userKuerzel') || window.userKuerzel || "";
+    if (typeof rawUser === 'object' && rawUser !== null) {
+        rawUser = rawUser.value || "";
+    }
+    let aktuellerUser = String(rawUser).trim().toLowerCase();
+
+    if (aktuellerUser.includes('htmlinputelement') || aktuellerUser.includes('input') || aktuellerUser === '') {
+        const inputEl = document.getElementById('userKuerzel');
+        if (inputEl && inputEl.value) {
+            aktuellerUser = String(inputEl.value).trim().toLowerCase();
+        } else {
+            aktuellerUser = "";
+        }
+    }
+
+    if (!aktuellerUser) return;
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('master_db')
+            .select('klasse, onenote_path')
+            .ilike('lehrer', `%${aktuellerUser}%`);
+
+        if (error) {
+            console.error("❌ Fehler beim Laden der OneNote-Pfade aus Supabase:", error);
+            return;
+        }
+
+        if (!window.oneNotePaths) window.oneNotePaths = {};
+        
+        if (data && data.length > 0) {
+            data.forEach(row => {
+                if (row.klasse && row.onenote_path) {
+                    let kuerzelString = String(row.klasse).trim();
+                    let rawPath = String(row.onenote_path).trim();
+
+                    if (kuerzelString.includes('/')) {
+                        let einzellKlassen = kuerzelString.split('/').map(k => k.trim());
+                        let cleanPath = rawPath;
+
+                        let p1 = '';
+                        let p2 = '';
+
+                        if (cleanPath.includes(' / ')) {
+                            let sp = cleanPath.split(' / ');
+                            p1 = (sp[0] || '').trim();
+                            p2 = (sp[1] || '').trim();
+                        } else if (cleanPath.startsWith('/')) {
+                            p2 = cleanPath.replace(/^\/+/, '').trim();
+                        } else if (cleanPath.endsWith('/')) {
+                            p1 = cleanPath.replace(/\/+$/, '').trim();
+                        } else {
+                            p1 = cleanPath;
+                        }
+
+                        if (einzellKlassen[0]) {
+                            window.oneNotePaths[einzellKlassen[0]] = p1;
+                        }
+                        if (einzellKlassen[1]) {
+                            window.oneNotePaths[einzellKlassen[1]] = p2;
+                        }
+                    } else {
+                        window.oneNotePaths[kuerzelString] = rawPath;
+                    }
+                }
+            });
+            console.log("✅ OneNote-Pfade erfolgreich geladen:", window.oneNotePaths);
+        }
+    } catch (e) {
+        console.error("💥 Netzwerkfehler beim Laden der OneNote-Pfade:", e);
+    }
+}
+    
+
+async function renderOneNoteSettings() {
+    const container = document.getElementById('onenote-submenu-content');
+    if (!container) return;
+
+    let rawUser = window.userKuerzel || localStorage.getItem('userKuerzel');
+    if (rawUser && typeof rawUser === 'object') {
+        rawUser = rawUser.value || rawUser.getAttribute?.('value') || "";
+    }
+    let aktuellerUser = String(rawUser || "").trim().toLowerCase();
+
+    if (!aktuellerUser || aktuellerUser.includes('input')) {
+        const inputEl = document.getElementById('userKuerzel');
+        if (inputEl) aktuellerUser = inputEl.value.trim().toLowerCase();
+    }
+
+    if (!aktuellerUser) {
+        container.innerHTML = `<p style="color: #e74c3c;">Bitte zuerst ein Benutzerkürzel angeben.</p>`;
+        return;
+    }
+
+    container.innerHTML = `<p style="color: #bbb;">Lade alle Klassen aus der Datenbank...</p>`;
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('master_db')
+            .select('id, klasse, onenote_path')
+            .ilike('lehrer', `%${aktuellerUser}%`);
+
+        if (error) {
+            console.error("Fehler beim Laden der Klassen:", error);
+            container.innerHTML = `<p style="color: #e74c3c;">Fehler beim Laden der Klassen aus der Datenbank.</p>`;
+            return;
+        }
+
+        const classesSet = new Set();
+        const pathMap = {};
+        
+        if (data) {
+            data.forEach(row => {
+                if (row.klasse) {
+                    let kuerzelString = String(row.klasse).trim();
+                    let rawPath = row.onenote_path ? String(row.onenote_path).trim() : '';
+
+                    if (kuerzelString.includes('/')) {
+                        let einzellKlassen = kuerzelString.split('/').map(k => k.trim());
+                        let cleanPath = rawPath;
+
+                        let p1 = '';
+                        let p2 = '';
+
+                        if (cleanPath.includes(' / ')) {
+                            let sp = cleanPath.split(' / ');
+                            p1 = (sp[0] || '').trim();
+                            p2 = (sp[1] || '').trim();
+                        } else if (cleanPath.startsWith('/')) {
+                            p2 = cleanPath.replace(/^\/+/, '').trim();
+                        } else if (cleanPath.endsWith('/')) {
+                            p1 = cleanPath.replace(/\/+$/, '').trim();
+                        } else {
+                            p1 = cleanPath;
+                        }
+
+                        if (einzellKlassen[0]) {
+                            classesSet.add(einzellKlassen[0]);
+                            pathMap[einzellKlassen[0]] = p1;
+                        }
+                        if (einzellKlassen[1]) {
+                            classesSet.add(einzellKlassen[1]);
+                            pathMap[einzellKlassen[1]] = p2;
+                        }
+                    } else {
+                        classesSet.add(kuerzelString);
+                        pathMap[kuerzelString] = rawPath;
+                    }
+                }
+            });
+        }
+        const myClasses = Array.from(classesSet).sort();
+        window.oneNotePaths = pathMap;
+
+        // HTML mit direktem Inline-Styling für den Scroll-Container (verhindert Überlaufen)
+        let html = `
+            <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em;">OneNote-Links</h3>
+            <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier die gewünschten OneNote-Links für deine Klassen ein.</p>
+            <div class="onenote-path-list" style="flex: 1; overflow-y: auto; max-height: 52vh; margin: 10px 0; padding-right: 5px; box-sizing: border-box;">
+        `;
+
+        if (myClasses.length === 0) {
+            html += `<p style="color: #bbb;">Keine Klassen für dein Kürzel (${aktuellerUser}) in der master_db gefunden.</p>`;
+        } else {
+            myClasses.forEach(klasse => {
+                const currentPath = pathMap[klasse] || '';
+                
+                const safeKlasse = String(klasse).replace(/[\r\n]+/g, '').trim();
+                const safePath = String(currentPath).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
+
+                html += `
+                    <div style="background: #2c2c2c; border-left: 4px solid #e67e22; padding: 10px 12px; margin-bottom: 8px; border-radius: 4px; display: flex; flex-direction: column; gap: 5px;">
+                        <span style="font-weight: bold; font-size: 0.9em; color: white;">${safeKlasse}</span>
+                        <input class="onenote-input-field" type="text" data-klasse="${safeKlasse}" value="${safePath}" placeholder="https://... oder onenote:..." style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: white; box-sizing: border-box; font-size: 0.85em;">
+                    </div>
+                `;
+            });
+            html += `</div>
+            <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px;">Links speichern</button>`;
+        }
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.onenote-input-field').forEach(inp => {
+            inp.addEventListener('focus', () => inp.style.borderColor = '#e67e22');
+            inp.addEventListener('blur', () => inp.style.borderColor = '#444');
+        });
+
+        // Speicher-Logik
+        document.getElementById('save-onenote-paths-btn')?.addEventListener('click', async () => {
+            const inputs = container.querySelectorAll('.onenote-input-field');
+            let success = true;
+
+            for (const input of inputs) {
+                const zielKlasse = input.getAttribute('data-klasse');
+                const newPathVal = input.value.trim();
+
+                const { data: matchData, error: matchError } = await window.supabaseClient
+                    .from('master_db')
+                    .select('id, klasse, onenote_path')
+                    .ilike('lehrer', `%${aktuellerUser}%`)
+                    .ilike('klasse', `%${zielKlasse}%`);
+
+                if (matchError) {
+                    console.error(`Fehler beim Suchen der Klasse ${zielKlasse}:`, matchError);
+                    success = false;
+                    continue;
+                }
+
+                if (matchData && matchData.length > 0) {
+                    for (const row of matchData) {
+                        let kStr = String(row.klasse).trim();
+                        let existingDbPath = row.onenote_path ? String(row.onenote_path).trim() : '';
+                        let finalPathToSave = newPathVal;
+
+                        if (kStr.includes('/')) {
+                            let parts = kStr.split('/').map(k => k.trim().toLowerCase());
+                            
+                            let targetIndex = -1;
+                            for (let i = 0; i < parts.length; i++) {
+                                if (parts[i] === zielKlasse.toLowerCase()) {
+                                    targetIndex = i;
+                                    break;
+                                }
+                            }
+
+                            let cleanPath = existingDbPath;
+                            let part1 = '';
+                            let part2 = '';
+
+                            if (cleanPath.includes(' / ')) {
+                                let sp = cleanPath.split(' / ');
+                                part1 = (sp[0] || '').trim();
+                                part2 = (sp[1] || '').trim();
+                            } else if (cleanPath.startsWith('/')) {
+                                part2 = cleanPath.replace(/^\/+/, '').trim();
+                            } else if (cleanPath.endsWith('/')) {
+                                part1 = cleanPath.replace(/\/+$/, '').trim();
+                            } else if (cleanPath !== '') {
+                                part1 = cleanPath;
+                            }
+
+                            if (targetIndex === 0) {
+                                part1 = newPathVal;
+                            } else if (targetIndex === 1) {
+                                part2 = newPathVal;
+                            }
+
+                            if (part1 && part2) {
+                                finalPathToSave = `${part1} / ${part2}`;
+                            } else if (part1 && !part2) {
+                                finalPathToSave = `${part1} /`;
+                            } else if (!part1 && part2) {
+                                finalPathToSave = `/ ${part2}`;
+                            } else {
+                                finalPathToSave = '';
+                            }
+                        }
+
+                        const { error: updateError } = await window.supabaseClient
+                            .from('master_db')
+                            .update({ onenote_path: finalPathToSave })
+                            .eq('id', row.id);
+
+                        if (updateError) {
+                            console.error(`Fehler beim Speichern von ID ${row.id}:`, updateError);
+                            success = false;
+                        }
+                    }
+                }
+            }
+
+            if (success) {
+                alert("Pfade erfolgreich in der master_db gespeichert!");
+                loadOneNotePathsFromSupabase();
+            } else {
+                alert("Es gab beim Speichern ein Problem (siehe Konsole).");
+            }
+        });
+
+    } catch (e) {
+        console.error("Netzwerkfehler:", e);
+        container.innerHTML = `<p style="color: #e74c3c;">Verbindungsfehler beim Laden.</p>`;
+    }
+}
     
 
     
