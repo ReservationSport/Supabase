@@ -14249,6 +14249,7 @@ function selectStvErfassungsDate(dateStr) {
 
 /**
  * Lädt die Lektionen des ausgewählten Tages aus Supabase (Master-DB & Buchungen-DB).
+ * Nutzt den bestehenden Kalender-Kontext, um alternierende Klassen (A/B-Woche) korrekt aufzulösen.
  */
 async function ladeTagesLektionenFuerErfassung() {
     const ausfall = document.getElementById('stv-ausfall-select').value.toLowerCase().trim();
@@ -14267,6 +14268,10 @@ async function ladeTagesLektionenFuerErfassung() {
 
     try {
         const dateObj = new Date(stvEintragDatum.replace(/-/g, "/"));
+        
+        // 1. Bestehenden Kalender-Kontext laden (beinhaltet bereits deine resolveKlasse-Logik)
+        const kalenderCtx = await window.fetchKalenderContext(dateObj);
+
         const wtArr = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
         const aktuellerWochentag = wtArr[dateObj.getDay()];
 
@@ -14292,7 +14297,9 @@ async function ladeTagesLektionenFuerErfassung() {
         if (masterData) {
             masterData.forEach(row => {
                 if (planObj[row.slot]) {
-                    planObj[row.slot].klasse = row.klasse ? row.klasse.toString() : "";
+                    const roheKlasse = row.klasse ? row.klasse.toString() : "";
+                    // 2. Deine resolveKlasse-Funktion wendet automatisch die A/B-Wochen-Logik an
+                    planObj[row.slot].klasse = kalenderCtx.resolveKlasse(roheKlasse);
                     planObj[row.slot].lehrer = row.lehrer ? row.lehrer.toString() : "";
                 }
             });
@@ -14308,7 +14315,8 @@ async function ladeTagesLektionenFuerErfassung() {
                         planObj[slot].lehrer = "";
                         planObj[slot].verfasser = "";
                     } else {
-                        if (klasseAusDB !== "") planObj[slot].klasse = klasseAusDB;
+                        // 3. Auch bei bestehenden Buchungen absichern
+                        if (klasseAusDB !== "") planObj[slot].klasse = kalenderCtx.resolveKlasse(klasseAusDB);
                         if (row.halle) planObj[slot].halle = row.halle.toString();
                         if (row.verfasser) planObj[slot].verfasser = row.verfasser.toString();
                     }
@@ -14366,6 +14374,7 @@ async function ladeTagesLektionenFuerErfassung() {
     }
 }
 
+    
 /**
  * Rendert die Liste der geladenen Lektionen für den Erfassungsdialog.
  */
