@@ -14803,30 +14803,40 @@ window.openOneNoteForClass = function(klasse) {
         return;
     }
 
-    const cleanPath = path.trim();
+    let cleanPath = path.trim();
+    const lowerUrl = cleanPath.toLowerCase();
 
-    // 1. Wenn es eine Web-Adresse, Cloud-Link oder beliebige URL ist:
-    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://') || cleanPath.startsWith('www.')) {
-        let finalUrl = cleanPath;
-        if (cleanPath.startsWith('www.')) {
-            finalUrl = 'https://' + cleanPath;
+    // 1. Wenn es explizit ein onenote:-Protokoll ist:
+    if (lowerUrl.startsWith('onenote:')) {
+        window.location.href = cleanPath;
+        return;
+    }
+
+    // 2. Wenn es mit http://, https:// oder www. beginnt:
+    if (lowerUrl.startsWith('http://') || lowerUrl.startsWith('https://') || lowerUrl.startsWith('www.')) {
+        if (lowerUrl.startsWith('www.')) {
+            cleanPath = 'https://' + cleanPath;
         }
 
-        // Erzwingt das Öffnen im neuen Tab über ein temporäres DOM-Element 
-        // (Verhindert das Blockieren bei Doppelklicks / Event-Listenern)
+        // AUSNAHME: Wenn es ein SharePoint/OneNote-Link ist, der im Programm geöffnet werden soll
+        if (lowerUrl.includes('sharepoint.com') && lowerUrl.includes('doc.aspx')) {
+            window.location.href = `onenote:${cleanPath}`;
+            return;
+        }
+
+        // Echte Web-Adressen im neuen Tab öffnen
         const a = document.createElement('a');
-        a.href = finalUrl;
+        a.href = cleanPath;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         document.body.appendChild(a);
         
-        // Timeout-Sicherheit, falls der Browser den direkten Klick im Event verschluckt
         setTimeout(() => {
             a.click();
             document.body.removeChild(a);
         }, 10);
     } 
-    // 2. Für lokale Protokolle (onenote:, mailto:, tel: oder andere Apps):
+    // 3. Für sonstige lokale Protokolle (mailto:, tel: oder direkte Befehle):
     else {
         window.location.href = cleanPath;
     }
@@ -15023,14 +15033,20 @@ async function renderOneNoteSettings() {
             inp.addEventListener('blur', () => inp.style.borderColor = '#444');
         });
 
-        // Speicher-Logik
+        // Speicher-Logik mit automatischer OneNote-Bereinigung
         document.getElementById('save-onenote-paths-btn')?.addEventListener('click', async () => {
             const inputs = container.querySelectorAll('.onenote-input-field');
             let success = true;
 
             for (const input of inputs) {
                 const zielKlasse = input.getAttribute('data-klasse');
-                const newPathVal = input.value.trim();
+                let newPathVal = input.value.trim();
+
+                // WICHTIG: Wenn OneNote beide Links kopiert hat, den "onenote:" Teil extrahieren!
+                if (newPathVal.includes('onenote:')) {
+                    const onenoteIndex = newPathVal.indexOf('onenote:');
+                    newPathVal = newPathVal.substring(onenoteIndex).trim();
+                }
 
                 const { data: matchData, error: matchError } = await window.supabaseClient
                     .from('master_db')
