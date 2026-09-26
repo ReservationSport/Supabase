@@ -14740,7 +14740,7 @@ async function speichereNeueStellvertretung() {
 
 
 /* ==================================================================== */
-/* 11.12 OneNote-Pfad eintragen (Dark-Design & Scroll-Fix) */
+/* 11.12 OneNote-Pfad eintragen (Dark-Design & Scroll-Fix + Link-Router) */
 /* ==================================================================== */
 
 window.openOneNoteSettingsModal = function() {
@@ -14768,6 +14768,26 @@ window.closeOneNoteSettingsModal = function() {
     const modal = document.getElementById('onenote-settings-modal');
     if (modal) {
         modal.style.display = 'none'; // Verstecken
+    }
+};
+
+
+// Universelle Funktion zum Öffnen von OneNote-Links (unterstützt Online-URLs & App-Protokolle)
+window.openOneNoteForClass = function(klasse) {
+    const path = window.oneNotePaths && window.oneNotePaths[klasse];
+
+    if (!path || path.trim() === "") {
+        alert(`Für die Klasse "${klasse}" ist kein OneNote-Pfad hinterlegt.`);
+        return;
+    }
+
+    const cleanPath = path.trim();
+
+    // Online-Links (Web-URLs) im neuen Tab öffnen, App-Links direkt ausführen
+    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+        window.open(cleanPath, '_blank');
+    } else {
+        window.location.href = cleanPath;
     }
 };
 
