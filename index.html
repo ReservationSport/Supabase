@@ -5909,8 +5909,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
 
 /* ============================================================
-   ZENTRALE EVENT-DELEGATION (Inkl. OneNote master_db Integration)
-   ============================================================ */
+    ZENTRALE EVENT-DELEGATION (Inkl. OneNote master_db & teachers Integration)
+    ============================================================ */
 const planContainer = document.getElementById('plan-container');
 
 if (planContainer) {
@@ -5984,13 +5984,68 @@ if (planContainer) {
         }, 250);
     });
 
-    // 3. DOPPELKLICK: Link öffnen (Klassen-spezifisch aus master_db)
-    planContainer.addEventListener('dblclick', function(e) {
+    // 3. DOPPELKLICK: Entweder allgemeines Notizbuch (auf Header) oder Klassen-Link (auf Box)
+    planContainer.addEventListener('dblclick', async function(e) {
         if (window.moveMode) {
             e.stopPropagation();
             return;
         }
 
+        // Den wartenden Einfachklick-Timer löschen
+        if (clickTimeout) {
+            clearTimeout(clickTimeout);
+            clickTimeout = null;
+        }
+
+        // --- FALL A: Doppelklick auf die Datums-/Header-Zeile (.header-row) ---
+        const headerRow = e.target.closest('.box.header-row');
+        if (headerRow) {
+            e.stopPropagation();
+
+            let aktuellerUser = localStorage.getItem('userKuerzel') || "";
+            aktuellerUser = String(aktuellerUser || "").trim().toLowerCase();
+            if (!aktuellerUser) return;
+
+            try {
+                // Allgemeines Notizbuch aus der teachers-Tabelle laden
+                const { data, error } = await window.supabaseClient
+                    .from('teachers')
+                    .select('notizbuch')
+                    .ilike('kuerzel', `%${aktuellerUser}%`)
+                    .single();
+
+                if (error || !data || !data.notizbuch) return;
+
+                let generalUrl = data.notizbuch.trim();
+                if (!generalUrl) return;
+
+                // URL/Protokoll intelligent öffnen
+                if (generalUrl.toLowerCase().startsWith('http://') || generalUrl.toLowerCase().startsWith('https://') || generalUrl.toLowerCase().startsWith('www.')) {
+                    if (generalUrl.toLowerCase().startsWith('www.')) {
+                        generalUrl = 'https://' + generalUrl;
+                    }
+                    const a = document.createElement('a');
+                    a.href = generalUrl;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    setTimeout(() => {
+                        a.click();
+                        document.body.removeChild(a);
+                    }, 10);
+                } else {
+                    if (!generalUrl.toLowerCase().startsWith('onenote:')) {
+                        generalUrl = `onenote:${generalUrl}`;
+                    }
+                    window.location.href = generalUrl;
+                }
+            } catch (err) {
+                console.error("Fehler beim Öffnen des allgemeinen Notizbuchs:", err);
+            }
+            return;
+        }
+
+        // --- FALL B: Doppelklick auf eine normale Unterrichtsbox ---
         const box = e.target.closest('.box:not(.zeit-box):not(.header-row)');
         if (!box) return;
 
@@ -6001,35 +6056,27 @@ if (planContainer) {
         // WICHTIG: Wenn es nicht deine Box ist -> Sofort abbrechen!
         if (!canEdit) return;
 
-        // Den wartenden Einfachklick-Timer löschen, damit sich nicht der Editor öffnet
-        if (clickTimeout) {
-            clearTimeout(clickTimeout);
-            clickTimeout = null;
-        }
-
         e.stopPropagation(); // Verhindert unerwünschte Nebeneffekte
 
         // 1. Klasse aus der Box auslesen
         const klasse = box.querySelector('.klasse-label')?.innerText.trim() || "";
         if (!klasse) return;
 
-        // 2. Pfad aus dem beim Login geladenen Cache (master_db) holen
+        // 2. Pfad aus dem Cache (master_db) holen
         const savedPaths = window.oneNotePaths || {};
         const targetPath = savedPaths[klasse];
 
-        // SILENT FAIL: Wenn für diese Klasse kein Pfad hinterlegt wurde, passiert absolut gar nichts.
         if (!targetPath) return;
 
         let finalUrl = targetPath.trim();
         if (!finalUrl) return;
 
-        // 3. Unterscheiden zwischen Web-Link (Online) und App-Protokoll (OneNote)
+        // 3. Unterscheiden zwischen Web-Link und App-Protokoll
         if (finalUrl.toLowerCase().startsWith('http://') || finalUrl.toLowerCase().startsWith('https://') || finalUrl.toLowerCase().startsWith('www.')) {
             if (finalUrl.toLowerCase().startsWith('www.')) {
                 finalUrl = 'https://' + finalUrl;
             }
 
-            // Web-Adressen absolut zuverlässig im neuen Tab öffnen (umgeht Popup-Blocker beim Doppelklick)
             const a = document.createElement('a');
             a.href = finalUrl;
             a.target = '_blank';
@@ -6041,7 +6088,6 @@ if (planContainer) {
                 document.body.removeChild(a);
             }, 10);
         } else {
-            // Lokale Programm-Links (z.B. onenote:...)
             if (!finalUrl.toLowerCase().startsWith('onenote:')) {
                 finalUrl = `onenote:${finalUrl}`;
             }
@@ -14926,7 +14972,6 @@ async function renderOneNoteSettings() {
     // 100% zielsicherer Zugriff auf dein Kürzel aus dem localStorage
     let aktuellerUser = localStorage.getItem('userKuerzel') || "";
     
-    // Fallback falls es zusätzlich noch als Element im DOM existiert
     if (!aktuellerUser) {
         const inputEl = document.getElementById('userKuerzel');
         if (inputEl) aktuellerUser = inputEl.value;
@@ -14939,25 +14984,38 @@ async function renderOneNoteSettings() {
         return;
     }
 
-    container.innerHTML = `<p style="color: #bbb;">Lade alle Klassen aus der Datenbank (${aktuellerUser})...</p>`;
+    container.innerHTML = `<p style="color: #bbb;">Lade Einstellungen aus der Datenbank (${aktuellerUser})...</p>`;
 
     try {
-        const { data, error } = await window.supabaseClient
+        // 1. Klassen aus master_db laden
+        const { data: masterData, error: masterError } = await window.supabaseClient
             .from('master_db')
             .select('id, klasse, onenote_path')
             .ilike('lehrer', `%${aktuellerUser}%`);
 
-        if (error) {
-            console.error("Fehler beim Laden der Klassen:", error);
+        if (masterError) {
+            console.error("Fehler beim Laden der Klassen:", masterError);
             container.innerHTML = `<p style="color: #e74c3c;">Fehler beim Laden der Klassen aus der Datenbank.</p>`;
             return;
+        }
+
+        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden
+        const { data: teacherData, error: teacherError } = await window.supabaseClient
+            .from('teachers')
+            .select('notizbuch')
+            .ilike('kuerzel', `%${aktuellerUser}%`)
+            .single();
+
+        let allgemeinesNotizbuch = "";
+        if (!teacherError && teacherData && teacherData.notizbuch) {
+            allgemeinesNotizbuch = teacherData.notizbuch;
         }
 
         const classesSet = new Set();
         const pathMap = {};
         
-        if (data) {
-            data.forEach(row => {
+        if (masterData) {
+            masterData.forEach(row => {
                 if (row.klasse) {
                     let kuerzelString = String(row.klasse).trim();
                     let rawPath = row.onenote_path ? String(row.onenote_path).trim() : '';
@@ -14999,11 +15057,11 @@ async function renderOneNoteSettings() {
         const myClasses = Array.from(classesSet).sort();
         window.oneNotePaths = pathMap;
 
-        // HTML mit direktem Inline-Styling für den Scroll-Container
+        // HTML für Klassen-Liste
         let html = `
             <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em;">OneNote-Links</h3>
             <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier die gewünschten OneNote-Links für deine Klassen ein.</p>
-            <div class="onenote-path-list" style="flex: 1; overflow-y: auto; max-height: 52vh; margin: 10px 0; padding-right: 5px; box-sizing: border-box;">
+            <div class="onenote-path-list" style="flex: 1; overflow-y: auto; max-height: 40vh; margin: 10px 0; padding-right: 5px; box-sizing: border-box;">
         `;
 
         if (myClasses.length === 0) {
@@ -15011,7 +15069,6 @@ async function renderOneNoteSettings() {
         } else {
             myClasses.forEach(klasse => {
                 const currentPath = pathMap[klasse] || '';
-                
                 const safeKlasse = String(klasse).replace(/[\r\n]+/g, '').trim();
                 const safePath = String(currentPath).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
 
@@ -15022,9 +15079,20 @@ async function renderOneNoteSettings() {
                     </div>
                 `;
             });
-            html += `</div>
-            <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px;">Links speichern</button>`;
         }
+        html += `</div>`;
+
+        // Neuer Bereich ganz unten für das allgemeine Notizbuch
+        const safeGeneralNote = String(allgemeinesNotizbuch).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
+        html += `
+            <div style="border-top: 1px solid #444; margin-top: 15px; padding-top: 12px;">
+                <h4 style="margin: 0 0 5px 0; color: white; font-size: 0.95em;">Allgemeines Notizbuch (für Doppelklick auf Datum)</h4>
+                <p style="font-size: 0.75em; color: #aaa; margin-bottom: 8px;">Link zum persönlichen Notizbuch in der teachers-Tabelle.</p>
+                <input id="general-onenote-input" type="text" value="${safeGeneralNote}" placeholder="https://... oder onenote:..." style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: white; box-sizing: border-box; font-size: 0.85em;">
+            </div>
+            
+            <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px;">Links & Notizbuch speichern</button>
+        `;
 
         container.innerHTML = html;
 
@@ -15033,16 +15101,16 @@ async function renderOneNoteSettings() {
             inp.addEventListener('blur', () => inp.style.borderColor = '#444');
         });
 
-        // Speicher-Logik mit automatischer OneNote-Bereinigung
+        // Speicher-Logik (Master-DB + Teachers-Tabelle)
         document.getElementById('save-onenote-paths-btn')?.addEventListener('click', async () => {
             const inputs = container.querySelectorAll('.onenote-input-field');
             let success = true;
 
+            // 1. Klassenspezifische Pfade in master_db speichern
             for (const input of inputs) {
                 const zielKlasse = input.getAttribute('data-klasse');
                 let newPathVal = input.value.trim();
 
-                // Wenn OneNote beide Links kopiert hat, den "onenote:" Teil extrahieren
                 if (newPathVal.includes('onenote:')) {
                     const onenoteIndex = newPathVal.indexOf('onenote:');
                     newPathVal = newPathVal.substring(onenoteIndex).trim();
@@ -15123,8 +15191,20 @@ async function renderOneNoteSettings() {
                 }
             }
 
+            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern
+            const generalInputVal = document.getElementById('general-onenote-input')?.value.trim() || "";
+            const { error: teacherUpdateError } = await window.supabaseClient
+                .from('teachers')
+                .update({ notizbuch: generalInputVal })
+                .ilike('kuerzel', `%${aktuellerUser}%`);
+
+            if (teacherUpdateError) {
+                console.error("Fehler beim Speichern des Notizbuchs in teachers:", teacherUpdateError);
+                success = false;
+            }
+
             if (success) {
-                alert("Pfade erfolgreich in der master_db gespeichert!");
+                alert("Pfade und allgemeines Notizbuch erfolgreich gespeichert!");
                 if (typeof loadOneNotePathsFromSupabase === 'function') {
                     loadOneNotePathsFromSupabase();
                 }
