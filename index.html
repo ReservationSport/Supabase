@@ -15027,7 +15027,6 @@ async function renderOneNoteSettings() {
                     let kuerzelString = String(row.klasse).trim();
                     let rawPath = row.onenote_path ? String(row.onenote_path).trim() : '';
 
-                    // Nur trennen, wenn der Slash von Leerzeichen umgeben ist (" / ")
                     if (kuerzelString.includes(' / ')) {
                         let einzellKlassen = kuerzelString.split(' / ').map(k => k.trim());
                         let cleanPath = rawPath;
@@ -15065,23 +15064,31 @@ async function renderOneNoteSettings() {
         const myClasses = Array.from(classesSet).sort();
         window.oneNotePaths = pathMap;
 
+        // Container so einstellen, dass er flexibel als Spalte arbeitet (füllt den verfügbaren Platz aus)
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.maxHeight = '75vh'; // Passt sich dem Bildschirm an
+        container.style.boxSizing = 'border-box';
+
         // HTML Grundgerüst
         let html = `
-            <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em;">OneNote-Links</h3>
-            <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier dein allgemeines Notizbuch sowie die Links für deine Klassen ein.</p>
-            <div class="onenote-path-list" style="flex: 1; overflow-y: auto; max-height: 40vh; margin: 10px 0; padding-right: 5px; box-sizing: border-box;">
+            <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em; flex-shrink: 0;">OneNote-Links</h3>
+            <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px; flex-shrink: 0;">Trage hier dein allgemeines Notizbuch sowie die Links für deine Klassen ein.</p>
+            
+            <!-- Scrollbare Liste für die Einträge -->
+            <div class="onenote-path-list" style="flex: 1 1 auto; overflow-y: auto; margin-bottom: 10px; padding-right: 5px; box-sizing: border-box;">
         `;
 
-        // 1. Allgemeines Notizbuch ganz oben IN der Scroll-Liste (jetzt mit Orange und neuem Grau)
+        // Allgemeines Notizbuch
         const safeGeneralNote = String(allgemeinesNotizbuch).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
         html += `
-            <div style="background: #303030; border-left: 4px solid #e67e22; padding: 10px 12px; margin-bottom: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 5px;">
+            <div style="background: #303030; border-left: 4px solid #e67e22; padding: 10px 12px; margin-bottom: 10px; border-radius: 4px; display: flex; flex-direction: column; gap: 5px;">
                 <span style="font-weight: bold; font-size: 0.9em; color: white;">Allgemeines Notizbuch (Doppelklick auf Datum)</span>
                 <input id="general-onenote-input" type="text" value="${safeGeneralNote}" placeholder="https://... oder onenote:..." style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: white; box-sizing: border-box; font-size: 0.85em;">
             </div>
         `;
 
-        // 2. Klassen-Liste darunter
+        // Klassen-Liste
         if (myClasses.length === 0) {
             html += `<p style="color: #bbb;">Keine Klassen für dein Kürzel (${aktuellerUser}) in der master_db gefunden.</p>`;
         } else {
@@ -15098,11 +15105,14 @@ async function renderOneNoteSettings() {
                 `;
             });
         }
-        html += `</div>`;
+        html += `</div>`; // Ende der Scroll-Liste
 
-        // Speicher-Button am Ende
+        // Fester Footer-Bereich für die Buttons, damit sie nie abgeschnitten werden
         html += `
-            <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px;">Links & Notizbuch speichern</button>
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 5px;">
+                <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Links & Notizbuch speichern</button>
+                <button onclick="closeOneNoteSettingsModal()" style="background: #444; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Schließen</button>
+            </div>
         `;
 
         container.innerHTML = html;
@@ -15117,7 +15127,6 @@ async function renderOneNoteSettings() {
             const inputs = container.querySelectorAll('.onenote-input-field');
             let success = true;
 
-            // 1. Klassenspezifische Pfade in master_db speichern
             for (const input of inputs) {
                 const zielKlasse = input.getAttribute('data-klasse');
                 let newPathVal = input.value.trim();
@@ -15202,7 +15211,6 @@ async function renderOneNoteSettings() {
                 }
             }
 
-            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern
             const generalInputVal = document.getElementById('general-onenote-input')?.value.trim() || "";
             const { error: teacherUpdateError } = await window.supabaseClient
                 .from('teachers')
