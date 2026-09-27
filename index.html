@@ -15064,10 +15064,10 @@ async function renderOneNoteSettings() {
         const myClasses = Array.from(classesSet).sort();
         window.oneNotePaths = pathMap;
 
-        // Container so einstellen, dass er flexibel als Spalte arbeitet (füllt den verfügbaren Platz aus)
+        // Container als Flexbox für automatische Anpassung an die Bildschirmhöhe
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
-        container.style.maxHeight = '75vh'; // Passt sich dem Bildschirm an
+        container.style.maxHeight = '75vh';
         container.style.boxSizing = 'border-box';
 
         // HTML Grundgerüst
@@ -15107,11 +15107,10 @@ async function renderOneNoteSettings() {
         }
         html += `</div>`; // Ende der Scroll-Liste
 
-        // Fester Footer-Bereich für die Buttons, damit sie nie abgeschnitten werden
+        // Nur der Speicher-Button bleibt im dynamischen Bereich unten fixiert
         html += `
-            <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 5px;">
+            <div style="flex-shrink: 0; margin-top: auto; padding-top: 5px;">
                 <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Links & Notizbuch speichern</button>
-                <button onclick="closeOneNoteSettingsModal()" style="background: #444; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Schließen</button>
             </div>
         `;
 
