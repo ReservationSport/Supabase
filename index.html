@@ -6440,15 +6440,17 @@ window.loadPlan = async function(isExplicitUserAction = false) {
 
     try {
         const [y, m, d] = dateVal.split('-');
-        const dbFormatDate = `${d}.${m}.${y}`;
         
         // --- SPERRZEITEN-PRÜFUNG AUS DEM LOKALEN CACHE ---
-        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
+        // Nutzt direkt dateVal (YYYY-MM-DD), passend zur Struktur der sperrzeitenMap
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dateVal] ? window.sperrzeitenMap[dateVal] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
             return;
         }
+
+        const dbFormatDate = `${d}.${m}.${y}`; // Für die Header-Anzeige behalten
 
         const configPromises = [];
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
@@ -6605,9 +6607,9 @@ window.loadPlan = async function(isExplicitUserAction = false) {
         
         const zeiten = ["07:15 - 08:00", "08:05 - 08:50", "08:55 - 09:40", "10:00 - 10:45", "10:50 - 11:35", "11:40 - 12:25", "12:50 - 13:35", "13:40 - 14:25", "14:30 - 15:15", "15:35 - 16:20", "16:25 - 17:10", "17:15 - 18:00"];
 
-        let html = `<div class="box header-row" style="grid-column: span 6;"><span>${aktuellerWochentag}, ${d}.${m}.${y}</span></div>`;
+        let html = `<div class="box header-row" style="grid-column: span 6;"><span>${aktuellerWochentag}, ${dbFormatDate}</span></div>`;
 
-        zeiten.dates ? zeiten : zeiten.forEach((zeitStr, rowIndex) => {
+        zeiten.forEach((zeitStr, rowIndex) => {
             if (rowIndex + 1 === 4 || rowIndex + 1 === 10) html += `<div class="divider-thin" style="grid-column: span 6;"></div>`;
             if (rowIndex + 1 === 7) html += `<div class="divider-thick" style="grid-column: span 6;"></div>`;
             html += `<div class="box zeit-box">${zeitStr}</div>`;
@@ -6630,14 +6632,12 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                 const isAusfall = (halle === "Ausfall");
                 const isKlasseLeer = (klasse.trim() === "");
                 
-                // Erfasser aus eckigen Klammern extrahieren (z.B. "[bupa]")
                 let bracketUser = "";
                 const bracketMatch = verfasser.match(/\[(.*?)\]/);
                 if (bracketMatch) {
                     bracketUser = bracketMatch[1].trim().toLowerCase();
                 }
 
-                // Text für die Anzeige bereinigen (eckige Klammern und deren Inhalt entfernen)
                 const displayVerfasser = verfasser.replace(/\s*\[.*?\]/g, '').trim();
                 const lehrer = (displayVerfasser !== "") ? displayVerfasser : (lehrerDaten !== "" ? lehrerDaten : (window.allClassTeachers[klasse] || ""));
                 
@@ -6657,7 +6657,6 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                 const istMeinVerfasser = (displayVerfasser.trim().toLowerCase() === safeUserKuerzel);
                 const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
 
-                // STV-Erkennung (z.B. "habe (für bilu)")
                 const hasStvPattern = displayVerfasser.includes('(für ');
                 let stvUebernehmend = "";
                 if (hasStvPattern) {
@@ -6673,7 +6672,6 @@ window.loadPlan = async function(isExplicitUserAction = false) {
                 const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
                 const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
                 
-                // Klassenbestimmung: STV-Boxen kriegen .is-stv, eigene normale Boxen .is-mine, sonst .not-mine
                 const borderClass = isStvBox ? "is-stv" : (canEdit ? "is-mine" : "not-mine");
                 const classList = ["box", isKlasseLeer ? "empty" : "", borderClass, isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
                 
@@ -6810,10 +6808,9 @@ window.syncPlan = async function() {
         
         if (dateObj.getDay() === 0 || dateObj.getDay() === 6) return;
 
-        const [y, m, d] = dateVal.split('-');
-        const dbFormatDate = `${d}.${m}.${y}`;
-
-        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
+        // --- SPERRZEITEN-PRÜFUNG AUS DEM LOKALEN CACHE ---
+        // Nutzt direkt dateVal (YYYY-MM-DD), passend zur Struktur der sperrzeitenMap
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dateVal] ? window.sperrzeitenMap[dateVal] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
@@ -6926,21 +6923,18 @@ window.syncPlan = async function() {
             const isAusfall = (halle === "Ausfall");
             const isKlasseLeer = (klasse.trim() === "");
             
-            // Erfasser aus eckigen Klammern extrahieren (z.B. "[bupa]")
             let bracketUser = "";
             const bracketMatch = verfasser.match(/\[(.*?)\]/);
             if (bracketMatch) {
                 bracketUser = bracketMatch[1].trim().toLowerCase();
             }
 
-            // Text für die Anzeige bereinigen (eckige Klammern und deren Inhalt entfernen)
             const displayVerfasser = verfasser.replace(/\s*\[.*?\]/g, '').trim();
             const lehrer = (displayVerfasser !== "") ? displayVerfasser : (lehrerDaten !== "" ? lehrerDaten : (allClassTeachers[klasse] || ""));
             
             const istMeinVerfasser = (displayVerfasser.trim().toLowerCase() === safeUserKuerzel);
             const istMeinLehrer = (lehrerDaten.trim().toLowerCase() === safeUserKuerzel);
 
-            // STV-Erkennung (z.B. "bupa (für bilu)")
             const hasStvPattern = displayVerfasser.includes('(für ');
             let stvUebernehmend = "";
             if (hasStvPattern) {
@@ -6957,7 +6951,6 @@ window.syncPlan = async function() {
             const hallenObj = (window.hallenConfig && window.hallenConfig[halle]) ? window.hallenConfig[halle] : null;
             const bgFarbe = (hallenObj && !isAusfall) ? (hallenObj.color || hallenObj.farbe || '') : '';
 
-            // STV-Klassenanwendung analog zu loadPlan
             const borderClass = isStvBox ? "is-stv" : (canEdit ? "is-mine" : "not-mine");
             box.className = ["box", isKlasseLeer ? "empty" : "", borderClass, isAusfall ? "ausfall-mode" : ""].filter(Boolean).join(" ");
             box.style.backgroundColor = bgFarbe;
