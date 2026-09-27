@@ -14998,7 +14998,7 @@ async function renderOneNoteSettings() {
             return;
         }
 
-        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden (Korrektur: Spalte 'lehrer' statt 'kuerzel')
+        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden
         const { data: teacherData, error: teacherError } = await window.supabaseClient
             .from('teachers')
             .select('notizbuch')
@@ -15056,13 +15056,23 @@ async function renderOneNoteSettings() {
         const myClasses = Array.from(classesSet).sort();
         window.oneNotePaths = pathMap;
 
-        // HTML für Klassen-Liste
+        // HTML Grundgerüst
         let html = `
             <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em;">OneNote-Links</h3>
-            <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier die gewünschten OneNote-Links für deine Klassen ein.</p>
+            <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier dein allgemeines Notizbuch sowie die Links für deine Klassen ein.</p>
             <div class="onenote-path-list" style="flex: 1; overflow-y: auto; max-height: 40vh; margin: 10px 0; padding-right: 5px; box-sizing: border-box;">
         `;
 
+        // 1. Allgemeines Notizbuch ganz oben IN der Scroll-Liste
+        const safeGeneralNote = String(allgemeinesNotizbuch).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
+        html += `
+            <div style="background: #252525; border-left: 4px solid #3498db; padding: 10px 12px; margin-bottom: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 5px;">
+                <span style="font-weight: bold; font-size: 0.9em; color: white;">Allgemeines Notizbuch (Doppelklick auf Datum)</span>
+                <input id="general-onenote-input" type="text" value="${safeGeneralNote}" placeholder="https://... oder onenote:..." style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: white; box-sizing: border-box; font-size: 0.85em;">
+            </div>
+        `;
+
+        // 2. Klassen-Liste darunter
         if (myClasses.length === 0) {
             html += `<p style="color: #bbb;">Keine Klassen für dein Kürzel (${aktuellerUser}) in der master_db gefunden.</p>`;
         } else {
@@ -15081,21 +15091,14 @@ async function renderOneNoteSettings() {
         }
         html += `</div>`;
 
-        // Neuer Bereich ganz unten für das allgemeine Notizbuch
-        const safeGeneralNote = String(allgemeinesNotizbuch).replace(/[\r\n]+/g, '').replace(/"/g, '&quot;').trim();
+        // Speicher-Button am Ende
         html += `
-            <div style="border-top: 1px solid #444; margin-top: 15px; padding-top: 12px;">
-                <h4 style="margin: 0 0 5px 0; color: white; font-size: 0.95em;">Allgemeines Notizbuch (für Doppelklick auf Datum)</h4>
-                <p style="font-size: 0.75em; color: #aaa; margin-bottom: 8px;">Link zum persönlichen Notizbuch in der teachers-Tabelle.</p>
-                <input id="general-onenote-input" type="text" value="${safeGeneralNote}" placeholder="https://... oder onenote:..." style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: white; box-sizing: border-box; font-size: 0.85em;">
-            </div>
-            
             <button id="save-onenote-paths-btn" style="background: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px;">Links & Notizbuch speichern</button>
         `;
 
         container.innerHTML = html;
 
-        container.querySelectorAll('.onenote-input-field').forEach(inp => {
+        container.querySelectorAll('.onenote-input-field, #general-onenote-input').forEach(inp => {
             inp.addEventListener('focus', () => inp.style.borderColor = '#e67e22');
             inp.addEventListener('blur', () => inp.style.borderColor = '#444');
         });
@@ -15190,7 +15193,7 @@ async function renderOneNoteSettings() {
                 }
             }
 
-            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern (Spalte: 'lehrer')
+            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern
             const generalInputVal = document.getElementById('general-onenote-input')?.value.trim() || "";
             const { error: teacherUpdateError } = await window.supabaseClient
                 .from('teachers')
