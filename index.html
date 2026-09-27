@@ -14923,31 +14923,19 @@ async function renderOneNoteSettings() {
     const container = document.getElementById('onenote-submenu-content');
     if (!container) return;
 
-    // Robuste Ermittlung des Kürzel (prüft mehrere Speicherorte für Web & App/Mobile)
-    let rawUser = window.userKuerzel 
-                || localStorage.getItem('userKuerzel') 
-                || localStorage.getItem('user') 
-                || localStorage.getItem('kuerzel') 
-                || "";
-
-    if (rawUser && typeof rawUser === 'object') {
-        rawUser = rawUser.value || rawUser.getAttribute?.('value') || "";
-    }
-    let aktuellerUser = String(rawUser || "").trim().toLowerCase();
-
-    if (!aktuellerUser || aktuellerUser.includes('input')) {
+    // 100% zielsicherer Zugriff auf dein Kürzel aus dem localStorage
+    let aktuellerUser = localStorage.getItem('userKuerzel') || "";
+    
+    // Fallback falls es zusätzlich noch als Element im DOM existiert
+    if (!aktuellerUser) {
         const inputEl = document.getElementById('userKuerzel');
-        if (inputEl && inputEl.value) {
-            aktuellerUser = String(inputEl.value).trim().toLowerCase();
-        }
+        if (inputEl) aktuellerUser = inputEl.value;
     }
 
-    if (!aktuellerUser && window.currentTeacher) {
-        aktuellerUser = String(window.currentTeacher).trim().toLowerCase();
-    }
+    aktuellerUser = String(aktuellerUser || "").trim().toLowerCase();
 
     if (!aktuellerUser) {
-        container.innerHTML = `<p style="color: #e74c3c;">Bitte zuerst ein Benutzerkürzel angeben (oder im System einloggen).</p>`;
+        container.innerHTML = `<p style="color: #e74c3c;">Kein Benutzerkürzel (userKuerzel) im Speicher gefunden.</p>`;
         return;
     }
 
@@ -15011,7 +14999,7 @@ async function renderOneNoteSettings() {
         const myClasses = Array.from(classesSet).sort();
         window.oneNotePaths = pathMap;
 
-        // HTML mit direktem Inline-Styling für den Scroll-Container (verhindert Überlaufen)
+        // HTML mit direktem Inline-Styling für den Scroll-Container
         let html = `
             <h3 style="margin-top: 0; margin-bottom: 5px; color: white; font-size: 1.1em;">OneNote-Links</h3>
             <p style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Trage hier die gewünschten OneNote-Links für deine Klassen ein.</p>
@@ -15054,7 +15042,7 @@ async function renderOneNoteSettings() {
                 const zielKlasse = input.getAttribute('data-klasse');
                 let newPathVal = input.value.trim();
 
-                // WICHTIG: Wenn OneNote beide Links kopiert hat, den "onenote:" Teil extrahieren!
+                // Wenn OneNote beide Links kopiert hat, den "onenote:" Teil extrahieren
                 if (newPathVal.includes('onenote:')) {
                     const onenoteIndex = newPathVal.indexOf('onenote:');
                     newPathVal = newPathVal.substring(onenoteIndex).trim();
@@ -15137,7 +15125,9 @@ async function renderOneNoteSettings() {
 
             if (success) {
                 alert("Pfade erfolgreich in der master_db gespeichert!");
-                loadOneNotePathsFromSupabase();
+                if (typeof loadOneNotePathsFromSupabase === 'function') {
+                    loadOneNotePathsFromSupabase();
+                }
             } else {
                 alert("Es gab beim Speichern ein Problem (siehe Konsole).");
             }
