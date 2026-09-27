@@ -6007,11 +6007,11 @@ if (planContainer) {
             if (!aktuellerUser) return;
 
             try {
-                // Allgemeines Notizbuch aus der teachers-Tabelle laden
+                // Allgemeines Notizbuch aus der teachers-Tabelle laden (Korrektur: Spalte 'lehrer')
                 const { data, error } = await window.supabaseClient
                     .from('teachers')
                     .select('notizbuch')
-                    .ilike('kuerzel', `%${aktuellerUser}%`)
+                    .ilike('lehrer', `%${aktuellerUser}%`)
                     .single();
 
                 if (error || !data || !data.notizbuch) return;
