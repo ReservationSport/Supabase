@@ -14923,7 +14923,13 @@ async function renderOneNoteSettings() {
     const container = document.getElementById('onenote-submenu-content');
     if (!container) return;
 
-    let rawUser = window.userKuerzel || localStorage.getItem('userKuerzel');
+    // Robuste Ermittlung des Kürzel (prüft mehrere Speicherorte für Web & App/Mobile)
+    let rawUser = window.userKuerzel 
+                || localStorage.getItem('userKuerzel') 
+                || localStorage.getItem('user') 
+                || localStorage.getItem('kuerzel') 
+                || "";
+
     if (rawUser && typeof rawUser === 'object') {
         rawUser = rawUser.value || rawUser.getAttribute?.('value') || "";
     }
@@ -14931,15 +14937,21 @@ async function renderOneNoteSettings() {
 
     if (!aktuellerUser || aktuellerUser.includes('input')) {
         const inputEl = document.getElementById('userKuerzel');
-        if (inputEl) aktuellerUser = inputEl.value.trim().toLowerCase();
+        if (inputEl && inputEl.value) {
+            aktuellerUser = String(inputEl.value).trim().toLowerCase();
+        }
+    }
+
+    if (!aktuellerUser && window.currentTeacher) {
+        aktuellerUser = String(window.currentTeacher).trim().toLowerCase();
     }
 
     if (!aktuellerUser) {
-        container.innerHTML = `<p style="color: #e74c3c;">Bitte zuerst ein Benutzerkürzel angeben.</p>`;
+        container.innerHTML = `<p style="color: #e74c3c;">Bitte zuerst ein Benutzerkürzel angeben (oder im System einloggen).</p>`;
         return;
     }
 
-    container.innerHTML = `<p style="color: #bbb;">Lade alle Klassen aus der Datenbank...</p>`;
+    container.innerHTML = `<p style="color: #bbb;">Lade alle Klassen aus der Datenbank (${aktuellerUser})...</p>`;
 
     try {
         const { data, error } = await window.supabaseClient
