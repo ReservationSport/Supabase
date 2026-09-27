@@ -14927,8 +14927,9 @@ async function loadOneNotePathsFromSupabase() {
                     let kuerzelString = String(row.klasse).trim();
                     let rawPath = String(row.onenote_path).trim();
 
-                    if (kuerzelString.includes('/')) {
-                        let einzellKlassen = kuerzelString.split('/').map(k => k.trim());
+                    // Nur trennen, wenn der Slash von Leerzeichen umgeben ist (" / ")
+                    if (kuerzelString.includes(' / ')) {
+                        let einzellKlassen = kuerzelString.split(' / ').map(k => k.trim());
                         let cleanPath = rawPath;
 
                         let p1 = '';
@@ -14953,6 +14954,7 @@ async function loadOneNotePathsFromSupabase() {
                             window.oneNotePaths[einzellKlassen[1]] = p2;
                         }
                     } else {
+                        // Bleibt als eine einzige Klasse erhalten
                         window.oneNotePaths[kuerzelString] = rawPath;
                     }
                 }
@@ -15019,8 +15021,8 @@ async function renderOneNoteSettings() {
                     let kuerzelString = String(row.klasse).trim();
                     let rawPath = row.onenote_path ? String(row.onenote_path).trim() : '';
 
-                    if (kuerzelString.includes('/')) {
-                        let einzellKlassen = kuerzelString.split('/').map(k => k.trim());
+                    if (kuerzelString.includes(' / ')) {
+                        let einzellKlassen = kuerzelString.split(' / ').map(k => k.trim());
                         let cleanPath = rawPath;
 
                         let p1 = '';
@@ -15136,8 +15138,8 @@ async function renderOneNoteSettings() {
                         let existingDbPath = row.onenote_path ? String(row.onenote_path).trim() : '';
                         let finalPathToSave = newPathVal;
 
-                        if (kStr.includes('/')) {
-                            let parts = kStr.split('/').map(k => k.trim().toLowerCase());
+                        if (kStr.includes(' / ')) {
+                            let parts = kStr.split(' / ').map(k => k.trim().toLowerCase());
                             
                             let targetIndex = -1;
                             for (let i = 0; i < parts.length; i++) {
