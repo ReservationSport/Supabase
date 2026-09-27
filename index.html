@@ -14998,7 +14998,7 @@ async function renderOneNoteSettings() {
             return;
         }
 
-        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden (Spalte: 'lehrer')
+        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden (Korrektur: Spalte 'lehrer' statt 'kuerzel')
         const { data: teacherData, error: teacherError } = await window.supabaseClient
             .from('teachers')
             .select('notizbuch')
