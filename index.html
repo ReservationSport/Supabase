@@ -14969,7 +14969,6 @@ async function renderOneNoteSettings() {
     const container = document.getElementById('onenote-submenu-content');
     if (!container) return;
 
-    // 100% zielsicherer Zugriff auf dein Kürzel aus dem localStorage
     let aktuellerUser = localStorage.getItem('userKuerzel') || "";
     
     if (!aktuellerUser) {
@@ -14999,11 +14998,11 @@ async function renderOneNoteSettings() {
             return;
         }
 
-        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden
+        // 2. Allgemeines Notizbuch aus teachers-Tabelle laden (Spalte: 'lehrer')
         const { data: teacherData, error: teacherError } = await window.supabaseClient
             .from('teachers')
             .select('notizbuch')
-            .ilike('kuerzel', `%${aktuellerUser}%`)
+            .ilike('lehrer', `%${aktuellerUser}%`)
             .single();
 
         let allgemeinesNotizbuch = "";
@@ -15191,12 +15190,12 @@ async function renderOneNoteSettings() {
                 }
             }
 
-            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern
+            // 2. Allgemeines Notizbuch in teachers-Tabelle speichern (Spalte: 'lehrer')
             const generalInputVal = document.getElementById('general-onenote-input')?.value.trim() || "";
             const { error: teacherUpdateError } = await window.supabaseClient
                 .from('teachers')
                 .update({ notizbuch: generalInputVal })
-                .ilike('kuerzel', `%${aktuellerUser}%`);
+                .ilike('lehrer', `%${aktuellerUser}%`);
 
             if (teacherUpdateError) {
                 console.error("Fehler beim Speichern des Notizbuchs in teachers:", teacherUpdateError);
