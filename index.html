@@ -6440,17 +6440,16 @@ window.loadPlan = async function(isExplicitUserAction = false) {
 
     try {
         const [y, m, d] = dateVal.split('-');
-        
+        const dbFormatDate = `${d}.${m}.${y}`; // Für die Header-Anzeige und die Map
+
         // --- SPERRZEITEN-PRÜFUNG AUS DEM LOKALEN CACHE ---
-        // Nutzt direkt dateVal (YYYY-MM-DD), passend zur Struktur der sperrzeitenMap
-        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dateVal] ? window.sperrzeitenMap[dateVal] : "";
+        // Prüft nun korrekt mit dem DD.MM.YYYY-Format der sperrzeitenMap
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
             return;
         }
-
-        const dbFormatDate = `${d}.${m}.${y}`; // Für die Header-Anzeige behalten
 
         const configPromises = [];
         if (!window.hallenConfig || Object.keys(window.hallenConfig).length === 0) {
@@ -6809,8 +6808,10 @@ window.syncPlan = async function() {
         if (dateObj.getDay() === 0 || dateObj.getDay() === 6) return;
 
         // --- SPERRZEITEN-PRÜFUNG AUS DEM LOKALEN CACHE ---
-        // Nutzt direkt dateVal (YYYY-MM-DD), passend zur Struktur der sperrzeitenMap
-        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dateVal] ? window.sperrzeitenMap[dateVal] : "";
+        // Wandelt dateVal (YYYY-MM-DD) korrekt in DD.MM.YYYY für die sperrzeitenMap um
+        const [y, m, d] = dateVal.split('-');
+        const dbFormatDate = `${d}.${m}.${y}`;
+        const sperrzeitGrund = window.sperrzeitenMap && window.sperrzeitenMap[dbFormatDate] ? window.sperrzeitenMap[dbFormatDate] : "";
 
         if (sperrzeitGrund) {
             container.innerHTML = `<div class="box info-box" style="grid-column: span 6; background: #333; color: #e67e22; padding: 40px; font-size: 1.2rem;">${sperrzeitGrund}</div>`;
