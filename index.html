@@ -8499,11 +8499,75 @@ window.currentSaveController = null;
 window.applyHalleSelection = async function(neueHalle, time, slot, klasse, btn, typ) {
     if (!btn) return;
     
+    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+    const slotNum = parseInt(slot, 10);
+    const istLoeschenOderAusfall = (neueHalle === "" || neueHalle === "Ausfall" || neueHalle === "beendet");
+
+    // 🛡️ DIREKTER LIVE-CHECK BEIM KLICK (Bevor der Klick verarbeitet wird)
+    if (!istLoeschenOderAusfall && supabaseClient) {
+        btn.style.pointerEvents = "none";
+        btn.style.opacity = "0.6";
+
+        try {
+            const rowIndex = Math.floor((slotNum - 1) / 5);
+            const startSlot = (rowIndex * 5) + 1;
+            const endSlot = startSlot + 4;
+
+            const { data: aktuelleBuchungen, error } = await supabaseClient
+                .from('buchungen_db')
+                .select('slot, halle, verfasser')
+                .eq('datum', targetDate)
+                .gte('slot', startSlot)
+                .lte('slot', endSlot);
+
+            if (!error && aktuelleBuchungen) {
+                const gewählteHalleLower = neueHalle.trim().toLowerCase();
+                let istBereitsVergeben = false;
+                let belegtDurch = "";
+
+                aktuelleBuchungen.forEach(eintrag => {
+                    // Ignorieren, wenn es sich um den eigenen bestehenden Slot handelt (Update-Fall)
+                    if (parseInt(eintrag.slot, 10) === slotNum) return;
+
+                    const hBestehend = (eintrag.halle || "").trim().toLowerCase();
+                    if (hBestehend === "" || hBestehend === "ausfall" || hBestehend === "beendet") return;
+
+                    const teileBestehend = hBestehend.split('+').map(p => p.trim());
+                    const teileGewählt = gewählteHalleLower.split('+').map(p => p.trim());
+
+                    const kollidiert = teileGewählt.some(gw => teileBestehend.includes(gw));
+                    if (kollidiert) {
+                        istBereitsVergeben = true;
+                        belegtDurch = eintrag.verfasser || "Anderer";
+                    }
+                });
+
+                if (istBereitsVergeben) {
+                    alert(`🛑 Kollision! Diese Halle (oder ein Teil davon) wurde soeben von ${belegtDurch} reserviert.`);
+                    
+                    // Menü sofort schließen und echten Stand neu laden
+                    if (typeof closeEditor === 'function') closeEditor();
+                    const dp = document.getElementById('datePicker');
+                    if (typeof changeDayAndLoad === 'function' && dp) {
+                        await changeDayAndLoad(dp.value);
+                    }
+                    return; // ABBRUCH! Kein Speichern, keine Doppelbelegung.
+                }
+            }
+        } catch (err) {
+            console.error("Fehler beim Live-Klick-Check in applyHalleSelection:", err);
+        } finally {
+            if (btn) {
+                btn.style.pointerEvents = "auto";
+                btn.style.opacity = "1";
+            }
+        }
+    }
+
+    // --- AB HIER LÄUFT DEIN GEWOHNTER CODE WEITER ---
     btn.style.pointerEvents = "none";
     btn.style.opacity = "0.6";
 
-    const targetDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-    const slotNum = parseInt(slot, 10);
     const currentSlotData = (window.lastPlanData && window.lastPlanData[slotNum]) ? window.lastPlanData[slotNum] : {};
     const now = new Date().toISOString();
 
