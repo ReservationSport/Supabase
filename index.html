@@ -5559,6 +5559,43 @@ async function registerServiceWorker() {
         }
     }
 }
+
+
+// 👁️ Automatischer Refresh beim Aufwachen des Tabs (Hintergrund-Fix)
+document.addEventListener('visibilitychange', async () => {
+    // Prüfen, ob der Tab wieder sichtbar ist und der User eingeloggt ist
+    if (document.visibilityState === 'visible' && isLoggedIn) {
+        console.log("👁️ Tab ist wieder im Vordergrund – aktualisiere Daten...");
+        
+        const dp = document.getElementById('datePicker');
+        const aktuellesDatum = dp ? dp.value : null;
+
+        // 1. Caches im Hintergrund auffrischen (z.B. Sperrzeiten & Lehrer)
+        try {
+            if (typeof window.initSperrzeitenCache === 'function') {
+                await window.initSperrzeitenCache();
+            }
+        } catch (e) {
+            console.warn("⚠️ Sperrzeiten-Cache konnte nicht aktualisiert werden:", e);
+        }
+
+        // 2. Plan für das aktuell ausgewählte Datum neu laden
+        if (aktuellesDatum && typeof changeDayAndLoad === 'function') {
+            try {
+                await changeDayAndLoad(aktuellesDatum);
+                console.log("🟢 Plan erfolgreich auf den aktuellen Stand gebracht!");
+            } catch (e) {
+                console.warn("⚠️ Fehler beim Neuladen des Plans nach Tab-Wechsel:", e);
+            }
+        }
+
+        // 3. Ungelesene Nachrichten / Badge für das Team prüfen
+        if (typeof userKuerzel !== 'undefined' && userKuerzel) {
+            checkUnreadNews(userKuerzel);
+        }
+    }
+});
+
     
 
 /* ============================================================
